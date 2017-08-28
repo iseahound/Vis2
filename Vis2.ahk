@@ -1,7 +1,7 @@
 ; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2017-08-19
+; Recent:    2017-08-28
 
 #include <Gdip_All>
 
@@ -40,9 +40,10 @@ class Vis2 {
          Vis2.obj.Area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
          Vis2.obj.Image := new Vis2.Graphics.Image("Vis2_Kitsune")
          Vis2.obj.Subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
-
+         Vis2.obj.background :=   {"x":"center", "y":"83%", "padding":"1.35%", "color":"dd000000", "radius":"8"}
+         Vis2.obj.text :=         {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"ffffff"}
          text := (Vis2.obj.google == 0) ? "Optical Character Recognition Tool" : "Any selected text will be Googled."
-         Vis2.obj.Subtitle.Render(text)
+         Vis2.obj.Subtitle.Render(text, Vis2.obj.background, Vis2.obj.text)
 
          return Vis2.core.waitForUserInput()
       }
@@ -83,8 +84,8 @@ class Vis2 {
 
                if (Vis2.core.overlap() && Vis2.obj.dialogue != Vis2.obj.dialogue_past) {
                   Vis2.obj.dialogue_past := Vis2.obj.dialogue
-                  Vis2.obj.yFlip := !Vis2.obj.yFlip
-                  Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, {"x":"center", "y":(Vis2.obj.yFlip) ? "0%" : "83%"}, {"s":24})
+                  Vis2.obj.background.y := (Vis2.obj.background.y == "83%") ? "2.07%" : "83%"
+                  Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.background, Vis2.obj.text)
                }
 
                if (Vis2.obj.Area != "")
@@ -117,7 +118,7 @@ class Vis2 {
                Hotkey, ^Space, % null, On
                Hotkey, !Space, % null, On
                Hotkey, +Space, % null, On
-               Vis2.obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, x: center, y: 75%, c: 0xFFB1AC", "c: 0x000000, s: 24")
+               Vis2.obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35% cFFB1AC r8", "c000000 s24")
                Vis2.obj.selectMode := "Advanced" ; Exit selectImageQuick.
                Vis2.obj.tokenMousePressed := 1
             }
@@ -126,7 +127,7 @@ class Vis2 {
             static null := ObjBindMethod({}, {})
 
                if ((Vis2.obj.Area.width() < -25 || Vis2.obj.Area.height() < -25) && !Vis2.obj.note_02)
-                  Vis2.obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 92%, c: FCF9AF", "c: 0x000000, s: 24")
+                  Vis2.obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 92%, p1.35%, c: FCF9AF, r8", "c000000 s24")
 
                if (Vis2.obj.tokenEscape == 1) {
                   Vis2.obj.note_02.Destroy()
@@ -228,11 +229,11 @@ class Vis2 {
                if (dialogue != "") {
                   Vis2.obj.firstDialogue := true
                   Vis2.obj.dialogue := dialogue
-                  Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, {"x":"center", "y":(Vis2.obj.yFlip) ? "0%" : "83%"}, {"s":24, "f":"Arial"})  ; condensed font
+                  Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.background, Vis2.obj.text)  ; condensed font
                }
                else {
                   Vis2.obj.dialogue := (Vis2.obj.firstDialogue == true) ? "ERROR: No Text Data Found" : "Searching for text..."
-                  Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, {"x":"center", "y":(Vis2.obj.yFlip) ? "0%" : "83%"}, {"s":24, "f":"Arial"})
+                  Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.background, Vis2.obj.text)
                }
 
 
@@ -263,7 +264,7 @@ class Vis2 {
                      Run % "https://www.google.com/search?&q=" . RegExReplace(Vis2.obj.database, "\s", "+")
                   else if (Vis2.obj.noCopy != true) {
                      clipboard := Vis2.obj.database
-                     Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: 1250, x: center, y: 83%, c: F9E486", "c: 0x000000, s:24, f:Arial")
+                     Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: 1250, x: center, y: 83%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:24, f:Arial")
                   }
                }
                Vis2.core.escape()
@@ -1037,39 +1038,39 @@ class Vis2 {
             }
          }
 
-         Render(words := "Subtitle Text", obj1 := "xCenter y83% w50% h12% r5 Underline Italic", obj2 := "xCenter yCenter s24 cffffff fArial"){
+         Render(text:="Alert!", obj1:="", obj2:=""){
             Critical
-            if !this.name
-               return this.RenderOnce(words, obj1, obj2)
-
-            this.text := words
+            if (!this.name){
+               note := new Vis2.Graphics.Subtitle()
+               return note.Render(text, obj1, obj2)
+            }
+            G := this.G
+            this.text := text
             this.DetectScreenResolutionChange()
-            Gdip_GraphicsClear(this.G)
-            this.RenderTextToGraphics(this.G, words, obj1, obj2, this.font_family ? this.font_family : "Arial")
-            UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-            return
-         }
-
-         RenderTextToGraphics(pGraphics, Text, obj1, obj2){
+            self_destruct := ObjBindMethod(this, "Destroy")
+            Gdip_GraphicsClear(G)
+            ; BEGIN
             static q1 := "i)^.*?(?<!-|:|:\s)\b"
             static q2 := "(:\s?)?(?<value>[\da-z\.%]+).*$"
 
+            time := (obj1.t) ? obj1.t : (obj1.time) ? obj1.time
+                  : (!IsObject(obj1) && (___ := RegExReplace(obj1, q1 "(t(ime)?)" q2, "${value}")) != obj1) ? ___
+                  : (obj2.t) ? obj2.t : (obj2.time) ? obj2.time
+                  : (!IsObject(obj2) && (___ := RegExReplace(obj2, q1 "(t(ime)?)" q2, "${value}")) != obj2) ? ___
+                  : 0
+
+            SetTimer, % self_destruct, % (time) ? -1 * time : "Delete"
+
             static alpha := "^[A-Za-z]+$"
-            static hex6 := "^([0-9A-Fa-f]{6})$"
-            static hex8 := "^([0-9A-Fa-f]{8})$"
             static colorRGB := "^0x([0-9A-Fa-f]{6})$"
             static colorARGB := "^0x([0-9A-Fa-f]{8})$"
+            static hex6 := "^([0-9A-Fa-f]{6})$"
+            static hex8 := "^([0-9A-Fa-f]{8})$"
             static decimal := "^(\-?[\d\.]+)$"
             static integer := "^\d+$"
             static percentage := "^(\-?[\d\.]+)%$"
             static positive := "^[\d\.]+$"
 
-            ; NOTICE: You may be confused as to what this is doing.
-            ; ___ (Three underscores is a valid variable name.) It is a temporary variable.
-            ; RegExReplace() extracts the matching needle if there is any, and stores it in ___.
-            ; If ___ is different than the haystack (full string), then a match is successful.
-            ; When a RegExReplace fails it returns the entire original string.
-            ; If the replacement is successful, set our variable "_x" to our temp variable, "___"
             if IsObject(obj1){
                _x  := (obj1.x)  ? obj1.x  : obj1.left
                _y  := (obj1.y)  ? obj1.y  : obj1.top
@@ -1078,6 +1079,7 @@ class Vis2 {
                _r  := (obj1.r)  ? obj1.r  : obj1.radius
                _c  := (obj1.c)  ? obj1.c  : obj1.color
                _m  := (obj1.m)  ? obj1.m  : obj1.margin
+               _p  := (obj1.p)  ? obj1.p  : obj1.padding
             } else {
                _x  := ((___ := RegExReplace(obj1, q1    "(x|left)"               q2, "${value}")) != obj1) ? ___ : ""
                _y  := ((___ := RegExReplace(obj1, q1    "(y|top)"                q2, "${value}")) != obj1) ? ___ : ""
@@ -1086,6 +1088,7 @@ class Vis2 {
                _r  := ((___ := RegExReplace(obj1, q1    "(r(adius)?)"            q2, "${value}")) != obj1) ? ___ : ""
                _c  := ((___ := RegExReplace(obj1, q1    "(c(olor)?)"             q2, "${value}")) != obj1) ? ___ : ""
                _m  := ((___ := RegExReplace(obj1, q1    "(m(argin)?)"            q2, "${value}")) != obj1) ? ___ : ""
+               _p  := ((___ := RegExReplace(obj1, q1    "(p(adding)?)"           q2, "${value}")) != obj1) ? ___ : ""
             }
 
             if IsObject(obj2){
@@ -1097,9 +1100,13 @@ class Vis2 {
                f  := (obj2.f)  ? obj2.f  : obj2.font
                s  := (obj2.s)  ? obj2.s  : obj2.size
                c  := (obj2.c)  ? obj2.c  : obj2.color
-               e  := (obj2.e)  ? obj2.e  : (obj2.effect) ? obj2.effect : obj2.style
+               b  := (obj2.b)  ? obj2.b  : obj2.bold
+               i  := (obj2.i)  ? obj2.i  : obj2.italic
+               u  := (obj2.u)  ? obj2.u  : obj2.underline
+               j  := (obj2.j)  ? obj2.j  : obj2.justify
                q  := (obj2.q)  ? obj2.q  : obj2.quality
                n  := (obj2.n)  ? obj2.n  : obj2.noWrap
+               z  := (obj2.z)  ? obj2.z  : obj2.condensed
             } else {
                x  := ((___ := RegExReplace(obj2, q1    "(x|left)"               q2, "${value}")) != obj2) ? ___ : ""
                y  := ((___ := RegExReplace(obj2, q1    "(y|top)"                q2, "${value}")) != obj2) ? ___ : ""
@@ -1109,9 +1116,47 @@ class Vis2 {
                f  := ((___ := RegExReplace(obj2, q1    "(f(ont)?)"              q2, "${value}")) != obj2) ? ___ : ""
                s  := ((___ := RegExReplace(obj2, q1    "(s(ize)?)"              q2, "${value}")) != obj2) ? ___ : ""
                c  := ((___ := RegExReplace(obj2, q1    "(c(olor)?)"             q2, "${value}")) != obj2) ? ___ : ""
-               e  := ((___ := RegExReplace(obj2, q1    "(e(ffect)?|style)"      q2, "${value}")) != obj2) ? ___ : ""
+               b  := ((___ := RegExReplace(obj2, q1    "(b(old)?)"              q2, "${value}")) != obj2) ? ___ : ""
+               i  := ((___ := RegExReplace(obj2, q1    "(i(talic)?)"            q2, "${value}")) != obj2) ? ___ : ""
+               u  := ((___ := RegExReplace(obj2, q1    "(u(nderline)?)"         q2, "${value}")) != obj2) ? ___ : ""
+               j  := ((___ := RegExReplace(obj2, q1    "(j(ustify)?)"           q2, "${value}")) != obj2) ? ___ : ""
                q  := ((___ := RegExReplace(obj2, q1    "(q(uality)?)"           q2, "${value}")) != obj2) ? ___ : ""
                n  := ((___ := RegExReplace(obj2, q1    "(n(oWrap)?)"            q2, "${value}")) != obj2) ? ___ : ""
+               z  := ((___ := RegExReplace(obj2, q1    "(z|condensed?)"         q2, "${value}")) != obj2) ? ___ : ""
+            }
+
+            ; Simulate string width and height, setting only the variables we need to determine it.
+            style += (b) ? 1 : 0    ; bold
+            style += (i) ? 2 : 0    ; italic
+            style += (u) ? 4 : 0    ; underline
+            style += (strike) ? 8 : ; strikeout, not implemented.
+            s  := ( s  ~= percentage) ? A_ScreenHeight * RegExReplace( s, percentage, "$1")  // 100 :  s
+
+            ;TextRenderingHintAntiAlias                  = 4,
+            ;TextRenderingHintClearTypeGridFit           = 5
+            Gdip_SetTextRenderingHint(G, (q >= 0 && q <= 5) ? q : 4)
+            hFamily := (___ := Gdip_FontFamilyCreate(f)) ? ___ : Gdip_FontFamilyCreate("Arial")
+            hFont := Gdip_FontCreate(hFamily, (s ~= positive) ? s : 36, style)
+            hFormat := Gdip_StringFormatCreate((n) ? 0x4000 | 0x1000 : 0x4000)
+            Gdip_SetStringFormatAlign(hFormat, (j = "left") ? 0 : (j = "center") ? 1 : (j = "right") ? 2 : 0)
+
+            CreateRectF(RC, 0, 0, 0, 0)
+            ReturnRC := Gdip_MeasureString(G, Text, hFont, hFormat, RC)
+            ReturnRC := StrSplit(ReturnRC, "|")
+
+            ; Set default dimensions for background, if left blank.
+            _x  := (_x  != "") ? _x : "center"
+            _y  := (_y  != "") ? _y : "center"
+            _w  := (_w) ? _w  : ReturnRC[3]
+            _h  := (_h) ? _h  : ReturnRC[4]
+
+            ; Condense Text using a Condensed Font if simulated text width exceeds screen width.
+            if (z && ReturnRC[3] > 0.95*A_ScreenWidth){
+               hFamily := (___ := Gdip_FontFamilyCreate(z)) ? ___ : Gdip_FontFamilyCreate("Arial Narrow")
+               hFont := Gdip_FontCreate(hFamily, (s ~= positive) ? s : 36, style)
+               ReturnRC := Gdip_MeasureString(G, Text, hFont, hFormat, RC)
+               ReturnRC := StrSplit(ReturnRC, "|")
+               _w  := ReturnRC[3]
             }
 
             ; Relative to A_ScreenHeight or A_ScreenWidth
@@ -1119,30 +1164,17 @@ class Vis2 {
             _y  := (_y  ~= percentage) ? A_ScreenHeight * RegExReplace(_y, percentage, "$1")  // 100 : _y
             _w  := (_w  ~= percentage) ? A_ScreenWidth  * RegExReplace(_w, percentage, "$1")  // 100 : _w
             _h  := (_h  ~= percentage) ? A_ScreenHeight * RegExReplace(_h, percentage, "$1")  // 100 : _h
-             s  := ( s  ~= percentage) ? A_ScreenHeight * RegExReplace( s, percentage, "$1")  // 100 :  s
+            _m  := (_m  ~= percentage) ? A_ScreenHeight * RegExReplace(_m, percentage, "$1")  // 100 : _m
+            _p  := (_p  ~= percentage) ? A_ScreenHeight * RegExReplace(_p, percentage, "$1")  // 100 : _p
 
-            ; Simulate string width and height, setting only the variables we need to determine it.
-            Gdip_SetTextRenderingHint(pGraphics, (q >= 0 && q <= 5) ? q : 4)
-            hFamily := (___ := Gdip_FontFamilyCreate(f)) ? ___ : Gdip_FontFamilyCreate("Arial")
-            hFont := Gdip_FontCreate(hFamily, (s ~= positive) ? s : 36, e)
-            hFormat := Gdip_StringFormatCreate((n) ? 0x4000 | 0x1000 : 0x4000)
-
-            CreateRectF(RC, 0, 0, 0, 0)
-            ReturnRC := Gdip_MeasureString(pGraphics, Text, hFont, hFormat, RC)
-            ReturnRC := StrSplit(ReturnRC, "|")
-
-            _w  := (_w  ~= positive) ? _w  : ReturnRC[3]
-            _h  := (_h  ~= positive) ? _h  : ReturnRC[4]
-
-            ; Relative to Text Width or Height, or whichever is smaller.
+            ; Relative to Background width of height
             _smaller := (_w > _h) ? _h : _w
             _r  := (_r  ~= percentage) ? _smaller * RegExReplace(_r, percentage, "$1")  // 100 : _r
              x  := ( x  ~= percentage) ? _x + (_w * RegExReplace( x, percentage, "$1"))  // 100 : x
              y  := ( y  ~= percentage) ? _y + (_h * RegExReplace( y, percentage, "$1"))  // 100 : y
              w  := ( w  ~= percentage) ? _w * RegExReplace( w, percentage, "$1")  // 100 : w
              h  := ( h  ~= percentage) ? _h * RegExReplace( h, percentage, "$1")  // 100 : h
-            _m  := (_m  ~= percentage) ? _smaller * RegExReplace(_m, percentage, "$1")  // 100 : _m
-             m  := ( m  ~= percentage) ? _smaller * RegExReplace( m, percentage, "$1")  // 100 :  m
+             m  := ( m  ~= percentage) ? _w * RegExReplace( m, percentage, "$1")  // 100 : m
 
 
             ; Resolving ambiguous inputs to non-ambiguous outputs.
@@ -1156,10 +1188,11 @@ class Vis2 {
             ; Detecting non-standard inputs (if any) and set them to default values.
             _x  := (_x  ~= decimal) ? _x  : 0
             _y  := (_y  ~= decimal) ? _y  : 0
-            _r  := (_r < _smaller // 2 && _r ~= positive) ? _r : 0.1*_smaller
+            _m  := (_m  ~= positive) ? _m  : 0
+            _r  := (_r  <= _smaller // 2 && _r ~= positive) ? _r : 0
             _c  := (_c  ~= colorARGB) ? _c  : 0xdd424242
              c  := ( c  ~= colorARGB) ?  c  : 0xffffffff
-             m  := ( m  ~= positive) ?  m : (_m ~= positive) ? _m : 0.20*_smaller
+             m  := ( m  ~= positive) ?  m : 0
              x  := ( x  ~= decimal) ? x : _x + 0.5*(_w - ReturnRC[3])
              y  := ( y  ~= decimal) ? y : _y + 0.5*(_h - ReturnRC[4])
              w  := ( w  ~= positive) ? w : ReturnRC[3]
@@ -1171,49 +1204,35 @@ class Vis2 {
             _w  += 2*m
             _h  += 2*m
 
+            _x  -= _m
+            _y  -= _m
+            _w  += 2*_m
+            _h  += 2*_m
+
+            _x  -= _p
+            _y  -= _p
+            _w  += 2*_p
+            _h  += 2*_p
+
             ; Draw Background
             pBrushBackground := Gdip_BrushCreateSolid(_c)
-            Gdip_FillRoundedRectangle(pGraphics, pBrushBackground, _x, _y, _w, _h, _r)
+            Gdip_FillRoundedRectangle(G, pBrushBackground, _x, _y, _w, _h, _r)
             Gdip_DeleteBrush(pBrushBackground)
 
             ; Draw Text
             CreateRectF(RC, x, y, w, h)
             pBrushText := Gdip_BrushCreateSolid(c)
-            ;Gdip_SetStringFormatAlign(hFormat, j)
-            Gdip_DrawString(pGraphics, Text, hFont, hFormat, pBrushText, RC)
+            Gdip_DrawString(G, Text, hFont, hFormat, pBrushText, RC)
             Gdip_DeleteBrush(pBrushText)
 
             ; Complete
             Gdip_DeleteStringFormat(hFormat)
             Gdip_DeleteFont(hFont)
             Gdip_DeleteFontFamily(hFamily)
-
-            return ReturnRC, this.x := _x, this.y := _y, this.w := _w, this.h := _h
-         }
-
-         RenderOnce(words, obj1, obj2){
-
-            if (obj1.t)
-               time := obj1.t
-            else if (obj1.time)
-               time := obj1.time
-            else if ((___ := RegExReplace(obj1, "i)^.*?(?<!-|:|:\s)\b(t(ime)?)(:\s?)?(?<value>[\da-z\.%]+).*$", "${value}")) != obj1)
-               time := ___
-            else if (obj2.t)
-               time := obj2.t
-            else if (obj2.time)
-               time := obj2.time
-            else if ((___ := RegExReplace(obj2, "i)^.*?(?<!-|:|:\s)\b(t(ime)?)(:\s?)?(?<value>[\da-z\.%]+).*$", "${value}")) != obj2)
-               time := ___
-            else
-               time := 3000
-
-            once := new Vis2.Graphics.Subtitle()
-            self_destruct := ObjBindMethod(once, "Destroy") ; Call Destroy first, then __Delete when timer expires. (Necessary)
-            SetTimer, % self_destruct, % -1 * time          ; Adds a reference that expires when timer ends.
-
-            once.Render(words, obj1, obj2)
-            return once
+            ; END
+            UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+            ;Tooltip % "x:`t" _x "`tw:`t" _w "`ny:`t" _y "`th:`t" _h "`n" x ", " y "`n" w ", " h
+            return this, this.x := _x, this.y := _y, this.w := _w, this.h := _h
          }
 
          x1(){
