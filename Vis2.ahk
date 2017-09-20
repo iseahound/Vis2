@@ -1,7 +1,7 @@
 ; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2017-09-14
+; Recent:    2017-09-20
 
 #include <Gdip_All>
 
@@ -1054,18 +1054,19 @@ class Vis2 {
                this.hdc := CreateCompatibleDC()
                this.obm := SelectObject(this.hdc, this.hbm)
                this.G := Gdip_GraphicsFromHDC(this.hdc)
-               Gdip_SetSmoothingMode(this.G, 4)
             }
          }
 
          Draw(text := "", obj1 := "", obj2 := "", pGraphics := "") {
             if (pGraphics == "") {
                pGraphics := this.G
-               this.past.push([text, obj1, obj2])
                if (this.rendered == true) {
-                  this.rendered := this.past := ""
+                  this.rendered := false
+                  this.past := {}
+                  this.x := this.y := this.2x := this.2y := ""
                   Gdip_GraphicsClear(this.G)
                }
+               this.past.push([text, obj1, obj2])
             }
 
             static q1 := "i)^.*?(?<!-|:|:\s)\b(?![^\(]*\))"
@@ -1298,7 +1299,7 @@ class Vis2 {
                if (d.3) {
                   pBitmap := Gdip_CreateBitmap(w + delta, h + delta)
                   pGraphicsDropShadow := Gdip_GraphicsFromImage(pBitmap)
-                  Gdip_SetSmoothingMode(pGraphicsDropShadow, 4)
+                  Gdip_SetSmoothingMode(pGraphicsDropShadow, _q)
                   Gdip_SetTextRenderingHint(pGraphicsDropShadow, q)
                   CreateRectF(RC, offset, offset, w + delta, h + delta)
                } else {
@@ -1322,7 +1323,7 @@ class Vis2 {
                   Gdip_DeleteBrush(pBrush)
                   Gdip_DeletePath(pPath)
                   Gdip_SetCompositingMode(pGraphicsDropShadow, 0)
-                  Gdip_SetSmoothingMode(pGraphicsDropShadow, 4)
+                  Gdip_SetSmoothingMode(pGraphicsDropShadow, _q)
                }
                else
                {
@@ -1332,6 +1333,7 @@ class Vis2 {
                }
 
                if (d.3) {
+                  Gdip_DeleteGraphics(pGraphicsDropShadow)
                   pBlur := Gdip_BlurBitmap(pBitmap, d.3)
                   Gdip_DisposeImage(pBitmap)
                   Gdip_DrawImage(pGraphics, pBlur, x + d.1 - offset, y + d.2 - offset, w + delta, h + delta)
@@ -1356,9 +1358,12 @@ class Vis2 {
                   DllCall("gdiplus\GdipClonePath", "ptr",pPath, "uptr*",pPathGlow)
                   DllCall("gdiplus\GdipWidenPath", "ptr",pPathGlow, "ptr",pPen, "ptr",0, "float",1)
 
+                  ; Set color to glowColor or use the previous color.
+                  color := (o.4) ? o.4 : o.2
+
                   loop % o.3
                   {
-                     ARGB := Format("0x{:02X}",((o.2 & 0xFF000000) >> 24)/o.3) . Format("{:06X}",(o.2 & 0x00FFFFFF))
+                     ARGB := Format("0x{:02X}",((color & 0xFF000000) >> 24)/o.3) . Format("{:06X}",(color & 0x00FFFFFF))
                      pPenGlow := Gdip_CreatePen(ARGB, A_Index)
                      DllCall("gdiplus\GdipSetPenLineJoin", "ptr",pPenGlow, "uInt",2)
                      DllCall("gdiplus\GdipDrawPath", "ptr",pGraphics, "ptr",pPenGlow, "ptr",pPathGlow)
@@ -1400,8 +1405,8 @@ class Vis2 {
 
             this.x  := (this.x  = "" || _x < this.x) ? _x : this.x
             this.y  := (this.y  = "" || _y < this.y) ? _y : this.y
-            this.x2 := (this.x2 = "" || _x + _w > this.x2) ? _x + _w : this.x2
-            this.y2 := (this.y2 = "" || _y + _h > this.y2) ? _y + _h : this.y2
+            this.2x := (this.2x = "" || _x + _w > this.2x) ? _x + _w : this.2x
+            this.2y := (this.2y = "" || _y + _h > this.2y) ? _y + _h : this.2y
             return
          }
 
@@ -1443,7 +1448,7 @@ class Vis2 {
          Save(filename := "", quality := 92, fullscreen := 0){
             filename := (filename ~= "i)\.(bmp|dib|rle|jpg|jpeg|jpe|jfif|gif|tif|tiff|png)$") ? filename
                       : (filename != "") ? filename ".png" : this.name ".png"
-            pBitmap := (fullscreen) ? this.Bitmap() : this.Bitmap(this.x, this.y, this.x2 - this.x, this.y2 - this.y)
+            pBitmap := (fullscreen) ? this.Bitmap() : this.Bitmap(this.x, this.y, this.2x - this.x, this.2y - this.y)
             Gdip_SaveBitmapToFile(pBitmap, filename, quality)
             Gdip_DisposeImage(pBitmap)
          }
@@ -1456,7 +1461,7 @@ class Vis2 {
             ; hBitmap converts alpha channel to specified alpha color.
             ; Add 1 pixel because Anti-Alias (SmoothingMode = 4)
             ; Should it be crop 1 pixel instead?
-            pBitmap := this.Bitmap(this.x, this.y, this.x2 - this.x, this.y2 - this.y)
+            pBitmap := this.Bitmap(this.x, this.y, this.2x - this.x, this.2y - this.y)
             hBitmap := Gdip_CreateHBITMAPFromBitmap(pBitmap, alpha)
             Gdip_DisposeImage(pBitmap)
             return hBitmap
@@ -1478,7 +1483,7 @@ class Vis2 {
          }
 
          hIcon(){
-            pBitmap := this.Bitmap(this.x, this.y, this.x2 - this.x, this.y2 - this.y)
+            pBitmap := this.Bitmap(this.x, this.y, this.2x - this.x, this.2y - this.y)
             hIcon := Gdip_CreateHICONFromBitmap(pBitmap)
             Gdip_DisposeImage(pBitmap)
             return hIcon
@@ -1541,13 +1546,14 @@ class Vis2 {
             static positive := "^\d+(\.\d*)?$"
 
             if IsObject(o){
-               o.1 := (o.w != "") ? o.w : o.width
-               o.2 := (o.c != "") ? o.c : o.color
-               o.3 := (o.g != "") ? o.g : o.glow
+               o.1 := (o.w  != "") ? o.w  : o.width
+               o.2 := (o.c  != "") ? o.c  : o.color
+               o.3 := (o.g  != "") ? o.g  : o.glow
+               o.4 := (o.c2 != "") ? o.c2 : o.glowColor
             } else if (o)
                o   := StrSplit(o, " ")
             else
-               return {"void":true, 1:0, 2:0, 3:0}
+               return {"void":true, 1:0, 2:0, 3:0, 4:0}
 
             o.1 := (o.1 ~= "px$") ? SubStr(o.1, 1, -2) : o.1
             o.1 := (o.1 ~= percentage) ?  s * RegExReplace(o.1, percentage, "$1")  // 100 : o.1
@@ -1559,6 +1565,7 @@ class Vis2 {
             o.3 := (o.3 ~= percentage) ?  s * RegExReplace(o.3, percentage, "$1")  // 100 : o.3
             o.3 := (o.3 ~= positive) ? o.3 : 0
 
+            o.4 := this.color(o.4, 0x00000000)
             return o
          }
 
@@ -1572,10 +1579,11 @@ class Vis2 {
                d.2 := (d.v != "") ? d.v : d.vertical
                d.3 := (d.b != "") ? d.b : d.blur
                d.4 := (d.c != "") ? d.c : d.color
+               d.5 := (d.s != "") ? d.s : d.strength
             } else if (d)
                d   := StrSplit(d, " ")
             else
-               return {"void":true, 1:0, 2:0, 3:0, 4:0}
+               return {"void":true, 1:0, 2:0, 3:0, 4:0, 5:0}
 
             d.1 := (d.1 ~= "px$") ? SubStr(d.1, 1, -2) : d.1
             d.1 := (d.1 ~= percentage) ? ReturnRC[3] * RegExReplace(d.1, percentage, "$1")  / 100 : d.1
@@ -1586,11 +1594,13 @@ class Vis2 {
             d.2 := (d.2 ~= decimal) ? d.2 : 0
 
             d.3 := (d.3 ~= "px$") ? SubStr(d.3, 1, -2) : d.3
-            d.3 := (d.3 ~= percentage) ?  s * RegExReplace(d.3, percentage, "$1")  // 100 : d.3
+            d.3 := (d.3 ~= percentage) ? s * RegExReplace(d.3, percentage, "$1")  / 100 : d.3
             d.3 := (d.3 ~= positive) ? d.3 : 1
 
             d.4 := this.color(d.4, 0xFF000000)
 
+            d.5 := (d.5 ~= percentage) ? s * RegExReplace(d.5, percentage, "$1")  / 100 : d.5
+            d.5 := (d.5 ~= positive) ? d.5 : 1
             return d
          }
 
@@ -1758,19 +1768,19 @@ class Vis2 {
          }
 
          x2(){
-            return this.x2
+            return this.2x
          }
 
          y2(){
-            return this.y2
+            return this.2y
          }
 
          width(){
-            return this.x2 - this.x
+            return this.2x - this.x
          }
 
          height(){
-            return this.y2 - this.y
+            return this.2y - this.y
          }
       }
    }
