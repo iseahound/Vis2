@@ -1,7 +1,7 @@
 ; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2017-09-20
+; Recent:    2017-10-18
 
 #include <Gdip_All>
 
@@ -11,8 +11,14 @@ class Vis2 {
    static tesseract := ".\bin\tesseract\tesseract.exe"
    static tessdata  := ".\bin\tesseract\tessdata"
 
-   OCR(n:=0){
-      return Vis2.core.start({"me": A_ThisFunc, "processType":"continuous", "google": n})
+   OCR(x:="", y:="", w:="", h:=""){
+      return (x != "" && y != "" && w != "" && h != "") ? Vis2.wrapper.OCR(x, y, w, h) : Vis2.core.start()
+   }
+
+   class google {
+      OCR(){
+         return Vis2.core.start({"google":1})
+      }
    }
 
    class core {
@@ -42,7 +48,7 @@ class Vis2 {
          Vis2.obj.Subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
          Vis2.obj.background :=   {"x":"center", "y":"83%", "padding":"1.35%", "color":"dd000000", "radius":"8"}
          Vis2.obj.text :=         {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"ffffff"}
-         text := (Vis2.obj.google == 0) ? "Optical Character Recognition Tool" : "Any selected text will be Googled."
+         text := (!Vis2.obj.google) ? "Optical Character Recognition Tool" : "Any selected text will be Googled."
          Vis2.obj.Subtitle.Render(text, Vis2.obj.background, Vis2.obj.text)
 
          return Vis2.core.waitForUserInput()
@@ -422,6 +428,36 @@ class Vis2 {
 
       fileDelete(Filename) {
          FileDelete, %Filename%
+      }
+   }
+
+
+   class wrapper {
+
+      OCR(x, y, w, h){
+         static fileBitmap := A_Temp "\Vis2_screenshot.bmp"
+         static fileProcessedImage := A_Temp "\Vis2_preprocess.tif"
+         static fileConvert := A_Temp "\Vis2_text"
+         static fileConvertedText := A_Temp "\Vis2_text.txt"
+
+         Vis2.Graphics.Startup()
+         pBitmap := Gdip_BitmapFromScreen(x "|" y "|" w "|" h)
+         Gdip_SaveBitmapToFile(pBitmap, fileBitmap)
+         Gdip_DisposeImage(pBitmap)
+         Vis2.Graphics.Shutdown()
+
+         Vis2.core.preprocess(fileBitmap, fileProcessedImage)
+         Vis2.core.convert(fileProcessedImage, fileConvert)
+         database := FileOpen(fileConvertedText, "r`n", "UTF-8")
+         text := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1")
+         text := RegExReplace(text, "(?<!\r)\n", "`r`n")
+         database.Close()
+
+         FileDelete, % fileBitmap
+         FileDelete, % fileProcessedImage
+         FileDelete, % fileConvertedText
+
+         return text
       }
    }
 
