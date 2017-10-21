@@ -1,4 +1,4 @@
-; Script:    Vis2.ahk
+﻿; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
 ; Recent:    2017-10-18
@@ -11,15 +11,37 @@ class Vis2 {
    static tesseract := ".\bin\tesseract\tesseract.exe"
    static tessdata  := ".\bin\tesseract\tessdata"
 
-   OCR(x:="", y:="", w:="", h:=""){
-      return (x != "" && y != "" && w != "" && h != "") ? Vis2.wrapper.OCR(x, y, w, h) : Vis2.core.start()
-   }
+   class OCR extends Vis2.Functor {
+      Call(self, image, language:="", options*){
+         return (image) ? Vis2.wrapper.OCR(image) : Vis2.core.start()
+      }
 
-   class google {
-      OCR(){
+      google(){
          return Vis2.core.start({"google":1})
       }
    }
+
+   class ImageIdentify extends Vis2.Functor {
+      Call(self, image, search:="", options*){
+         return (image) ? Vis2.wrapper.ImageIdentify(image) : Vis2.core.start()
+      }
+   }
+
+
+   class Functor {
+
+      __Call(method, ByRef arg := "", args*)
+      {
+      ; When casting to Call(), use a new instance of the "function object"
+      ; so as to avoid directly storing the properties(used across sub-methods)
+      ; into the "function object" itself.
+         if IsObject(method)
+            return (new this).Call(method, arg, args*)
+         else if (method == "")
+            return (new this).Call(arg, args*)
+      }
+   }
+
 
    class core {
 
@@ -78,10 +100,8 @@ class Vis2 {
          selectImage(){
             static selectImage := ObjBindMethod(Vis2.core.process, "selectImage")
 
-               if (GetKeyState("Escape", "P")) {                                   ; This is the escape pattern.
-                  Vis2.obj.note_01.Destroy()                                       ; Destroys our "borrowed" Subtitle Object.
+               if (GetKeyState("Escape", "P"))
                   return Vis2.core.escape()
-               }
 
                if (Vis2.obj.selectMode == "Quick")
                   Vis2.core.process.selectImageQuick()
@@ -94,7 +114,7 @@ class Vis2 {
                   Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.background, Vis2.obj.text)
                }
 
-               if (Vis2.obj.Area != "")
+               if !(Vis2.obj.unlock.1 ~= "^Vis2.core.process.selectImage" || Vis2.obj.unlock.2 ~= "^Vis2.core.process.selectImage")
                   SetTimer, % selectImage, -10
                return
             }
@@ -106,46 +126,53 @@ class Vis2 {
                   else if (GetKeyState("RButton", "P")) {
                      Vis2.obj.Area.Move()
                      if (!Vis2.obj.Area.isMouseOnCorner() && Vis2.obj.Area.isMouseStopped())
-                        Vis2.obj.Area.Draw() ;Error Correcting
+                        Vis2.obj.Area.Draw() ; Error Correction of Offset
                   }
                   else
                      Vis2.obj.Area.Draw()
                }
                else
-                  Vis2.core.process.finale("Area.Release")
+                  Vis2.core.process.finale(A_ThisFunc)
                ; Do not return.
             }
 
             selectImageTransition(){
             static null := ObjBindMethod({}, {})
 
-               DllCall("SystemParametersInfo", UInt,0x57, UInt,0, UInt,0, UInt,0) ; RestoreCursor()
+               DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
                Hotkey, Space, % null, On
                Hotkey, ^Space, % null, On
                Hotkey, !Space, % null, On
                Hotkey, +Space, % null, On
                Vis2.obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35% cFFB1AC r8", "c000000 s24")
-               Vis2.obj.selectMode := "Advanced" ; Exit selectImageQuick.
+               (Vis2.obj.note_02 := new Vis2.Graphics.Subtitle()).Hide() ; Create a Subtitle Object that is Hidden.
+               Vis2.obj.note_02.ClickThrough()
                Vis2.obj.tokenMousePressed := 1
+               Vis2.obj.selectMode := "Advanced" ; Exit selectImageQuick.
             }
 
             selectImageAdvanced(){
             static null := ObjBindMethod({}, {})
 
-               if ((Vis2.obj.Area.width() < -25 || Vis2.obj.Area.height() < -25) && !Vis2.obj.note_02)
-                  Vis2.obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 92%, p1.35%, c: FCF9AF, r8", "c000000 s24")
-
-               if (Vis2.obj.tokenEscape == 1) {
-                  Vis2.obj.note_02.Destroy()
-                  Vis2.core.process.finale("Area.Release")
+               if (Vis2.obj.note_02.isVisible()) {
+                  CoordMode, Mouse, Screen
+                  MouseGetPos, x_mouse, y_mouse
+                  Vis2.obj.note_02.Render("x: " Vis2.obj.Area.x1() " │ y: " Vis2.obj.Area.y1() " │ w: " Vis2.obj.Area.width() " │ h: " Vis2.obj.Area.height()
+                     , {"x":x_mouse+16, "y":y_mouse+16, "color":"Black", "padding":"0.37%"}, {"font":"Lucida Sans Typewriter", "size":"1.67%"})
                }
-               else if (Vis2.obj.tokenRenderImage == 1 && !GetKeyState("Space", "P")) {
+
+               if ((Vis2.obj.Area.width() < -25 || Vis2.obj.Area.height() < -25) && !Vis2.obj.note_03)
+                  Vis2.obj.note_03 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 92%, p1.35%, c: FCF9AF, r8", "c000000 s24")
+
+
+               if (Vis2.obj.tokenRenderImage == 1 && !GetKeyState("Space", "P")) {
                   Vis2.obj.Image.Render(Vis2.obj.fileProcessedImage, 0.5)
                   Vis2.obj.Image.ToggleVisible()
                   Vis2.obj.tokenRenderImage := 0
                }
-               else if (Vis2.obj.tokenTesseractInput == 1 && !GetKeyState("Space", "P")) {
-                  Vis2.obj.tokenTesseractInput := 0
+               else if (Vis2.obj.tokenShowCoordinates == 1 && !GetKeyState("Space", "P")) {
+                  Vis2.obj.note_02.ToggleVisible()
+                  Vis2.obj.tokenShowCoordinates := 0
                }
                else if (Vis2.obj.tokenTesseractLanguage == 1 && !GetKeyState("Space", "P")) {
                   Vis2.obj.tokenTesseractLanguage := 0
@@ -153,7 +180,7 @@ class Vis2 {
                else if (Vis2.obj.tokenRedraw == 1) {                                   ; Alt + LButton
                   Vis2.obj.Area.Draw()                                                    ; Redraw
                   if (!GetKeyState("LButton", "P"))
-                     Vis2.obj.tokenRedraw := 0, DllCall("SystemParametersInfo", UInt,0x57, UInt,0, UInt,0, UInt,0)
+                     Vis2.obj.tokenRedraw := 0, DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
                }
                else if (Vis2.obj.tokenMousePressed == 1) {
                   if (GetKeyState("LButton", "P")) {
@@ -172,11 +199,11 @@ class Vis2 {
                else if (GetKeyState("Space", "P") && GetKeyState("Control", "P"))
                   Vis2.obj.tokenRenderImage := 1
                else if (GetKeyState("Space", "P") && GetKeyState("Alt", "P"))
-                  Vis2.obj.tokenTesseractInput := 1
+                  Vis2.obj.tokenShowCoordinates := 1
                else if (GetKeyState("Space", "P") && GetKeyState("Shift", "P"))
                   Vis2.obj.tokenTesseractLanguage := 1
                else if (GetKeyState("Space", "P"))
-                  Vis2.obj.tokenEscape := 1
+                  Vis2.core.process.finale(A_ThisFunc)
                else if (GetKeyState("LButton", "P") && GetKeyState("Alt", "P")) {
                   Vis2.core.setSystemCursor(32515) ; IDC_Cross := 32515
                   Vis2.obj.tokenRedraw := 1
@@ -244,27 +271,26 @@ class Vis2 {
 
 
                database.Seek(0, 0)
-               Vis2.obj.database := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1")
-               Vis2.obj.database := RegExReplace(Vis2.obj.database, "(?<!\r)\n", "`r`n")
+               Vis2.obj.database := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1") ; Trim whitespace
+               Vis2.obj.database := RegExReplace(Vis2.obj.database, "(?<!\r)\n", "`r`n") ; Convert LF to CRLF
                database.Close()
             }
 
-            if !Vis2.obj.Area {
-               Vis2.obj.textPreview := "COMPLETE"
-               return Vis2.core.process.finale()
-            }
+            if (Vis2.obj.unlock.1 != "")
+               return Vis2.core.process.finale(A_ThisFunc)
             else
                SetTimer, % textPreview, -100
             return
          }
 
-         finale(string := ""){
-            if (string == "Area.Release"){
-               Vis2.obj.Area.Destroy()
-               Vis2.obj.Area := ""
-            }
+         finale(key){
 
-            if (!Vis2.obj.Area && Vis2.obj.textPreview == "COMPLETE") {
+            (IsObject(Vis2.obj.unlock) && key != Vis2.obj.unlock.1) ? Vis2.obj.unlock.push(key) : (Vis2.obj.unlock := [key])
+
+            if (key ~= "^Vis2.core.process.selectImage")
+               Vis2.obj.Area.ChangeColor(0x01FFFFFF)
+
+            if (Vis2.obj.unlock.MaxIndex() == 2) {
                if (Vis2.obj.database != "") {
                   if (Vis2.obj.google == 1 && Vis2.obj.noCopy != true)
                      Run % "https://www.google.com/search?&q=" . RegExReplace(Vis2.obj.database, "\s", "+")
@@ -282,6 +308,21 @@ class Vis2 {
       escape(){
       static null := ObjBindMethod({}, {})
 
+         FileDelete, % Vis2.obj.fileBitmap
+         FileDelete, % Vis2.obj.fileProcessedImage
+         FileDelete, % Vis2.obj.fileConvertedText
+
+         ; Fixes a bug where AHK does not detect key releases if there is an admin-level window beneath.
+         if WinActive("ahk_id" Vis2.obj.Area.hWnd) {
+            KeyWait Control
+            KeyWait Alt
+            KeyWait Shift
+            KeyWait RButton
+            KeyWait LButton
+            KeyWait Space
+            KeyWait Escape
+         }
+
          Hotkey, LButton, % null, Off
          Hotkey, ^LButton, % null, Off
          Hotkey, !LButton, % null, Off
@@ -293,12 +334,14 @@ class Vis2 {
          Hotkey, !Space, % null, Off
          Hotkey, +Space, % null, Off
 
-         Vis2.core.deleteFiles()
          Vis2.obj.Area.Destroy()
          Vis2.obj.Image.Destroy()
          Vis2.obj.Subtitle.Destroy()
+         Vis2.obj.note_01.Hide() ; Let them time out instead of Destroy()
+         Vis2.obj.note_02.Destroy()
+         Vis2.obj.note_03.Hide()
          Vis2.obj := "" ; Goodbye all, you were loved :c
-         return DllCall("SystemParametersInfo", UInt,0x57, UInt,0, UInt,0, UInt,0) ; RestoreCursor()
+         return DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
       }
 
       overlap() {
@@ -325,10 +368,10 @@ class Vis2 {
          Loop, Parse, SystemCursors, `,
          {
                Type := "SystemCursor"
-               CursorHandle := DllCall( "LoadCursor", Uint,0, Int,CursorID )
-               %Type%%A_Index% := DllCall( "CopyImage", Uint,CursorHandle, Uint,0x2, Int,cx, Int,cy, Uint,0 )
-               CursorHandle := DllCall( "CopyImage", Uint,%Type%%A_Index%, Uint,0x2, Int,0, Int,0, Int,0 )
-               DllCall( "SetSystemCursor", Uint,CursorHandle, Int,A_Loopfield)
+               CursorHandle := DllCall( "LoadCursor", "uInt",0, "Int",CursorID )
+               %Type%%A_Index% := DllCall( "CopyImage", "uInt",CursorHandle, "uInt",0x2, "Int",cx, "Int",cy, "uInt",0 )
+               CursorHandle := DllCall( "CopyImage", "uInt",%Type%%A_Index%, "uInt",0x2, "Int",0, "Int",0, "Int",0 )
+               DllCall( "SetSystemCursor", "uInt",CursorHandle, "Int",A_Loopfield)
          }
       }
 
@@ -419,34 +462,36 @@ class Vis2 {
             Vis2.Graphics.Subtitle.Render("Language: " RegExReplace(A_LoopFileName, "^(.*?)\.traineddata$", "$1"))
          }
       }
-
-      deleteFiles(){
-         Vis2.core.FileDelete(Vis2.obj.fileBitmap)
-         Vis2.core.FileDelete(Vis2.obj.fileProcessedImage)
-         Vis2.core.FileDelete(Vis2.obj.fileConvertedText)
-      }
-
-      fileDelete(Filename) {
-         FileDelete, %Filename%
-      }
    }
 
 
    class wrapper {
 
-      OCR(x, y, w, h){
+      OCR(image){
          static fileBitmap := A_Temp "\Vis2_screenshot.bmp"
          static fileProcessedImage := A_Temp "\Vis2_preprocess.tif"
          static fileConvert := A_Temp "\Vis2_text"
          static fileConvertedText := A_Temp "\Vis2_text.txt"
 
          Vis2.Graphics.Startup()
-         pBitmap := Gdip_BitmapFromScreen(x "|" y "|" w "|" h)
-         Gdip_SaveBitmapToFile(pBitmap, fileBitmap)
-         Gdip_DisposeImage(pBitmap)
+         if image.1 != "" and image.2 != "" and image.3 != "" and image.4 != "" {
+            x := image[1]
+            y := image[2]
+            w := image[3]
+            h := image[4]
+
+            pBitmap := Gdip_BitmapFromScreen(x "|" y "|" w "|" h)
+            Gdip_SaveBitmapToFile(pBitmap, fileBitmap)
+            Gdip_DisposeImage(pBitmap)
+            imgFile := fileBitmap
+         }
+
+         if FileExist(image) {
+            imgFile := Vis2.Function.RPath_Absolute(A_ScriptDir, ".\" image)
+         }
          Vis2.Graphics.Shutdown()
 
-         Vis2.core.preprocess(fileBitmap, fileProcessedImage)
+         Vis2.core.preprocess(imgFile, fileProcessedImage)
          Vis2.core.convert(fileProcessedImage, fileConvert)
          database := FileOpen(fileConvertedText, "r`n", "UTF-8")
          text := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1")
@@ -461,6 +506,29 @@ class Vis2 {
       }
    }
 
+   class Function {
+      RPath_Absolute(AbsolutPath, RelativePath, s="\") {
+
+         len := InStr(AbsolutPath, s, "", InStr(AbsolutPath, s . s) + 2) - 1   ;get server or drive string length
+         pr := SubStr(AbsolutPath, 1, len)                                     ;get server or drive name
+         AbsolutPath := SubStr(AbsolutPath, len + 1)                           ;remove server or drive from AbsolutPath
+         If InStr(AbsolutPath, s, "", 0) = StrLen(AbsolutPath)                 ;remove last \ from AbsolutPath if any
+            StringTrimRight, AbsolutPath, AbsolutPath, 1
+
+         If InStr(RelativePath, s) = 1                                         ;when first char is \ go to AbsolutPath of server or drive
+            AbsolutPath := "", RelativePath := SubStr(RelativePath, 2)        ;set AbsolutPath to nothing and remove one char from RelativePath
+         Else If InStr(RelativePath,"." s) = 1                                 ;when first two chars are .\ add to current AbsolutPath directory
+            RelativePath := SubStr(RelativePath, 3)                           ;remove two chars from RelativePath
+         Else If InStr(RelativePath,".." s) = 1 {                              ;otherwise when first 3 char are ..\
+            StringReplace, RelativePath, RelativePath, ..%s%, , UseErrorLevel     ;remove all ..\ from RelativePath
+            Loop, %ErrorLevel%                                                    ;for all ..\
+               AbsolutPath := SubStr(AbsolutPath, 1, InStr(AbsolutPath, s, "", 0) - 1)  ;remove one folder from AbsolutPath
+         } Else                                                                ;relative path does not need any substitution
+            pr := "", AbsolutPath := "", s := ""                              ;clear all variables to just return RelativePath
+
+         Return, pr . AbsolutPath . s . RelativePath                           ;concatenate server + AbsolutPath + separator + RelativePath
+      }
+   }
 
    class Graphics {
 
@@ -518,6 +586,22 @@ class Vis2 {
             Gui, % this.name ":Destroy"
          }
 
+         Hide(){
+            DllCall("ShowWindow", "ptr",this.hWnd, "int",0)
+         }
+
+         Show(){ ; NoActivate
+            DllCall("ShowWindow", "ptr",this.hWnd, "int",8)
+         }
+
+         ToggleVisible(){
+            this.isVisible() ? this.Hide() : this.Show()
+         }
+
+         isVisible(){
+            DllCall("IsWindowVisible", "ptr",this.hWnd)
+         }
+
          isDrawable(win := "A"){
              static WM_KEYDOWN := 0x100,
              static WM_KEYUP := 0x101,
@@ -554,6 +638,13 @@ class Vis2 {
             Gdip_GraphicsClear(this.G)
             Gdip_FillRectangle(this.G, this.pBrush, x, y, w, h)
             UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+         }
+
+         ChangeColor(color){
+            this.color := color
+            Gdip_DeleteBrush(this.pBrush)
+            this.pBrush := Gdip_BrushCreateSolid(this.color)
+            this.Redraw(this.x[this.x.MaxIndex()], this.y[this.y.MaxIndex()], this.w[this.w.MaxIndex()], this.h[this.h.MaxIndex()])
          }
 
          Propagate(v){
@@ -1060,23 +1151,29 @@ class Vis2 {
 
          Destroy(){
             this.FreeMemory()
-            return DllCall("DestroyWindow", "ptr",this.hWnd)
+            DllCall("DestroyWindow", "ptr",this.hWnd)
          }
 
          Hide(){
-            return DllCall("ShowWindow", "ptr",this.hWnd, "int",0)
+            DllCall("ShowWindow", "ptr",this.hWnd, "int",0)
          }
 
          Show(){
-            return DllCall("ShowWindow", "ptr",this.hWnd, "int",8)
+            DllCall("ShowWindow", "ptr",this.hWnd, "int",8)
          }
 
          ToggleVisible(){
-            return this.isVisible() ? this.Hide() : this.Show()
+            this.isVisible() ? this.Hide() : this.Show()
          }
 
          isVisible(){
-            return DllCall("IsWindowVisible", "ptr",this.hWnd)
+            DllCall("IsWindowVisible", "ptr",this.hWnd)
+         }
+
+         ClickThrough(){
+            DetectHiddenWindows On
+            WinSet, ExStyle, +0x20, % "ahk_id" this.hWnd
+            DetectHiddenWindows Off
          }
 
          DetectScreenResolutionChange(){
