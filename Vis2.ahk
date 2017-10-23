@@ -1,19 +1,15 @@
 ﻿; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2017-10-18
+; Recent:    2017-10-23
 
 #include <Gdip_All>
 
 class Vis2 {
 
-   static leptonica := ".\bin\leptonica_util\leptonica_util.exe"
-   static tesseract := ".\bin\tesseract\tesseract.exe"
-   static tessdata  := ".\bin\tesseract\tessdata"
-
    class OCR extends Vis2.Functor {
       Call(self, image, language:="", options*){
-         return (image) ? Vis2.wrapper.OCR(image) : Vis2.core.start()
+         return (image) ? Vis2.Tesseract.OCR(image) : Vis2.core.returnText()
       }
 
       google(){
@@ -27,23 +23,67 @@ class Vis2 {
       }
    }
 
+   ; ---------------------------------
+   ; LIST OF COMPUTER VISION PROVIDERS
+   ; ---------------------------------
 
-   class Functor {
+   class Tesseract {
 
-      __Call(method, ByRef arg := "", args*)
-      {
-      ; When casting to Call(), use a new instance of the "function object"
-      ; so as to avoid directly storing the properties(used across sub-methods)
-      ; into the "function object" itself.
-         if IsObject(method)
-            return (new this).Call(method, arg, args*)
-         else if (method == "")
-            return (new this).Call(arg, args*)
+      static leptonica := ".\bin\leptonica_util\leptonica_util.exe"
+      static tesseract := ".\bin\tesseract\tesseract.exe"
+      static tessdata  := ".\bin\tesseract\tessdata"
+
+      OCR(image){
+         static fileBitmap := A_Temp "\Vis2_screenshot.bmp"
+         static fileProcessedImage := A_Temp "\Vis2_preprocess.tif"
+         static fileConvert := A_Temp "\Vis2_text"
+         static fileConvertedText := A_Temp "\Vis2_text.txt"
+
+         Vis2.Graphics.Startup()
+         if image.1 != "" and image.2 != "" and image.3 != "" and image.4 != "" {
+            x := image[1]
+            y := image[2]
+            w := image[3]
+            h := image[4]
+
+            pBitmap := Gdip_BitmapFromScreen(x "|" y "|" w "|" h)
+            Gdip_SaveBitmapToFile(pBitmap, fileBitmap)
+            Gdip_DisposeImage(pBitmap)
+            imgFile := fileBitmap
+         }
+
+         if FileExist(image) {
+            imgFile := Vis2.Function.RPath_Absolute(A_ScriptDir, ".\" image)
+         }
+         Vis2.Graphics.Shutdown()
+
+         Vis2.core.preprocess(imgFile, fileProcessedImage)
+         Vis2.core.convert(fileProcessedImage, fileConvert)
+         database := FileOpen(fileConvertedText, "r`n", "UTF-8")
+         text := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1")
+         text := RegExReplace(text, "(?<!\r)\n", "`r`n")
+         database.Close()
+
+         FileDelete, % fileBitmap
+         FileDelete, % fileProcessedImage
+         FileDelete, % fileConvertedText
+
+         return text
       }
    }
 
 
    class core {
+
+      returnText(obj := ""){
+         if (Vis2.core.start(obj) == "") {
+            while !(ExitCode := Vis2.obj.ExitCode)
+               Sleep 1
+            text := Vis2.obj.database
+            text.base.google := ObjBindMethod(Vis2.Text, "google")
+            return (ExitCode > 0) ? text : ""
+         }
+      }
 
       start(obj := ""){
       static null := ObjBindMethod({}, {})
@@ -77,12 +117,17 @@ class Vis2 {
       }
 
       waitForUserInput(){
+      static escape := ObjBindMethod(Vis2.core, "escape")
       static waitForUserInput := ObjBindMethod(Vis2.core, "waitForUserInput")
       static selectImage := ObjBindMethod(Vis2.core.process, "selectImage")
       static textPreview := ObjBindMethod(Vis2.core.process, "textPreview")
 
-         if (GetKeyState("Escape", "P"))
-            return Vis2.core.escape()
+
+         if (GetKeyState("Escape", "P")) {
+            Vis2.obj.ExitCode := -1
+            SetTimer, % escape, -35
+            return
+         }
 
          else if (GetKeyState("LButton", "P")) {
             SetTimer, % selectImage, -10
@@ -95,13 +140,16 @@ class Vis2 {
          return
       }
 
+
       class process {
 
          selectImage(){
             static selectImage := ObjBindMethod(Vis2.core.process, "selectImage")
 
-               if (GetKeyState("Escape", "P"))
-                  return Vis2.core.escape()
+               if (GetKeyState("Escape", "P")) {
+                  Vis2.obj.ExitCode := -1
+                  return Vis2.core.process.finale(A_ThisFunc)
+               }
 
                if (Vis2.obj.selectMode == "Quick")
                   Vis2.core.process.selectImageQuick()
@@ -145,8 +193,7 @@ class Vis2 {
                Hotkey, !Space, % null, On
                Hotkey, +Space, % null, On
                Vis2.obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35% cFFB1AC r8", "c000000 s24")
-               (Vis2.obj.note_02 := new Vis2.Graphics.Subtitle()).Hide() ; Create a Subtitle Object that is Hidden.
-               Vis2.obj.note_02.ClickThrough()
+               (Vis2.obj.note_02 := new Vis2.Graphics.Subtitle()).Hide().ClickThrough() ; Create a Subtitle Object that is Hidden & ClickThrough.
                Vis2.obj.tokenMousePressed := 1
                Vis2.obj.selectMode := "Advanced" ; Exit selectImageQuick.
             }
@@ -284,6 +331,7 @@ class Vis2 {
          }
 
          finale(key){
+         static escape := ObjBindMethod(Vis2.core, "escape")
 
             (IsObject(Vis2.obj.unlock) && key != Vis2.obj.unlock.1) ? Vis2.obj.unlock.push(key) : (Vis2.obj.unlock := [key])
 
@@ -291,15 +339,16 @@ class Vis2 {
                Vis2.obj.Area.ChangeColor(0x01FFFFFF)
 
             if (Vis2.obj.unlock.MaxIndex() == 2) {
-               if (Vis2.obj.database != "") {
+               if (Vis2.obj.database != "" && !Vis2.obj.ExitCode) {
                   if (Vis2.obj.google == 1 && Vis2.obj.noCopy != true)
                      Run % "https://www.google.com/search?&q=" . RegExReplace(Vis2.obj.database, "\s", "+")
                   else if (Vis2.obj.noCopy != true) {
                      clipboard := Vis2.obj.database
                      Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: 1250, x: center, y: 83%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:24, f:Arial")
                   }
+                  Vis2.obj.ExitCode := 1
                }
-               Vis2.core.escape()
+               SetTimer, % escape, -35
             }
             return
          }
@@ -449,11 +498,11 @@ class Vis2 {
          static performScaleArg := 1
          static scaleFactor := 3.5
 
-         RunWait, % Vis2.leptonica " " f_in " " f_out " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0", , Hide
+         RunWait, % Vis2.Tesseract.leptonica " " f_in " " f_out " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0", , Hide
       }
 
       convert(f_in, f_out){
-         RunWait, % Vis2.tesseract " " f_in " " f_out, , Hide
+         RunWait, % Vis2.Tesseract.tesseract " " f_in " " f_out, , Hide
       }
 
       tesseractLanguage(){
@@ -464,47 +513,6 @@ class Vis2 {
       }
    }
 
-
-   class wrapper {
-
-      OCR(image){
-         static fileBitmap := A_Temp "\Vis2_screenshot.bmp"
-         static fileProcessedImage := A_Temp "\Vis2_preprocess.tif"
-         static fileConvert := A_Temp "\Vis2_text"
-         static fileConvertedText := A_Temp "\Vis2_text.txt"
-
-         Vis2.Graphics.Startup()
-         if image.1 != "" and image.2 != "" and image.3 != "" and image.4 != "" {
-            x := image[1]
-            y := image[2]
-            w := image[3]
-            h := image[4]
-
-            pBitmap := Gdip_BitmapFromScreen(x "|" y "|" w "|" h)
-            Gdip_SaveBitmapToFile(pBitmap, fileBitmap)
-            Gdip_DisposeImage(pBitmap)
-            imgFile := fileBitmap
-         }
-
-         if FileExist(image) {
-            imgFile := Vis2.Function.RPath_Absolute(A_ScriptDir, ".\" image)
-         }
-         Vis2.Graphics.Shutdown()
-
-         Vis2.core.preprocess(imgFile, fileProcessedImage)
-         Vis2.core.convert(fileProcessedImage, fileConvert)
-         database := FileOpen(fileConvertedText, "r`n", "UTF-8")
-         text := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1")
-         text := RegExReplace(text, "(?<!\r)\n", "`r`n")
-         database.Close()
-
-         FileDelete, % fileBitmap
-         FileDelete, % fileProcessedImage
-         FileDelete, % fileConvertedText
-
-         return text
-      }
-   }
 
    class Function {
       RPath_Absolute(AbsolutPath, RelativePath, s="\") {
@@ -529,6 +537,22 @@ class Vis2 {
          Return, pr . AbsolutPath . s . RelativePath                           ;concatenate server + AbsolutPath + separator + RelativePath
       }
    }
+
+
+   class Functor {
+
+      __Call(method, ByRef arg := "", args*)
+      {
+      ; When casting to Call(), use a new instance of the "function object"
+      ; so as to avoid directly storing the properties(used across sub-methods)
+      ; into the "function object" itself.
+         if IsObject(method)
+            return (new this).Call(method, arg, args*)
+         else if (method == "")
+            return (new this).Call(arg, args*)
+      }
+   }
+
 
    class Graphics {
 
@@ -599,7 +623,7 @@ class Vis2 {
          }
 
          isVisible(){
-            DllCall("IsWindowVisible", "ptr",this.hWnd)
+            return DllCall("IsWindowVisible", "ptr",this.hWnd)
          }
 
          isDrawable(win := "A"){
@@ -633,11 +657,12 @@ class Vis2 {
          }
 
          Redraw(x, y, w, h){
-            Critical
+            Critical On
             this.DetectScreenResolutionChange()
             Gdip_GraphicsClear(this.G)
             Gdip_FillRectangle(this.G, this.pBrush, x, y, w, h)
             UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+            Critical Off
          }
 
          ChangeColor(color){
@@ -1106,12 +1131,13 @@ class Vis2 {
          }
 
          Render(file, scale := 1) {
-            Critical
+            Critical On
             pBitmap := Gdip_CreateBitmapFromFile(file)
             Width := Gdip_GetImageWidth(pBitmap), Height := Gdip_GetImageHeight(pBitmap)
             Gdip_DrawImage(this.G, pBitmap, 0, 0, Floor(Width*scale), Floor(Height*scale), 0, 0, Width, Height)
             UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, Floor(Width*scale), Floor(Height*scale))
             Gdip_DisposeImage(pBitmap)
+            Critical Off
          }
       }
 
@@ -1147,33 +1173,39 @@ class Vis2 {
             DeleteObject(this.hbm)
             DeleteDC(this.hdc)
             Gdip_DeleteGraphics(this.G)
+            return this
          }
 
          Destroy(){
             this.FreeMemory()
             DllCall("DestroyWindow", "ptr",this.hWnd)
+            return this
          }
 
          Hide(){
             DllCall("ShowWindow", "ptr",this.hWnd, "int",0)
+            return this
          }
 
          Show(){
             DllCall("ShowWindow", "ptr",this.hWnd, "int",8)
+            return this
          }
 
          ToggleVisible(){
             this.isVisible() ? this.Hide() : this.Show()
+            return this
          }
 
          isVisible(){
-            DllCall("IsWindowVisible", "ptr",this.hWnd)
+            return DllCall("IsWindowVisible", "ptr",this.hWnd)
          }
 
          ClickThrough(){
             DetectHiddenWindows On
             WinSet, ExStyle, +0x20, % "ahk_id" this.hWnd
             DetectHiddenWindows Off
+            return this
          }
 
          DetectScreenResolutionChange(){
@@ -1544,13 +1576,14 @@ class Vis2 {
          }
 
          Render(text := "", obj1 := "", obj2 := "", update := 1){
-            Critical
             if (this.hWnd){
+               Critical On
                this.DetectScreenResolutionChange()
                this.Draw(text, obj1, obj2)
                if (update)
                   UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, A_ScreenWidth, A_ScreenHeight)
                this.rendered := true
+               Critical Off
                return this
             }
             else {
@@ -1915,6 +1948,65 @@ class Vis2 {
          height(){
             return this.2y - this.y
          }
+      }
+   }
+
+
+   class Text {
+
+      copy() {
+         AutoTrim Off
+         c := ClipboardAll
+         Clipboard := ""             ; Must start off blank for detection to work.
+         Send, ^c
+         ClipWait 0.5
+         if ErrorLevel
+            return
+         t := Clipboard
+         Clipboard := c
+         VarSetCapacity(c, 0)
+         return t
+      }
+
+      paste(t) {
+         c := ClipboardAll
+         Clipboard := t
+         Send, ^v
+         Sleep 50                    ; Don't change clipboard while it is pasted! (Sleep > 0)
+         Clipboard := c
+         VarSetCapacity(c, 0)        ; Free memory
+         AutoTrim On
+      }
+
+      ; Based on this paper: http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.81.8901
+      rmgarbage(text){
+         ; (L) If a string is longer than 40 characters
+         text := RegExReplace(text, "[^\s]{40,}", "")
+         ; (A) If a string’s ratio of alphanumeric characters to total characters is less than 50%
+
+
+      }
+
+      google(data := ""){
+         text := (data == "") ? Vis2.Text.copy() : data
+         Run % "https://www.google.com/search?&q=" . RegExReplace(text, "\s", "+")
+         return (data == "") ? Vis2.Text.paste(text) : text
+      }
+
+      google2(data := "", prefix := "") {
+         text := (data == "") ? Vis2.Text.copy() : data
+         url := RegExReplace(text, "^\s+|\s+$")                ; Trim whitespace
+         if RegExMatch(url, "^(http|ftp|telnet)") {
+            ; Do nothing if it already looks like a URL
+         } else {
+            ; Escape the query string. Could escape more, but this seems sufficient for Chrome
+            StringReplace, url, url, `%, `%25, All
+            StringReplace, url, url,  &, `%26, All
+            StringReplace, url, url,  +, `%2B, All
+            url := "https://www.google.com/search?&q=" . prefix . url
+         }
+         Run %url%
+         return Vis2.Text.restore()
       }
    }
 }
