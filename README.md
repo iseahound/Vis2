@@ -20,6 +20,6 @@ Note that the following snippet will also return text
     if ((text := OCR()) = "Vis2")
         MsgBox You have successfully used OCR!
     else
-        MsgBox You have found %text%, try finding 'Vis2' instead. 
+        MsgBox You have found %text% `, try finding 'Vis2' instead. 
 
 Be sure to visit https://autohotkey.com/boards/viewtopic.php?f=6&t=36047 for help and support. 
