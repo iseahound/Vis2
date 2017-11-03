@@ -20,7 +20,8 @@ class Vis2 {
 
    class OCR extends Vis2.Functor {
       Call(self, image:="", language:="", options*){
-         return (image) ? Vis2.Tesseract.OCR(image) : Vis2.core.returnText({"type":"OCR", "tooltip":"Optical Character Recognition Tool"})
+         return (image) ? Vis2.Tesseract.OCR(image)
+            : Vis2.core.returnText({"function":"Vis2.Tesseract.OCR", "tooltip":"Optical Character Recognition Tool", "process":"continuous"})
       }
 
       google(){
@@ -147,7 +148,8 @@ class Vis2 {
          }
          else if (GetKeyState("LButton", "P")) {
             SetTimer, % selectImage, -10
-            SetTimer, % textPreview, -25
+            ;if (Vis2.obj.process = "continuous")
+               SetTimer, % textPreview, -25
          }
          else {
             Vis2.obj.Area.Origin()
@@ -364,6 +366,7 @@ class Vis2 {
                   }
                   Vis2.obj.ExitCode := 1
                }
+               Vis2.obj.ExitCode := (Vis2.obj.ExitCode) ? Vis2.obj.ExitCode : -1
                SetTimer, % escape, -35
             }
             return
