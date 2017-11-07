@@ -1,8 +1,16 @@
-# Vis2
-Using Computer Vision to automate tasks. 
-OCR(), ImageIdentify()
+# Vis2 - OCR(), ImageIdentify()
+##### Automation using Computer Vision. 
 
+### Quick Start
+1. [Download](https://github.com/iseahound/Vis2/archive/master.zip) Vis2
+2. Create a new AHK script in the same folder as Vis2.ahk, 
+copying the code below. 
 
+    #include Vis2.ahk
+    MsgBox % OCR("https://autohotkey.com/assets/images/ahk-logo-no-text241x78-160.png")
+    
+3. Press ```Space``` to exit. If you saw words 
+    
 ### Instructions
 How to use OCR() - add the following line to your code.
 
