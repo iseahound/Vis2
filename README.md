@@ -2,16 +2,17 @@
 ##### Automation using Computer Vision. 
 
 ### Quick Start
-1. [Download](https://github.com/iseahound/Vis2/archive/master.zip) Vis2
+1. [Download Vis2.](https://github.com/iseahound/Vis2/archive/master.zip) Extract. 
 2. Create a new AHK script in the same folder as Vis2.ahk, 
 copying the code below. 
 
     #include Vis2.ahk
-    MsgBox % OCR("https://autohotkey.com/assets/images/ahk-logo-no-text241x78-160.png")
+    MsgBox % OCR("https://i.stack.imgur.com/sFPWe.png")
     
-3. Press ```Space``` to exit. If you saw words 
-    
-### Instructions
+3. Press ```Enter``` to exit. Visit the image link to confirm the OCR is working correctly. 
+
+## Documentation
+### OCR()
 How to use OCR() - add the following line to your code.
 
     #^c:: OCR()
