@@ -53,11 +53,7 @@ Note that only the client area is extracted, so the window border of Notepad is 
 If you know the window ID, or hwnd, you may use it as well. Note that this is equivalent to ```OCR("ahk_id" hWnd)```. 
 
 #### ```OCR( GDI Bitmap )``` - Pointer to a memory bitmap
-Pass a pBitmap memory address. 
-
 #### ```OCR( HBITMAP )``` - Handle to a memory bitmap
-Pass an hBitmap. 
-
 #### ```OCR( Binary )``` - Raw File Binary
 If you have loaded a file to memory, you may pass the data. Not recommended, pass the file name instead. 
 
