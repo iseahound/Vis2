@@ -13,12 +13,13 @@
 3. Press ```Enter``` to exit. Visit the image link to confirm the OCR is working correctly. 
 
 ## Documentation
+### Input Data Types
 #### ```OCR()``` - Launches an interactive GUI. 
 Example: Pressing ```Ctrl``` + ```Win``` + ```c``` will allow the user to manually select an area on screen to OCR. 
 
     #^c:: OCR()
 
-#### ```OCR( \[x, y, w, h\] )``` - Array
+#### ```OCR([x, y, w, h])``` - Array
 To input a set of known coordinates, try inputting an array of 4 values, [x, y, w, h]
 
     text := OCR([0, 0, 430, 150])
