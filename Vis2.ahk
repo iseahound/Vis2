@@ -1,9 +1,10 @@
 ﻿; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2017-11-02
+; Recent:    2017-11-06
 
 #include <Gdip_All>
+
 
 ; OCR() - Convert pictures of text into text.
 OCR(image:="", language:="", options*){
@@ -25,7 +26,7 @@ class Vis2 {
       }
 
       google(){
-         return Vis2.core.start({"google":1, "tooltip":"Any selected text will be Googled."})
+         return Vis2.core.ux.start({"google":1, "tooltip":"Any selected text will be Googled."})
       }
    }
 
@@ -39,6 +40,89 @@ class Vis2 {
    ; LIST OF COMPUTER VISION PROVIDERS
    ; ---------------------------------
 
+   class GoogleCloudVision {
+
+      ; Cloud Platform Console Help - Setting up API keys
+      ; Step 1: https://support.google.com/cloud/answer/6158862?hl=en
+      ; Step 2: https://cloud.google.com/vision/docs/before-you-begin
+
+      ; You must enter billing information to use the Cloud Vision API.
+      ; https://cloud.google.com/vision/pricing
+      ; First 1000 LABEL_DETECTION per month is free.
+
+      ; Please enter your api_key for Google Cloud Vision API.
+      static api_key := "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+      ; FOR SAFETY REASONS, DO NOT PASTE YOUR API KEY HERE.
+      ; Instead, keep your api_key in a separate file, "Vis2_API.txt"
+
+      getCredentials(){
+         if (Vis2.GoogleCloudVision.api_key ~= "^X{39}$") {
+            if FileExist("Vis2_API.txt") {
+               file := FileOpen("Vis2_API.txt", "r")
+               keys := file.Read()
+               api_key := ((___ := RegExReplace(keys, "s)^.*?GoogleCloudVision(?:\s*)=(?:\s*)([A-Za-z0-9\-]+).*$", "$1")) != keys) ? ___ : ""
+               file.close()
+
+               if (api_key)
+                  return api_key
+            }
+            InputBox, api_key, Vis2.GoogleCloudVision.ImageIdentify, Enter your api_key for GoogleCloudVision.
+            FileAppend, GoogleCloudVision=%api_key%, Vis2_API.txt
+            return api_key
+         }
+         else
+            return Vis2.GoogleCloudVision.api_key
+      }
+
+      ; https://cloud.google.com/vision/docs/supported-files
+      ; Supported Image Formats
+      ; JPEG, PNG8, PNG24, GIF, Animated GIF (first frame only)
+      ; BMP, WEBP, RAW, ICO
+      ; Maximum Image Size - 4 MB
+      ; Maximum Size per Request - 8 MB
+      ; Compression to 640 x 480 - LABEL_DETECTION
+
+      ImageIdentify(image){
+
+         img64 := Vis2.core.toBase64(image)
+
+         req := {}
+         req.requests := {}
+         req.requests[1] := {"image":{}, "features":{}}
+         req.requests[1].image.content := img64
+         req.requests[1].features[1] := {"type":"LABEL_DETECTION"}
+         body := JSON.Dump(req)
+
+         VarSetCapacity(file, 0)
+         VarSetCapacity(img64, 0)
+         VarSetCapacity(req, 0)
+
+         whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+         whr.open("POST", "https://vision.googleapis.com/v1/images:annotate?key=" Vis2.GoogleCloudVision.getCredentials())
+         whr.send(body)
+
+         MsgBox % whr.ResponseText
+
+         reply := JSON.Load(whr.ResponseText)
+         i := 1
+         while (i <= reply.responses[1].labelAnnotations.length()) {
+            sentence  .= (i == 1) ? "" : ", "
+            sentence2 .= (i == 1) ? "" : ", "
+            sentence  .= reply.responses[1].labelAnnotations[i].description
+            sentence2 .= reply.responses[1].labelAnnotations[i].description " (" Format("{:i}",  100*reply.responses[1].labelAnnotations[i].score) "%)"
+            i++
+         }
+         VarSetCapacity(body, 0)
+         VarSetCapacity(whr, 0)
+         VarSetCapacity(reply, 0)
+
+
+         Vis2.Graphics.Subtitle.Render(sentence2)
+
+      }
+   }
+
+
    class Tesseract {
 
       static leptonica := ".\bin\leptonica_util\leptonica_util.exe"
@@ -51,23 +135,7 @@ class Vis2 {
          static fileConvert := A_Temp "\Vis2_text"
          static fileConvertedText := A_Temp "\Vis2_text.txt"
 
-         Vis2.Graphics.Startup()
-         if image.1 != "" and image.2 != "" and image.3 != "" and image.4 != "" {
-            x := image[1]
-            y := image[2]
-            w := image[3]
-            h := image[4]
-
-            pBitmap := Gdip_BitmapFromScreen(x "|" y "|" w "|" h)
-            Gdip_SaveBitmapToFile(pBitmap, fileBitmap)
-            Gdip_DisposeImage(pBitmap)
-            imgFile := fileBitmap
-         }
-
-         if FileExist(image) {
-            imgFile := Vis2.Function.RPath_Absolute(A_ScriptDir, ".\" image)
-         }
-         Vis2.Graphics.Shutdown()
+         imgFile := Vis2.core.toFile(image, fileBitmap)
 
          Vis2.core.preprocess(imgFile, fileProcessedImage)
          Vis2.core.convert(fileProcessedImage, fileConvert)
@@ -87,12 +155,165 @@ class Vis2 {
 
    class core {
 
-      ; returnText() is a wrapper function of Vis2.core.start()
-      ; Unlike start(), this function will return the found text string.
+      ; toBase64() - Converts the input to a Base 64 string.
+      ; Types of input accepted
+      ; Objects: Rectangle Array (Screenshot)
+      ; Strings: File, URL, Window Title (ahk_class...) OR hwnd (hex)
+      ; Numbers: GDI Bitmap, GDI HBitmap
+      ; Rawfile: Binary, base64
+      toBase64(image){
+         Vis2.Graphics.Startup()
+
+         ; Check if image is an array of 4 numbers
+         if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$") {
+            pBitmap := Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
+            base64 := Vis2.library.Gdip_EncodeBitmapTo64string(pBitmap, "png")
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image points to a valid file
+         else if FileExist(image) {
+            file := FileOpen(image, "r")
+            file.RawRead(data, file.length)
+            base64 := Vis2.library.b64Encode(data, file.length)
+            file.Close()
+         }
+         ; Check if image points to a valid URL
+         else if Vis2.library.isURL(image) {
+            static req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+            req.Open("GET",image)
+            req.Send()
+
+            pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
+            DllCall("ole32\GetHGlobalFromStream", "ptr",pStream, "uint*",hData)
+            pData := DllCall("GlobalLock", "ptr",hData, "uptr")
+            nSize := DllCall("GlobalSize", "uint",pData)
+
+            VarSetCapacity(Bin, nSize, 0)
+            DllCall("RtlMoveMemory", "ptr",&Bin , "ptr",pData , "uint",nSize)
+            DllCall("GlobalUnlock", "ptr",hData)
+            DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
+            DllCall("GlobalFree", "ptr",hData)
+            ObjRelease(pStream)
+
+            DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",0, "uint*",base64Length)
+            VarSetCapacity(base64, base64Length*2, 0)
+            DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",&base64, "uint*",base64Length)
+            Bin := ""
+            VarSetCapacity(Bin, 0)
+            VarSetCapacity(base64, -1)
+         }
+         ; Check if image matches a window title OR is a valid handle to a window
+         else if (DllCall("IsWindow", "ptr",image) || (hwnd := WinExist(image))) {
+            hwnd := (DllCall("IsWindow", "ptr",image)) ? image : hwnd
+            pBitmap := Vis2.library.Gdip_BitmapFromClientHWND(hwnd)
+            Gdip_SaveBitmapToFile(pBitmap, "ttt.png")
+            base64 := Vis2.library.Gdip_EncodeBitmapTo64string(pBitmap, "png")
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image is a valid GDI Bitmap
+         else if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image)) {
+            base64 := Vis2.library.Gdip_EncodeBitmapTo64string(image, "png")
+         }
+         ; Check if image is a valid handle to a GDI Bitmap
+         else if (DllCall("GetObjectType", "ptr",image) == 7) {
+            pBitmap := Gdip_CreateBitmapFromHBITMAP(image)
+            base64 := Vis2.library.Gdip_EncodeBitmapTo64string(pBitmap, "png")
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image is raw binary data
+         else if Vis2.library.isBinaryImageFormat(image) {
+            base64 := Vis2.library.b64Encode(image)
+         }
+         ; Check if image is a base64 string
+         else if (image ~= "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$") {
+            base64 := image
+         }
+         Vis2.Graphics.Shutdown()
+         return base64
+      }
+
+      ; toFile() - Saves the image as a temporary file.
+      toFile(image, outputFile:="", size:=""){
+         Vis2.Graphics.Startup()
+         ; Check if image is an array of 4 numbers
+         if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$") {
+            pBitmap := Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
+            Gdip_SaveBitmapToFile(pBitmap, outputFile)
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image points to a valid file
+         else if FileExist(image) {
+            Loop, Files, % image
+            {
+               if (A_LoopFileExt != "bmp") {
+                  pBitmap := Gdip_CreateBitmapFromFile(A_LoopFileLongPath)
+                  Gdip_SaveBitmapToFile(pBitmap, outputFile)
+                  Gdip_DisposeImage(pBitmap)
+               }
+               else outputFile := A_LoopFileLongPath
+            }
+         }
+         ; Check if image points to a valid URL
+         else if Vis2.library.isURL(image) {
+            static req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+            req.Open("GET",image)
+            req.Send()
+
+            pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
+            DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+            Gdip_SaveBitmapToFile(pBitmap, outputFile, 92)
+            ObjRelease(pStream)
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image matches a window title OR is a valid handle to a window
+         else if (DllCall("IsWindow", "ptr",image) || (hwnd := WinExist(image))) {
+            hwnd := (DllCall("IsWindow", "ptr",image)) ? image : hwnd
+            pBitmap := Vis2.library.Gdip_BitmapFromClientHWND(hwnd)
+            Gdip_SaveBitmapToFile(pBitmap, outputFile)
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image is a valid GDI Bitmap
+         else if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image)) {
+            Gdip_SaveBitmapToFile(image, outputFile)
+         }
+         ; Check if image is a valid handle to a GDI Bitmap
+         else if (DllCall("GetObjectType", "ptr",image) == 7) {
+            pBitmap := Gdip_CreateBitmapFromHBITMAP(image)
+            Gdip_SaveBitmapToFile(pBitmap, outputFile)
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image is raw binary data
+         else if Vis2.library.isBinaryImageFormat(image) {
+            ; Not working at the moment.
+            ; Would require the length of the binary data to be included.
+            ; Then use the code below.
+         }
+         ; Check if image is a base64 string
+         else if (image ~= "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$") {
+            nSize := Vis2.library.b64Decode(image, bin)
+            hData := DllCall("GlobalAlloc", "uint",0x2, "ptr",nSize)
+            pData := DllCall("GlobalLock", "ptr",hData)
+            DllCall("RtlMoveMemory", "ptr",pData, "ptr",&bin, "ptr",nSize)
+            DllCall("GlobalUnlock", "ptr",hData)
+            DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",1, "uptr*",pStream)
+            DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+            Gdip_SaveBitmapToFile(pBitmap, outputFile, 92)
+            DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
+            DllCall("GlobalFree", "ptr",hData)
+            ObjRelease(pStream)
+            Gdip_DisposeImage(pBitmap)
+         }
+         Vis2.Graphics.Shutdown()
+         return outputFile
+      }
+
+
+      ; returnText() is a wrapper function of Vis2.core.ux.start()
+      ; Unlike Vis2.core.ux.start(), this function will return a string of text.
       returnText(obj := ""){
          obj := IsObject(obj) ? obj : {}
          obj.callback := "returnText"
-         if (Vis2.core.start(obj) == "") {
+         if (Vis2.core.ux.start(obj) == "") {
             while !(ExitCode := Vis2.obj.ExitCode)
                Sleep 1
             Vis2.obj.callbackConfirmed := true
@@ -102,340 +323,344 @@ class Vis2 {
          }
       }
 
-      ; start() is the function that launches the user interface.
-      ; This can be called directly without calling returnText().
-      start(obj := ""){
-      static null := ObjBindMethod({}, {})
 
-         if (Vis2.obj != "")
-            return "Already in use."
+      class ux {
 
-         Vis2.core.setSystemCursor(32515) ; IDC_Cross := 32515
-         Hotkey, LButton, % null, On
-         Hotkey, ^LButton, % null, On
-         Hotkey, !LButton, % null, On
-         Hotkey, +LButton, % null, On
-         Hotkey, RButton, % null, On
-         Hotkey, Escape, % null, On
+         ; start() is the function that launches the user interface.
+         ; This can be called directly without calling returnText().
+         start(obj := ""){
+         static null := ObjBindMethod({}, {})
 
-         Vis2.obj := IsObject(obj) ? obj : {}
-         Vis2.obj.selectMode := "Quick"
-         Vis2.obj.fileBitmap := A_Temp "\Vis2_screenshot.bmp"
-         Vis2.obj.fileProcessedImage := A_Temp "\Vis2_preprocess.tif"
-         Vis2.obj.fileConvert := A_Temp "\Vis2_text"
-         Vis2.obj.fileConvertedText := A_Temp "\Vis2_text.txt"
-         Vis2.obj.Area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
-         Vis2.obj.Image := new Vis2.Graphics.Image("Vis2_Kitsune")
-         Vis2.obj.Subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
-         Vis2.obj.backgroundStyle := {"x":"center", "y":"83%", "padding":"1.35%", "color":"dd000000", "radius":8}
-         Vis2.obj.textStyle :=       {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"ffffff"}
-         Vis2.obj.Subtitle.Render(Vis2.obj.tooltip, Vis2.obj.backgroundStyle, Vis2.obj.textStyle)
+            if (Vis2.obj != "")
+               return "Already in use."
 
-         return Vis2.core.waitForUserInput()
-      }
+            Vis2.core.setSystemCursor(32515) ; IDC_Cross := 32515
+            Hotkey, LButton, % null, On
+            Hotkey, ^LButton, % null, On
+            Hotkey, !LButton, % null, On
+            Hotkey, +LButton, % null, On
+            Hotkey, RButton, % null, On
+            Hotkey, Escape, % null, On
 
-      waitForUserInput(){
-      static escape := ObjBindMethod(Vis2.core, "escape")
-      static waitForUserInput := ObjBindMethod(Vis2.core, "waitForUserInput")
-      static selectImage := ObjBindMethod(Vis2.core.process, "selectImage")
-      static textPreview := ObjBindMethod(Vis2.core.process, "textPreview")
+            Vis2.obj := IsObject(obj) ? obj : {}
+            Vis2.obj.selectMode := "Quick"
+            Vis2.obj.fileBitmap := A_Temp "\Vis2_screenshot.bmp"
+            Vis2.obj.fileProcessedImage := A_Temp "\Vis2_preprocess.tif"
+            Vis2.obj.fileConvert := A_Temp "\Vis2_text"
+            Vis2.obj.fileConvertedText := A_Temp "\Vis2_text.txt"
+            Vis2.obj.Area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
+            Vis2.obj.Image := new Vis2.Graphics.Image("Vis2_Kitsune")
+            Vis2.obj.Subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
+            Vis2.obj.backgroundStyle := {"x":"center", "y":"83%", "padding":"1.35%", "color":"dd000000", "radius":8}
+            Vis2.obj.textStyle :=       {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"ffffff"}
+            Vis2.obj.Subtitle.Render(Vis2.obj.tooltip, Vis2.obj.backgroundStyle, Vis2.obj.textStyle)
 
-
-         if (GetKeyState("Escape", "P")) {
-            Vis2.obj.ExitCode := -1
-            SetTimer, % escape, -35
-            return
+            return Vis2.core.ux.waitForUserInput()
          }
-         else if (GetKeyState("LButton", "P")) {
-            SetTimer, % selectImage, -10
-            ;if (Vis2.obj.process = "continuous")
-               SetTimer, % textPreview, -25
-         }
-         else {
-            Vis2.obj.Area.Origin()
-            SetTimer, % waitForUserInput, -10
-         }
-         return
-      }
 
+         waitForUserInput(){
+         static escape := ObjBindMethod(Vis2.core.ux, "escape")
+         static waitForUserInput := ObjBindMethod(Vis2.core.ux, "waitForUserInput")
+         static selectImage := ObjBindMethod(Vis2.core.ux.process, "selectImage")
+         static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
 
-      class process {
-
-         selectImage(){
-         static selectImage := ObjBindMethod(Vis2.core.process, "selectImage")
 
             if (GetKeyState("Escape", "P")) {
                Vis2.obj.ExitCode := -1
-               return Vis2.core.process.finale(A_ThisFunc)
+               SetTimer, % escape, -35
+               return
             }
-
-            if (Vis2.obj.selectMode == "Quick")
-               Vis2.core.process.selectImageQuick()
-            if (Vis2.obj.selectMode == "Advanced")
-               Vis2.core.process.selectImageAdvanced()
-
-            if (Vis2.core.overlap() && Vis2.obj.dialogue != Vis2.obj.dialogue_past) {
-               Vis2.obj.dialogue_past := Vis2.obj.dialogue
-               Vis2.obj.backgroundStyle.y := (Vis2.obj.backgroundStyle.y == "83%") ? "2.07%" : "83%"
-               Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.backgroundStyle, Vis2.obj.textStyle)
-            }
-
-            if !(Vis2.obj.unlock.1 ~= "^Vis2.core.process.selectImage" || Vis2.obj.unlock.2 ~= "^Vis2.core.process.selectImage")
+            else if (GetKeyState("LButton", "P")) {
                SetTimer, % selectImage, -10
+               ;if (Vis2.obj.process = "continuous")
+                  SetTimer, % textPreview, -25
+            }
+            else {
+               Vis2.obj.Area.Origin()
+               SetTimer, % waitForUserInput, -10
+            }
             return
          }
 
-         selectImageQuick(){
-            if (GetKeyState("LButton", "P")) {
-               if (GetKeyState("Control", "P") || GetKeyState("Alt", "P") || GetKeyState("Shift", "P"))
-                  Vis2.core.process.selectImageTransition()
-               else if (GetKeyState("RButton", "P")) {
-                  Vis2.obj.Area.Move()
-                  if (!Vis2.obj.Area.isMouseOnCorner() && Vis2.obj.Area.isMouseStopped())
-                     Vis2.obj.Area.Draw() ; Error Correction of Offset
-               }
-               else
-                  Vis2.obj.Area.Draw()
-            }
-            else
-               Vis2.core.process.finale(A_ThisFunc)
-            ; Do not return.
-         }
 
-         selectImageTransition(){
-         static null := ObjBindMethod({}, {})
+         class process {
 
-            DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
-            Hotkey, Space, % null, On
-            Hotkey, ^Space, % null, On
-            Hotkey, !Space, % null, On
-            Hotkey, +Space, % null, On
-            Vis2.obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35% cFFB1AC r8", "c000000 s24")
-            (Vis2.obj.note_02 := new Vis2.Graphics.Subtitle()).Hide().ClickThrough() ; Create a Subtitle Object that is Hidden & ClickThrough.
-            Vis2.obj.tokenMousePressed := 1
-            Vis2.obj.selectMode := "Advanced" ; Exit selectImageQuick.
-         }
+            selectImage(){
+            static selectImage := ObjBindMethod(Vis2.core.ux.process, "selectImage")
 
-         selectImageAdvanced(){
-         static null := ObjBindMethod({}, {})
-
-            if (Vis2.obj.note_02.isVisible()) {
-               CoordMode, Mouse, Screen
-               MouseGetPos, x_mouse, y_mouse
-               Vis2.obj.note_02.Render("x: " Vis2.obj.Area.x1() " │ y: " Vis2.obj.Area.y1() " │ w: " Vis2.obj.Area.width() " │ h: " Vis2.obj.Area.height()
-                  , {"x":x_mouse+16, "y":y_mouse+16, "color":"Black", "padding":"0.37%"}, {"font":"Lucida Sans Typewriter", "size":"1.67%"})
-            }
-
-            if ((Vis2.obj.Area.width() < -25 || Vis2.obj.Area.height() < -25) && !Vis2.obj.note_03)
-               Vis2.obj.note_03 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 92%, p1.35%, c: FCF9AF, r8", "c000000 s24")
-
-
-            if (Vis2.obj.tokenRenderImage == 1 && !GetKeyState("Space", "P")) {
-               Vis2.obj.Image.Render(Vis2.obj.fileProcessedImage, 0.5)
-               Vis2.obj.Image.ToggleVisible()
-               Vis2.obj.tokenRenderImage := 0
-            }
-            else if (Vis2.obj.tokenShowCoordinates == 1 && !GetKeyState("Space", "P")) {
-               Vis2.obj.note_02.ToggleVisible()
-               Vis2.obj.tokenShowCoordinates := 0
-            }
-            else if (Vis2.obj.tokenTesseractLanguage == 1 && !GetKeyState("Space", "P")) {
-               Vis2.obj.tokenTesseractLanguage := 0
-            }
-            else if (Vis2.obj.tokenRedraw == 1) {                                   ; Alt + LButton
-               Vis2.obj.Area.Draw()                                                    ; Redraw
-               if (!GetKeyState("LButton", "P"))
-                  Vis2.obj.tokenRedraw := 0, DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
-            }
-            else if (Vis2.obj.tokenMousePressed == 1) {
-               if (GetKeyState("LButton", "P")) {
-                  if (GetKeyState("Control", "P"))                                  ; Ctrl + LButton
-                     Vis2.obj.Area.ResizeCorners()                                     ; Drag Rectangle Corners.
-                  else if (GetKeyState("Shift", "P"))                               ; Shift + LButton
-                     Vis2.obj.Area.ResizeEdges()                                       ; Resize Rectangle Edges
-                  else
-                     Vis2.obj.Area.Move()                                              ; Transform Rectangle, 2D
-               }
-               else if (GetKeyState("RButton", "P"))
-                  Vis2.obj.Area.Move()
-               if (!GetKeyState("LButton", "P") && !GetKeyState("RButton", "P"))
-                  Vis2.obj.tokenMousePressed := 0
-            }
-            else if (GetKeyState("Space", "P") && GetKeyState("Control", "P"))
-               Vis2.obj.tokenRenderImage := 1
-            else if (GetKeyState("Space", "P") && GetKeyState("Alt", "P"))
-               Vis2.obj.tokenShowCoordinates := 1
-            else if (GetKeyState("Space", "P") && GetKeyState("Shift", "P"))
-               Vis2.obj.tokenTesseractLanguage := 1
-            else if (GetKeyState("Space", "P"))
-               Vis2.core.process.finale(A_ThisFunc)
-            else if (GetKeyState("LButton", "P") && GetKeyState("Alt", "P")) {
-               Vis2.core.setSystemCursor(32515) ; IDC_Cross := 32515
-               Vis2.obj.tokenRedraw := 1
-               Vis2.obj.Area.Origin()
-            }
-            else if ((GetKeyState("LButton", "P") || GetKeyState("RButton", "P")) && Vis2.obj.Area.isMouseInside())
-               Vis2.obj.tokenMousePressed := 1                                      ; Check if isMouseInside only ONCE.
-            else {                                                                  ; If no mouse buttons are pressed
-               Vis2.obj.Area.Hover()                                                   ; Collapse Stack
-               if Vis2.obj.Area.isMouseInside() {
-                  Hotkey, LButton, % null, On
-                  Hotkey, RButton, % null, On
-               } else {
-                  Hotkey, LButton, % null, Off
-                  Hotkey, RButton, % null, Off
-               }
-            }
-            ; Do not return.
-         }
-
-         textPreview(){
-         static textPreview := ObjBindMethod(Vis2.core.process, "textPreview")
-
-            ; Takes a Screenshot
-            x := Vis2.obj.Area.x1()
-            y := Vis2.obj.Area.y1()
-            w := Vis2.obj.Area.width()
-            h := Vis2.obj.Area.height()
-
-            pBitmap := Gdip_BitmapFromScreen(x "|" y "|" w "|" h)
-            ;Vis2.obj.Area.ImageData := Gdip_EncodeBitmapTo64string(pBitmap, "jpg")
-            Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.fileBitmap, 92)
-            Gdip_DisposeImage(pBitmap)
-
-            if (true) {
-               Vis2.core.preprocess(Vis2.obj.fileBitmap, Vis2.obj.fileProcessedImage)
-               Vis2.core.convert(Vis2.obj.fileProcessedImage, Vis2.obj.fileConvert)
-               if (Vis2.obj.Image.isVisible() == true)
-                  Vis2.obj.Image.Render(Vis2.obj.fileProcessedImage, 0.5)
-
-               database := FileOpen(Vis2.obj.fileConvertedText, "r`n", "UTF-8")
-               i := 0
-               dialogue := ""
-
-               while (i < 3) {
-                  data := database.ReadLine()
-                  data := RegExReplace(data, "^\s*(.*?)\s*$", "$1")
-                  if (data != "") {
-                     dialogue .= (i == 0) ? data : ("`n" . data)
-                     i++
-                  }
-                  if (!database || database.AtEOF)
-                     break
+               if (GetKeyState("Escape", "P")) {
+                  Vis2.obj.ExitCode := -1
+                  return Vis2.core.ux.process.finale(A_ThisFunc)
                }
 
-               if (dialogue != "") {
-                  Vis2.obj.firstDialogue := true
-                  Vis2.obj.dialogue := dialogue
-                  Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.backgroundStyle, Vis2.obj.textStyle)  ; condensed font
-               }
-               else {
-                  Vis2.obj.dialogue := (Vis2.obj.firstDialogue == true) ? "ERROR: No Text Data Found" : "Searching for text..."
+               if (Vis2.obj.selectMode == "Quick")
+                  Vis2.core.ux.process.selectImageQuick()
+               if (Vis2.obj.selectMode == "Advanced")
+                  Vis2.core.ux.process.selectImageAdvanced()
+
+               if (Vis2.core.ux.overlap() && Vis2.obj.dialogue != Vis2.obj.dialogue_past) {
+                  Vis2.obj.dialogue_past := Vis2.obj.dialogue
+                  Vis2.obj.backgroundStyle.y := (Vis2.obj.backgroundStyle.y == "83%") ? "2.07%" : "83%"
                   Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.backgroundStyle, Vis2.obj.textStyle)
                }
 
-
-               database.Seek(0, 0)
-               Vis2.obj.database := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1") ; Trim whitespace
-               Vis2.obj.database := RegExReplace(Vis2.obj.database, "(?<!\r)\n", "`r`n") ; Convert LF to CRLF
-               database.Close()
+               if !(Vis2.obj.unlock.1 ~= "^Vis2.core.ux.process.selectImage" || Vis2.obj.unlock.2 ~= "^Vis2.core.ux.process.selectImage")
+                  SetTimer, % selectImage, -10
+               return
             }
 
-            if (Vis2.obj.unlock.1 != "")
-               return Vis2.core.process.finale(A_ThisFunc)
-            else
-               SetTimer, % textPreview, -100
-            return
-         }
-
-         finale(key){
-         static escape := ObjBindMethod(Vis2.core, "escape")
-
-            (IsObject(Vis2.obj.unlock) && key != Vis2.obj.unlock.1) ? Vis2.obj.unlock.push(key) : (Vis2.obj.unlock := [key])
-
-            if (key ~= "^Vis2.core.process.selectImage")
-               Vis2.obj.Area.ChangeColor(0x01FFFFFF)
-
-            if (Vis2.obj.unlock.MaxIndex() == 2) {
-               if (Vis2.obj.database != "" && !Vis2.obj.ExitCode) {
-                  if (Vis2.obj.google == 1 && Vis2.obj.noCopy != true)
-                     Run % "https://www.google.com/search?&q=" . RegExReplace(Vis2.obj.database, "\s", "+")
-                  else if (Vis2.obj.noCopy != true) {
-                     clipboard := Vis2.obj.database
-                     Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: 1250, x: center, y: 83%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:24, f:Arial")
+            selectImageQuick(){
+               if (GetKeyState("LButton", "P")) {
+                  if (GetKeyState("Control", "P") || GetKeyState("Alt", "P") || GetKeyState("Shift", "P"))
+                     Vis2.core.ux.process.selectImageTransition()
+                  else if (GetKeyState("RButton", "P")) {
+                     Vis2.obj.Area.Move()
+                     if (!Vis2.obj.Area.isMouseOnCorner() && Vis2.obj.Area.isMouseStopped())
+                        Vis2.obj.Area.Draw() ; Error Correction of Offset
                   }
-                  Vis2.obj.ExitCode := 1
+                  else
+                     Vis2.obj.Area.Draw()
                }
-               Vis2.obj.ExitCode := (Vis2.obj.ExitCode) ? Vis2.obj.ExitCode : -1
-               SetTimer, % escape, -35
+               else
+                  Vis2.core.ux.process.finale(A_ThisFunc)
+               ; Do not return.
             }
-            return
-         }
-      }
 
-      escape(){
-      static escape := ObjBindMethod(Vis2.core, "escape")
-      static null := ObjBindMethod({}, {})
+            selectImageTransition(){
+            static null := ObjBindMethod({}, {})
 
-         if (Vis2.obj.callback) {
-            if !(Vis2.obj.callbackConfirmed) {
-               SetTimer, % escape, -35
+               DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
+               Hotkey, Space, % null, On
+               Hotkey, ^Space, % null, On
+               Hotkey, !Space, % null, On
+               Hotkey, +Space, % null, On
+               Vis2.obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35% cFFB1AC r8", "c000000 s24")
+               (Vis2.obj.note_02 := new Vis2.Graphics.Subtitle()).Hide().ClickThrough() ; Create a Subtitle Object that is Hidden & ClickThrough.
+               Vis2.obj.tokenMousePressed := 1
+               Vis2.obj.selectMode := "Advanced" ; Exit selectImageQuick.
+            }
+
+            selectImageAdvanced(){
+            static null := ObjBindMethod({}, {})
+
+               if (Vis2.obj.note_02.isVisible()) {
+                  CoordMode, Mouse, Screen
+                  MouseGetPos, x_mouse, y_mouse
+                  Vis2.obj.note_02.Render("x: " Vis2.obj.Area.x1() " │ y: " Vis2.obj.Area.y1() " │ w: " Vis2.obj.Area.width() " │ h: " Vis2.obj.Area.height()
+                     , {"x":x_mouse+16, "y":y_mouse+16, "color":"Black", "padding":"0.37%"}, {"font":"Lucida Sans Typewriter", "size":"1.67%"})
+               }
+
+               if ((Vis2.obj.Area.width() < -25 || Vis2.obj.Area.height() < -25) && !Vis2.obj.note_03)
+                  Vis2.obj.note_03 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 92%, p1.35%, c: FCF9AF, r8", "c000000 s24")
+
+
+               if (Vis2.obj.tokenRenderImage == 1 && !GetKeyState("Space", "P")) {
+                  Vis2.obj.Image.Render(Vis2.obj.fileProcessedImage, 0.5)
+                  Vis2.obj.Image.ToggleVisible()
+                  Vis2.obj.tokenRenderImage := 0
+               }
+               else if (Vis2.obj.tokenShowCoordinates == 1 && !GetKeyState("Space", "P")) {
+                  Vis2.obj.note_02.ToggleVisible()
+                  Vis2.obj.tokenShowCoordinates := 0
+               }
+               else if (Vis2.obj.tokenTesseractLanguage == 1 && !GetKeyState("Space", "P")) {
+                  Vis2.obj.tokenTesseractLanguage := 0
+               }
+               else if (Vis2.obj.tokenRedraw == 1) {                                   ; Alt + LButton
+                  Vis2.obj.Area.Draw()                                                    ; Redraw
+                  if (!GetKeyState("LButton", "P"))
+                     Vis2.obj.tokenRedraw := 0, DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
+               }
+               else if (Vis2.obj.tokenMousePressed == 1) {
+                  if (GetKeyState("LButton", "P")) {
+                     if (GetKeyState("Control", "P"))                                  ; Ctrl + LButton
+                        Vis2.obj.Area.ResizeCorners()                                     ; Drag Rectangle Corners.
+                     else if (GetKeyState("Shift", "P"))                               ; Shift + LButton
+                        Vis2.obj.Area.ResizeEdges()                                       ; Resize Rectangle Edges
+                     else
+                        Vis2.obj.Area.Move()                                              ; Transform Rectangle, 2D
+                  }
+                  else if (GetKeyState("RButton", "P"))
+                     Vis2.obj.Area.Move()
+                  if (!GetKeyState("LButton", "P") && !GetKeyState("RButton", "P"))
+                     Vis2.obj.tokenMousePressed := 0
+               }
+               else if (GetKeyState("Space", "P") && GetKeyState("Control", "P"))
+                  Vis2.obj.tokenRenderImage := 1
+               else if (GetKeyState("Space", "P") && GetKeyState("Alt", "P"))
+                  Vis2.obj.tokenShowCoordinates := 1
+               else if (GetKeyState("Space", "P") && GetKeyState("Shift", "P"))
+                  Vis2.obj.tokenTesseractLanguage := 1
+               else if (GetKeyState("Space", "P"))
+                  Vis2.core.ux.process.finale(A_ThisFunc)
+               else if (GetKeyState("LButton", "P") && GetKeyState("Alt", "P")) {
+                  Vis2.core.setSystemCursor(32515) ; IDC_Cross := 32515
+                  Vis2.obj.tokenRedraw := 1
+                  Vis2.obj.Area.Origin()
+               }
+               else if ((GetKeyState("LButton", "P") || GetKeyState("RButton", "P")) && Vis2.obj.Area.isMouseInside())
+                  Vis2.obj.tokenMousePressed := 1                                      ; Check if isMouseInside only ONCE.
+               else {                                                                  ; If no mouse buttons are pressed
+                  Vis2.obj.Area.Hover()                                                   ; Collapse Stack
+                  if Vis2.obj.Area.isMouseInside() {
+                     Hotkey, LButton, % null, On
+                     Hotkey, RButton, % null, On
+                  } else {
+                     Hotkey, LButton, % null, Off
+                     Hotkey, RButton, % null, Off
+                  }
+               }
+               ; Do not return.
+            }
+
+            textPreview(){
+            static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
+
+               ; Takes a Screenshot
+               x := Vis2.obj.Area.x1()
+               y := Vis2.obj.Area.y1()
+               w := Vis2.obj.Area.width()
+               h := Vis2.obj.Area.height()
+
+               pBitmap := Gdip_BitmapFromScreen(x "|" y "|" w "|" h)
+               ;Vis2.obj.Area.ImageData := Gdip_EncodeBitmapTo64string(pBitmap, "jpg")
+               Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.fileBitmap, 92)
+               Gdip_DisposeImage(pBitmap)
+
+               if (true) {
+                  Vis2.core.preprocess(Vis2.obj.fileBitmap, Vis2.obj.fileProcessedImage)
+                  Vis2.core.convert(Vis2.obj.fileProcessedImage, Vis2.obj.fileConvert)
+                  if (Vis2.obj.Image.isVisible() == true)
+                     Vis2.obj.Image.Render(Vis2.obj.fileProcessedImage, 0.5)
+
+                  database := FileOpen(Vis2.obj.fileConvertedText, "r`n", "UTF-8")
+                  i := 0
+                  dialogue := ""
+
+                  while (i < 3) {
+                     data := database.ReadLine()
+                     data := RegExReplace(data, "^\s*(.*?)\s*$", "$1")
+                     if (data != "") {
+                        dialogue .= (i == 0) ? data : ("`n" . data)
+                        i++
+                     }
+                     if (!database || database.AtEOF)
+                        break
+                  }
+
+                  if (dialogue != "") {
+                     Vis2.obj.firstDialogue := true
+                     Vis2.obj.dialogue := dialogue
+                     Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.backgroundStyle, Vis2.obj.textStyle)  ; condensed font
+                  }
+                  else {
+                     Vis2.obj.dialogue := (Vis2.obj.firstDialogue == true) ? "ERROR: No Text Data Found" : "Searching for text..."
+                     Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.backgroundStyle, Vis2.obj.textStyle)
+                  }
+
+
+                  database.Seek(0, 0)
+                  Vis2.obj.database := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1") ; Trim whitespace
+                  Vis2.obj.database := RegExReplace(Vis2.obj.database, "(?<!\r)\n", "`r`n") ; Convert LF to CRLF
+                  database.Close()
+               }
+
+               if (Vis2.obj.unlock.1 != "")
+                  return Vis2.core.ux.process.finale(A_ThisFunc)
+               else
+                  SetTimer, % textPreview, -100
+               return
+            }
+
+            finale(key){
+            static escape := ObjBindMethod(Vis2.core.ux, "escape")
+
+               (IsObject(Vis2.obj.unlock) && key != Vis2.obj.unlock.1) ? Vis2.obj.unlock.push(key) : (Vis2.obj.unlock := [key])
+
+               if (key ~= "^Vis2.core.ux.process.selectImage")
+                  Vis2.obj.Area.ChangeColor(0x01FFFFFF)
+
+               if (Vis2.obj.unlock.MaxIndex() == 2) {
+                  if (Vis2.obj.database != "" && !Vis2.obj.ExitCode) {
+                     if (Vis2.obj.google == 1 && Vis2.obj.noCopy != true)
+                        Run % "https://www.google.com/search?&q=" . RegExReplace(Vis2.obj.database, "\s", "+")
+                     else if (Vis2.obj.noCopy != true) {
+                        clipboard := Vis2.obj.database
+                        Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: 1250, x: center, y: 83%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:24, f:Arial")
+                     }
+                     Vis2.obj.ExitCode := 1
+                  }
+                  Vis2.obj.ExitCode := (Vis2.obj.ExitCode) ? Vis2.obj.ExitCode : -1
+                  SetTimer, % escape, -35
+               }
                return
             }
          }
 
-         FileDelete, % Vis2.obj.fileBitmap
-         FileDelete, % Vis2.obj.fileProcessedImage
-         FileDelete, % Vis2.obj.fileConvertedText
+         escape(){
+         static escape := ObjBindMethod(Vis2.core.ux, "escape")
+         static null := ObjBindMethod({}, {})
 
-         ; Fixes a bug where AHK does not detect key releases if there is an admin-level window beneath.
-         if WinActive("ahk_id" Vis2.obj.Area.hWnd) {
-            KeyWait Control
-            KeyWait Alt
-            KeyWait Shift
-            KeyWait RButton
-            KeyWait LButton
-            KeyWait Space
-            KeyWait Escape
+            if (Vis2.obj.callback) {
+               if !(Vis2.obj.callbackConfirmed) {
+                  SetTimer, % escape, -35
+                  return
+               }
+            }
+
+            FileDelete, % Vis2.obj.fileBitmap
+            FileDelete, % Vis2.obj.fileProcessedImage
+            FileDelete, % Vis2.obj.fileConvertedText
+
+            ; Fixes a bug where AHK does not detect key releases if there is an admin-level window beneath.
+            if WinActive("ahk_id" Vis2.obj.Area.hWnd) {
+               KeyWait Control
+               KeyWait Alt
+               KeyWait Shift
+               KeyWait RButton
+               KeyWait LButton
+               KeyWait Space
+               KeyWait Escape
+            }
+
+            Hotkey, LButton, % null, Off
+            Hotkey, ^LButton, % null, Off
+            Hotkey, !LButton, % null, Off
+            Hotkey, +LButton, % null, Off
+            Hotkey, RButton, % null, Off
+            Hotkey, Escape, % null, Off
+            Hotkey, Space, % null, Off
+            Hotkey, ^Space, % null, Off
+            Hotkey, !Space, % null, Off
+            Hotkey, +Space, % null, Off
+
+            Vis2.obj.Area.Destroy()
+            Vis2.obj.Image.Destroy()
+            Vis2.obj.Subtitle.Destroy()
+            Vis2.obj.note_01.Hide() ; Let them time out instead of Destroy()
+            Vis2.obj.note_02.Destroy()
+            Vis2.obj.note_03.Hide()
+            Vis2.obj := "" ; Goodbye all, you were loved :c
+            return DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
          }
 
-         Hotkey, LButton, % null, Off
-         Hotkey, ^LButton, % null, Off
-         Hotkey, !LButton, % null, Off
-         Hotkey, +LButton, % null, Off
-         Hotkey, RButton, % null, Off
-         Hotkey, Escape, % null, Off
-         Hotkey, Space, % null, Off
-         Hotkey, ^Space, % null, Off
-         Hotkey, !Space, % null, Off
-         Hotkey, +Space, % null, Off
+         overlap() {
+            p1 := Vis2.obj.Area.x1()
+            p2 := Vis2.obj.Area.x2()
+            r1 := Vis2.obj.Area.y1()
+            r2 := Vis2.obj.Area.y2()
 
-         Vis2.obj.Area.Destroy()
-         Vis2.obj.Image.Destroy()
-         Vis2.obj.Subtitle.Destroy()
-         Vis2.obj.note_01.Hide() ; Let them time out instead of Destroy()
-         Vis2.obj.note_02.Destroy()
-         Vis2.obj.note_03.Hide()
-         Vis2.obj := "" ; Goodbye all, you were loved :c
-         return DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
-      }
+            q1 := Vis2.obj.Subtitle.x1()
+            q2 := Vis2.obj.Subtitle.x2()
+            s1 := Vis2.obj.Subtitle.y1()
+            s2 := Vis2.obj.Subtitle.y2()
 
-      overlap() {
-         p1 := Vis2.obj.Area.x1()
-         p2 := Vis2.obj.Area.x2()
-         r1 := Vis2.obj.Area.y1()
-         r2 := Vis2.obj.Area.y2()
+            a := (p1 < q1 && q1 < p2) || (p1 < q2 && q2 < p2) || (q1 < p1 && p1 < q2) || (q1 < p2 && p2 < q2)
+            b := (r1 < s1 && s1 < r2) || (r1 < s2 && s2 < r2) || (s1 < r1 && r1 < s2) || (s1 < r2 && r2 < s2)
 
-         q1 := Vis2.obj.Subtitle.x1()
-         q2 := Vis2.obj.Subtitle.x2()
-         s1 := Vis2.obj.Subtitle.y1()
-         s2 := Vis2.obj.Subtitle.y2()
-
-         a := (p1 < q1 && q1 < p2) || (p1 < q2 && q2 < p2) || (q1 < p1 && p1 < q2) || (q1 < p2 && p2 < q2)
-         b := (r1 < s1 && s1 < r2) || (r1 < s2 && s2 < r2) || (s1 < r1 && r1 < s2) || (s1 < r2 && r2 < s2)
-
-         ;Tooltip % a "`t" b "`n`n" p1 "`t" r1 "`n" p2 "`t" r2 "`n`n" q1 "`t" s1 "`n" q2 "`t" s2
-         return (a && b)
+            ;Tooltip % a "`t" b "`n`n" p1 "`t" r1 "`n" p2 "`t" r2 "`n`n" q1 "`t" s1 "`n" q2 "`t" s2
+            return (a && b)
+         }
       }
 
       setSystemCursor(CursorID = "", cx = 0, cy = 0 ) { ; Thanks to Serenity - https://autohotkey.com/board/topic/32608-changing-the-system-cursor/
@@ -537,31 +762,6 @@ class Vis2 {
          {
             Vis2.Graphics.Subtitle.Render("Language: " RegExReplace(A_LoopFileName, "^(.*?)\.traineddata$", "$1"))
          }
-      }
-   }
-
-
-   class Function {
-      RPath_Absolute(AbsolutPath, RelativePath, s="\") {
-
-         len := InStr(AbsolutPath, s, "", InStr(AbsolutPath, s . s) + 2) - 1   ;get server or drive string length
-         pr := SubStr(AbsolutPath, 1, len)                                     ;get server or drive name
-         AbsolutPath := SubStr(AbsolutPath, len + 1)                           ;remove server or drive from AbsolutPath
-         If InStr(AbsolutPath, s, "", 0) = StrLen(AbsolutPath)                 ;remove last \ from AbsolutPath if any
-            StringTrimRight, AbsolutPath, AbsolutPath, 1
-
-         If InStr(RelativePath, s) = 1                                         ;when first char is \ go to AbsolutPath of server or drive
-            AbsolutPath := "", RelativePath := SubStr(RelativePath, 2)        ;set AbsolutPath to nothing and remove one char from RelativePath
-         Else If InStr(RelativePath,"." s) = 1                                 ;when first two chars are .\ add to current AbsolutPath directory
-            RelativePath := SubStr(RelativePath, 3)                           ;remove two chars from RelativePath
-         Else If InStr(RelativePath,".." s) = 1 {                              ;otherwise when first 3 char are ..\
-            StringReplace, RelativePath, RelativePath, ..%s%, , UseErrorLevel     ;remove all ..\ from RelativePath
-            Loop, %ErrorLevel%                                                    ;for all ..\
-               AbsolutPath := SubStr(AbsolutPath, 1, InStr(AbsolutPath, s, "", 0) - 1)  ;remove one folder from AbsolutPath
-         } Else                                                                ;relative path does not need any substitution
-            pr := "", AbsolutPath := "", s := ""                              ;clear all variables to just return RelativePath
-
-         Return, pr . AbsolutPath . s . RelativePath                           ;concatenate server + AbsolutPath + separator + RelativePath
       }
    }
 
@@ -1975,6 +2175,170 @@ class Vis2 {
          height(){
             return this.2y - this.y
          }
+      }
+   }
+
+
+   class library {
+
+      isBinaryImageFormat(data){
+         Loop 12
+            bytes .= Chr(NumGet(data, A_Index-1, "uchar"))
+
+         ; Null bytes are not passed, so they have been omitted below
+
+         if (bytes ~= "^BM")
+            return "bmp"
+         if (bytes ~= "^(GIF87a|GIF89a)")
+            return "gif"
+         if (bytes ~= "^ÿØÿÛ")
+            return "jpg"
+         if (bytes ~= "s)^ÿØÿà..\x4A\x46\x49\x46") ;\x00\x01
+            return "jfif"
+         if (bytes ~= "^\x89\x50\x4E\x47\x0D\x0A\x1A\x0A")
+            return "png"
+         if (bytes ~= "^(\x49\x49\x2A|\x4D\x4D\x2A)") ; 49 49 2A 00, 4D 4D 00 2A
+            return "tif"
+         return
+      }
+
+      isURL(url){
+         regex .= "((https?|ftp)\:\/\/)?" ; SCHEME
+         regex .= "([a-z0-9+!*(),;?&=\$_.-]+(\:[a-z0-9+!*(),;?&=\$_.-]+)?@)?" ; User and Pass
+         regex .= "([a-z0-9-.]*)\.([a-z]{2,3})" ; Host or IP
+         regex .= "(\:[0-9]{2,5})?" ; Port
+         regex .= "(\/([a-z0-9+\$_-]\.?)+)*\/?" ; Path
+         regex .= "(\?[a-z+&\$_.-][a-z0-9;:@&%=+\/\$_.-]*)?" ; GET Query
+         regex .= "(#[a-z_.-][a-z0-9+\$_.-]*)?" ; Anchor
+
+         return (url ~= "i)" regex) ? true : false
+      }
+
+      b64Encode( ByRef buf, bufLen:="" ) {
+         bufLen := (bufLen) ? bufLen : StrLen(buf) << !!A_IsUnicode
+         DllCall( "crypt32\CryptBinaryToStringA", "ptr", &buf, "UInt", bufLen, "Uint", 1 | 0x40000000, "Ptr", 0, "UInt*", outLen )
+         VarSetCapacity( outBuf, outLen, 0 )
+         DllCall( "crypt32\CryptBinaryToStringA", "ptr", &buf, "UInt", bufLen, "Uint", 1 | 0x40000000, "Ptr", &outBuf, "UInt*", outLen )
+         return strget( &outBuf, outLen, "CP0" )
+      }
+
+      b64Decode( b64str, ByRef outBuf ) {
+         static CryptStringToBinary := "crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A")
+
+         DllCall( CryptStringToBinary, "ptr", &b64str, "UInt", 0, "Uint", 1, "Ptr", 0, "UInt*", outLen, "ptr", 0, "ptr", 0 )
+         VarSetCapacity( outBuf, outLen, 0 )
+         DllCall( CryptStringToBinary, "ptr", &b64str, "UInt", 0, "Uint", 1, "Ptr", &outBuf, "UInt*", outLen, "ptr", 0, "ptr", 0 )
+
+         return outLen
+      }
+
+      Gdip_EncodeBitmapTo64string(pBitmap, ext, Quality=75) {
+
+         if Ext not in BMP,DIB,RLE,JPG,JPEG,JPE,JFIF,GIF,TIF,TIFF,PNG
+               return -1
+         Extension := "." Ext
+
+         DllCall("gdiplus\GdipGetImageEncodersSize", "uint*", nCount, "uint*", nSize)
+         VarSetCapacity(ci, nSize)
+         DllCall("gdiplus\GdipGetImageEncoders", "uint", nCount, "uint", nSize, Ptr, &ci)
+         if !(nCount && nSize)
+            return -2
+
+
+
+            Loop, %nCount%
+            {
+                  sString := StrGet(NumGet(ci, (idx := (48+7*A_PtrSize)*(A_Index-1))+32+3*A_PtrSize), "UTF-16")
+                  if !InStr(sString, "*" Extension)
+                     continue
+
+                  pCodec := &ci+idx
+                  break
+            }
+
+
+         if !pCodec
+               return -3
+
+         if (Quality != 75)
+         {
+               Quality := (Quality < 0) ? 0 : (Quality > 100) ? 100 : Quality
+               if Extension in .JPG,.JPEG,.JPE,.JFIF
+               {
+                     DllCall("gdiplus\GdipGetEncoderParameterListSize", Ptr, pBitmap, Ptr, pCodec, "uint*", nSize)
+                     VarSetCapacity(EncoderParameters, nSize, 0)
+                     DllCall("gdiplus\GdipGetEncoderParameterList", Ptr, pBitmap, Ptr, pCodec, "uint", nSize, Ptr, &EncoderParameters)
+                     Loop, % NumGet(EncoderParameters, "UInt")
+                     {
+                        elem := (24+(A_PtrSize ? A_PtrSize : 4))*(A_Index-1) + 4 + (pad := A_PtrSize = 8 ? 4 : 0)
+                        if (NumGet(EncoderParameters, elem+16, "UInt") = 1) && (NumGet(EncoderParameters, elem+20, "UInt") = 6)
+                        {
+                              p := elem+&EncoderParameters-pad-4
+                              NumPut(Quality, NumGet(NumPut(4, NumPut(1, p+0)+20, "UInt")), "UInt")
+                              break
+                        }
+                     }
+               }
+         }
+
+         DllCall("ole32\CreateStreamOnHGlobal", "ptr",0, "int",true, "ptr*",pStream)
+         DllCall("gdiplus\GdipSaveImageToStream", "ptr",pBitmap, "ptr",pStream, "ptr",pCodec, "uint",p ? p : 0)
+
+         DllCall("ole32\GetHGlobalFromStream", "ptr",pStream, "uint*",hData)
+         pData := DllCall("GlobalLock", "ptr",hData, "uptr")
+         nSize := DllCall("GlobalSize", "uint",pData)
+
+         VarSetCapacity(Bin, nSize, 0)
+         DllCall("RtlMoveMemory", "ptr",&Bin , "ptr",pData , "uint",nSize)
+         DllCall("GlobalUnlock", "ptr",hData)
+         DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
+         DllCall("GlobalFree", "ptr",hData)
+         ObjRelease(pStream)
+
+         DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",0, "uint*",base64Length)
+         VarSetCapacity(base64, base64Length*2, 0)
+         DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",&base64, "uint*",base64Length)
+         Bin := ""
+         VarSetCapacity(Bin, 0)
+         VarSetCapacity(base64, -1)
+
+         return base64
+      }
+
+
+      Gdip_BitmapFromClientHWND(hwnd) {
+         VarSetCapacity(rc, 16)
+         DllCall("GetClientRect", "ptr", hwnd, "ptr", &rc)
+      	hbm := CreateDIBSection(NumGet(rc, 8, "int"), NumGet(rc, 12, "int"))
+         VarSetCapacity(rc, 0)
+         hdc := CreateCompatibleDC()
+         obm := SelectObject(hdc, hbm)
+      	PrintWindow(hwnd, hdc, 1)
+      	pBitmap := Gdip_CreateBitmapFromHBITMAP(hbm)
+      	SelectObject(hdc, obm), DeleteObject(hbm), DeleteDC(hdc)
+      	return pBitmap
+      }
+
+      RPath_Absolute(AbsolutPath, RelativePath, s="\") {
+
+         len := InStr(AbsolutPath, s, "", InStr(AbsolutPath, s . s) + 2) - 1   ;get server or drive string length
+         pr := SubStr(AbsolutPath, 1, len)                                     ;get server or drive name
+         AbsolutPath := SubStr(AbsolutPath, len + 1)                           ;remove server or drive from AbsolutPath
+         If InStr(AbsolutPath, s, "", 0) = StrLen(AbsolutPath)                 ;remove last \ from AbsolutPath if any
+            StringTrimRight, AbsolutPath, AbsolutPath, 1
+
+         If InStr(RelativePath, s) = 1                                         ;when first char is \ go to AbsolutPath of server or drive
+            AbsolutPath := "", RelativePath := SubStr(RelativePath, 2)        ;set AbsolutPath to nothing and remove one char from RelativePath
+         Else If InStr(RelativePath,"." s) = 1                                 ;when first two chars are .\ add to current AbsolutPath directory
+            RelativePath := SubStr(RelativePath, 3)                           ;remove two chars from RelativePath
+         Else If InStr(RelativePath,".." s) = 1 {                              ;otherwise when first 3 char are ..\
+            StringReplace, RelativePath, RelativePath, ..%s%, , UseErrorLevel     ;remove all ..\ from RelativePath
+            Loop, %ErrorLevel%                                                    ;for all ..\
+               AbsolutPath := SubStr(AbsolutPath, 1, InStr(AbsolutPath, s, "", 0) - 1)  ;remove one folder from AbsolutPath
+         } Else                                                                ;relative path does not need any substitution
+            pr := "", AbsolutPath := "", s := ""                              ;clear all variables to just return RelativePath
+
+         Return, pr . AbsolutPath . s . RelativePath                           ;concatenate server + AbsolutPath + separator + RelativePath
       }
    }
 
