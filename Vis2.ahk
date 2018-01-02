@@ -522,10 +522,13 @@ class Vis2 {
                w := Vis2.obj.Area.width()
                h := Vis2.obj.Area.height()
 
+               ; Note to self: Encode this function in the Graphics.Area Object
+               Vis2.Graphics.Startup()
                pBitmap := Gdip_BitmapFromScreen(x "|" y "|" w "|" h)
                ;Vis2.obj.Area.ImageData := Gdip_EncodeBitmapTo64string(pBitmap, "jpg")
                Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.fileBitmap, 92)
                Gdip_DisposeImage(pBitmap)
+               Vis2.Graphics.Shutdown()
 
                if (true) {
                   Vis2.core.preprocess(Vis2.obj.fileBitmap, Vis2.obj.fileProcessedImage)
