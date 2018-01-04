@@ -1,27 +1,27 @@
 ﻿; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2017-11-06
+; Recent:    2018-01-04
 
 #include <Gdip_All>
 
 
 ; OCR() - Convert pictures of text into text.
-OCR(image:="", language:="", options*){
-   return Vis2.OCR(image, language, options*)
+OCR(image:="", language:="", options:=""){
+   return Vis2.OCR(image, language, options)
 }
 
 ; ImageIdentify() - Label and identify objects in images.
-ImageIdentify(image:="", search:="", options*){
-   return Vis2.ImageIdentify(image, search, options*)
+ImageIdentify(image:="", search:="", options:=""){
+   return Vis2.ImageIdentify(image, search, options)
 }
 
 
 class Vis2 {
 
    class OCR extends Vis2.Functor {
-      Call(self, image:="", language:="", options*){
-         return (image) ? Vis2.Tesseract.OCR(image)
+      Call(self, image:="", language:="", options:=""){
+         return (image) ? Vis2.Tesseract.OCR(image, language, options)
             : Vis2.core.returnText({"function":"Vis2.Tesseract.OCR", "tooltip":"Optical Character Recognition Tool", "process":"continuous"})
       }
 
@@ -31,7 +31,7 @@ class Vis2 {
    }
 
    class ImageIdentify extends Vis2.Functor {
-      Call(self, image:="", search:="", options*){
+      Call(self, image:="", search:="", options:=""){
          return (image) ? Vis2.wrapper.ImageIdentify(image) : Vis2.core.start()
       }
    }
@@ -129,13 +129,13 @@ class Vis2 {
       static tesseract := ".\bin\tesseract\tesseract.exe"
       static tessdata  := ".\bin\tesseract\tessdata"
 
-      OCR(image){
+      OCR(image, language:="", options:=""){
          static fileBitmap := A_Temp "\Vis2_screenshot.bmp"
          static fileProcessedImage := A_Temp "\Vis2_preprocess.tif"
          static fileConvert := A_Temp "\Vis2_text"
          static fileConvertedText := A_Temp "\Vis2_text.txt"
 
-         imgFile := Vis2.core.toFile(image, fileBitmap)
+         imgFile := Vis2.core.toFile(image, fileBitmap, options)
 
          Vis2.core.preprocess(imgFile, fileProcessedImage)
          Vis2.core.convert(fileProcessedImage, fileConvert)
@@ -233,7 +233,7 @@ class Vis2 {
       }
 
       ; toFile() - Saves the image as a temporary file.
-      toFile(image, outputFile:="", size:=""){
+      toFile(image, outputFile:="", cropArray:=""){
          Vis2.Graphics.Startup()
          ; Check if image is an array of 4 numbers
          if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$") {
@@ -245,8 +245,9 @@ class Vis2 {
          else if FileExist(image) {
             Loop, Files, % image
             {
-               if (A_LoopFileExt != "bmp") {
+               if (A_LoopFileExt != "bmp" || IsObject(cropArray)) {
                   pBitmap := Gdip_CreateBitmapFromFile(A_LoopFileLongPath)
+                  (cropArray) ? Vis2.library.Gdip_CropBitmap(pBitmap, cropArray) : ""
                   Gdip_SaveBitmapToFile(pBitmap, outputFile)
                   Gdip_DisposeImage(pBitmap)
                }
@@ -261,6 +262,7 @@ class Vis2 {
 
             pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
             DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+            (cropArray) ? Vis2.library.Gdip_CropBitmap(pBitmap, cropArray) : ""
             Gdip_SaveBitmapToFile(pBitmap, outputFile, 92)
             ObjRelease(pStream)
             Gdip_DisposeImage(pBitmap)
@@ -269,16 +271,19 @@ class Vis2 {
          else if (DllCall("IsWindow", "ptr",image) || (hwnd := WinExist(image))) {
             hwnd := (DllCall("IsWindow", "ptr",image)) ? image : hwnd
             pBitmap := Vis2.library.Gdip_BitmapFromClientHWND(hwnd)
+            (cropArray) ? Vis2.library.Gdip_CropBitmap(pBitmap, cropArray) : ""
             Gdip_SaveBitmapToFile(pBitmap, outputFile)
             Gdip_DisposeImage(pBitmap)
          }
          ; Check if image is a valid GDI Bitmap
          else if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image)) {
+            (cropArray) ? Vis2.library.Gdip_CropBitmap(image, cropArray) : ""
             Gdip_SaveBitmapToFile(image, outputFile)
          }
          ; Check if image is a valid handle to a GDI Bitmap
          else if (DllCall("GetObjectType", "ptr",image) == 7) {
             pBitmap := Gdip_CreateBitmapFromHBITMAP(image)
+            (cropArray) ? Vis2.library.Gdip_CropBitmap(pBitmap, cropArray) : ""
             Gdip_SaveBitmapToFile(pBitmap, outputFile)
             Gdip_DisposeImage(pBitmap)
          }
@@ -297,6 +302,7 @@ class Vis2 {
             DllCall("GlobalUnlock", "ptr",hData)
             DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",1, "uptr*",pStream)
             DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+            (cropArray) ? Vis2.library.Gdip_CropBitmap(pBitmap, cropArray) : ""
             Gdip_SaveBitmapToFile(pBitmap, outputFile, 92)
             DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
             DllCall("GlobalFree", "ptr",hData)
@@ -2308,7 +2314,6 @@ class Vis2 {
          return base64
       }
 
-
       Gdip_BitmapFromClientHWND(hwnd) {
          VarSetCapacity(rc, 16)
          DllCall("GetClientRect", "ptr", hwnd, "ptr", &rc)
@@ -2320,6 +2325,13 @@ class Vis2 {
       	pBitmap := Gdip_CreateBitmapFromHBITMAP(hbm)
       	SelectObject(hdc, obm), DeleteObject(hbm), DeleteDC(hdc)
       	return pBitmap
+      }
+
+      Gdip_CropBitmap(ByRef pBitmap, c){
+         w := Gdip_GetImageWidth(pBitmap), h := Gdip_GetImageHeight(pBitmap)
+         pBitmap2 := Gdip_CloneBitmapArea(pBitmap, c.1, c.2, (c.1 + c.3 > w) ? w - c.1 : c.3 , (c.2 + c.4 > h) ? h - c.2 : c.4)
+         Gdip_DisposeImage(pBitmap)
+         pBitmap := pBitmap2
       }
 
       RPath_Absolute(AbsolutPath, RelativePath, s="\") {
