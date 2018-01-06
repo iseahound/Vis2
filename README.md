@@ -10,7 +10,7 @@
     MsgBox % OCR("https://i.stack.imgur.com/sFPWe.png")
 ```
     
-3. Press ```Enter``` to exit. Visit the image link to confirm the OCR is working correctly. 
+3. Run the new AHK script. You should see a MsgBox with OCR Text. Press ```Enter``` to exit. Visit the image link to confirm the OCR is working correctly. 
 
 ## Documentation
 ### Input Data Types
