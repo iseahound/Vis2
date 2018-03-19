@@ -18,10 +18,10 @@ Go to https://github.com/tesseract-ocr/tessdata_fast and place your desired lang
 
 Fast is used in the interactive GUI implementation, while best will be used for othe cases. See below for what I mean. 
 
-```
-    #c:: OCR(, "fra")      ; French (uses fast trained data)
+
+    #c:: OCR(, "fra")      ; French (requires fast fra.traineddata)
     #x:: OCR(, "eng+fra")  ; English and French
-```
+
 
     MsgBox % OCR("https://i.imgur.com/T7WMxMs.png", "rus+eng")  ; Requires best eng.traineddata and rus.traineddata. 
 
