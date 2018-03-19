@@ -1,7 +1,7 @@
-﻿; Script:    Vis2.ahk
+; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2018-01-04
+; Recent:    2018-03-18
 
 #include <Gdip_All>
 
@@ -19,10 +19,10 @@ ImageIdentify(image:="", search:="", options:=""){
 
 class Vis2 {
 
-   class OCR extends Vis2.Functor {
-      Call(self, image:="", language:="", options:=""){
-         return (image) ? Vis2.Tesseract.OCR(image, language, options)
-            : Vis2.core.returnText({"function":"Vis2.Tesseract.OCR", "tooltip":"Optical Character Recognition Tool", "process":"continuous"})
+   class OCR extends Vis2.functor {
+      call(self, image:="", language:="", options:=""){
+         return (image) ? Vis2.provider.Tesseract.OCR(image, language, options)
+            : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract), "language":language, "tooltip":"Optical Character Recognition Tool"})
       }
 
       google(){
@@ -30,8 +30,8 @@ class Vis2 {
       }
    }
 
-   class ImageIdentify extends Vis2.Functor {
-      Call(self, image:="", search:="", options:=""){
+   class ImageIdentify extends Vis2.functor {
+      call(self, image:="", search:="", options:=""){
          return (image) ? Vis2.wrapper.ImageIdentify(image) : Vis2.core.start()
       }
    }
@@ -39,119 +39,6 @@ class Vis2 {
    ; ---------------------------------
    ; LIST OF COMPUTER VISION PROVIDERS
    ; ---------------------------------
-
-   class GoogleCloudVision {
-
-      ; Cloud Platform Console Help - Setting up API keys
-      ; Step 1: https://support.google.com/cloud/answer/6158862?hl=en
-      ; Step 2: https://cloud.google.com/vision/docs/before-you-begin
-
-      ; You must enter billing information to use the Cloud Vision API.
-      ; https://cloud.google.com/vision/pricing
-      ; First 1000 LABEL_DETECTION per month is free.
-
-      ; Please enter your api_key for Google Cloud Vision API.
-      static api_key := "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-      ; FOR SAFETY REASONS, DO NOT PASTE YOUR API KEY HERE.
-      ; Instead, keep your api_key in a separate file, "Vis2_API.txt"
-
-      getCredentials(){
-         if (Vis2.GoogleCloudVision.api_key ~= "^X{39}$") {
-            if FileExist("Vis2_API.txt") {
-               file := FileOpen("Vis2_API.txt", "r")
-               keys := file.Read()
-               api_key := ((___ := RegExReplace(keys, "s)^.*?GoogleCloudVision(?:\s*)=(?:\s*)([A-Za-z0-9\-]+).*$", "$1")) != keys) ? ___ : ""
-               file.close()
-
-               if (api_key)
-                  return api_key
-            }
-            InputBox, api_key, Vis2.GoogleCloudVision.ImageIdentify, Enter your api_key for GoogleCloudVision.
-            FileAppend, GoogleCloudVision=%api_key%, Vis2_API.txt
-            return api_key
-         }
-         else
-            return Vis2.GoogleCloudVision.api_key
-      }
-
-      ; https://cloud.google.com/vision/docs/supported-files
-      ; Supported Image Formats
-      ; JPEG, PNG8, PNG24, GIF, Animated GIF (first frame only)
-      ; BMP, WEBP, RAW, ICO
-      ; Maximum Image Size - 4 MB
-      ; Maximum Size per Request - 8 MB
-      ; Compression to 640 x 480 - LABEL_DETECTION
-
-      ImageIdentify(image){
-
-         img64 := Vis2.core.toBase64(image)
-
-         req := {}
-         req.requests := {}
-         req.requests[1] := {"image":{}, "features":{}}
-         req.requests[1].image.content := img64
-         req.requests[1].features[1] := {"type":"LABEL_DETECTION"}
-         body := JSON.Dump(req)
-
-         VarSetCapacity(file, 0)
-         VarSetCapacity(img64, 0)
-         VarSetCapacity(req, 0)
-
-         whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-         whr.open("POST", "https://vision.googleapis.com/v1/images:annotate?key=" Vis2.GoogleCloudVision.getCredentials())
-         whr.send(body)
-
-         MsgBox % whr.ResponseText
-
-         reply := JSON.Load(whr.ResponseText)
-         i := 1
-         while (i <= reply.responses[1].labelAnnotations.length()) {
-            sentence  .= (i == 1) ? "" : ", "
-            sentence2 .= (i == 1) ? "" : ", "
-            sentence  .= reply.responses[1].labelAnnotations[i].description
-            sentence2 .= reply.responses[1].labelAnnotations[i].description " (" Format("{:i}",  100*reply.responses[1].labelAnnotations[i].score) "%)"
-            i++
-         }
-         VarSetCapacity(body, 0)
-         VarSetCapacity(whr, 0)
-         VarSetCapacity(reply, 0)
-
-
-         Vis2.Graphics.Subtitle.Render(sentence2)
-
-      }
-   }
-
-
-   class Tesseract {
-
-      static leptonica := ".\bin\leptonica_util\leptonica_util.exe"
-      static tesseract := ".\bin\tesseract\tesseract.exe"
-      static tessdata  := ".\bin\tesseract\tessdata"
-
-      OCR(image, language:="", options:=""){
-         static fileBitmap := A_Temp "\Vis2_screenshot.bmp"
-         static fileProcessedImage := A_Temp "\Vis2_preprocess.tif"
-         static fileConvert := A_Temp "\Vis2_text"
-         static fileConvertedText := A_Temp "\Vis2_text.txt"
-
-         imgFile := Vis2.core.toFile(image, fileBitmap, options)
-
-         Vis2.core.preprocess(imgFile, fileProcessedImage)
-         Vis2.core.convert(fileProcessedImage, fileConvert)
-         database := FileOpen(fileConvertedText, "r`n", "UTF-8")
-         text := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1")
-         text := RegExReplace(text, "(?<!\r)\n", "`r`n")
-         database.Close()
-
-         FileDelete, % fileBitmap
-         FileDelete, % fileProcessedImage
-         FileDelete, % fileConvertedText
-
-         return text
-      }
-   }
-
 
    class core {
 
@@ -167,18 +54,18 @@ class Vis2 {
          ; Check if image is an array of 4 numbers
          if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$") {
             pBitmap := Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
-            base64 := Vis2.library.Gdip_EncodeBitmapTo64string(pBitmap, "png")
+            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, "png")
             Gdip_DisposeImage(pBitmap)
          }
          ; Check if image points to a valid file
          else if FileExist(image) {
             file := FileOpen(image, "r")
             file.RawRead(data, file.length)
-            base64 := Vis2.library.b64Encode(data, file.length)
+            base64 := Vis2.stdlib.b64Encode(data, file.length)
             file.Close()
          }
          ; Check if image points to a valid URL
-         else if Vis2.library.isURL(image) {
+         else if Vis2.stdlib.isURL(image) {
             static req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
             req.Open("GET",image)
             req.Send()
@@ -205,24 +92,24 @@ class Vis2 {
          ; Check if image matches a window title OR is a valid handle to a window
          else if (DllCall("IsWindow", "ptr",image) || (hwnd := WinExist(image))) {
             hwnd := (DllCall("IsWindow", "ptr",image)) ? image : hwnd
-            pBitmap := Vis2.library.Gdip_BitmapFromClientHWND(hwnd)
+            pBitmap := Vis2.stdlib.Gdip_BitmapFromClientHWND(hwnd)
             Gdip_SaveBitmapToFile(pBitmap, "ttt.png")
-            base64 := Vis2.library.Gdip_EncodeBitmapTo64string(pBitmap, "png")
+            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, "png")
             Gdip_DisposeImage(pBitmap)
          }
          ; Check if image is a valid GDI Bitmap
          else if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image)) {
-            base64 := Vis2.library.Gdip_EncodeBitmapTo64string(image, "png")
+            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(image, "png")
          }
          ; Check if image is a valid handle to a GDI Bitmap
          else if (DllCall("GetObjectType", "ptr",image) == 7) {
             pBitmap := Gdip_CreateBitmapFromHBITMAP(image)
-            base64 := Vis2.library.Gdip_EncodeBitmapTo64string(pBitmap, "png")
+            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, "png")
             Gdip_DisposeImage(pBitmap)
          }
          ; Check if image is raw binary data
-         else if Vis2.library.isBinaryImageFormat(image) {
-            base64 := Vis2.library.b64Encode(image)
+         else if Vis2.stdlib.isBinaryImageFormat(image) {
+            base64 := Vis2.stdlib.b64Encode(image)
          }
          ; Check if image is a base64 string
          else if (image ~= "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$") {
@@ -247,7 +134,7 @@ class Vis2 {
             {
                if (A_LoopFileExt != "bmp" || IsObject(cropArray)) {
                   pBitmap := Gdip_CreateBitmapFromFile(A_LoopFileLongPath)
-                  (cropArray) ? Vis2.library.Gdip_CropBitmap(pBitmap, cropArray) : ""
+                  (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
                   Gdip_SaveBitmapToFile(pBitmap, outputFile)
                   Gdip_DisposeImage(pBitmap)
                }
@@ -255,14 +142,14 @@ class Vis2 {
             }
          }
          ; Check if image points to a valid URL
-         else if Vis2.library.isURL(image) {
+         else if Vis2.stdlib.isURL(image) {
             static req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
             req.Open("GET",image)
             req.Send()
 
             pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
             DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
-            (cropArray) ? Vis2.library.Gdip_CropBitmap(pBitmap, cropArray) : ""
+            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
             Gdip_SaveBitmapToFile(pBitmap, outputFile, 92)
             ObjRelease(pStream)
             Gdip_DisposeImage(pBitmap)
@@ -270,39 +157,39 @@ class Vis2 {
          ; Check if image matches a window title OR is a valid handle to a window
          else if (DllCall("IsWindow", "ptr",image) || (hwnd := WinExist(image))) {
             hwnd := (DllCall("IsWindow", "ptr",image)) ? image : hwnd
-            pBitmap := Vis2.library.Gdip_BitmapFromClientHWND(hwnd)
-            (cropArray) ? Vis2.library.Gdip_CropBitmap(pBitmap, cropArray) : ""
+            pBitmap := Vis2.stdlib.Gdip_BitmapFromClientHWND(hwnd)
+            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
             Gdip_SaveBitmapToFile(pBitmap, outputFile)
             Gdip_DisposeImage(pBitmap)
          }
          ; Check if image is a valid GDI Bitmap
          else if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image)) {
-            (cropArray) ? Vis2.library.Gdip_CropBitmap(image, cropArray) : ""
+            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(image, cropArray) : ""
             Gdip_SaveBitmapToFile(image, outputFile)
          }
          ; Check if image is a valid handle to a GDI Bitmap
          else if (DllCall("GetObjectType", "ptr",image) == 7) {
             pBitmap := Gdip_CreateBitmapFromHBITMAP(image)
-            (cropArray) ? Vis2.library.Gdip_CropBitmap(pBitmap, cropArray) : ""
+            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
             Gdip_SaveBitmapToFile(pBitmap, outputFile)
             Gdip_DisposeImage(pBitmap)
          }
          ; Check if image is raw binary data
-         else if Vis2.library.isBinaryImageFormat(image) {
+         else if Vis2.stdlib.isBinaryImageFormat(image) {
             ; Not working at the moment.
             ; Would require the length of the binary data to be included.
             ; Then use the code below.
          }
          ; Check if image is a base64 string
          else if (image ~= "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$") {
-            nSize := Vis2.library.b64Decode(image, bin)
+            nSize := Vis2.stdlib.b64Decode(image, bin)
             hData := DllCall("GlobalAlloc", "uint",0x2, "ptr",nSize)
             pData := DllCall("GlobalLock", "ptr",hData)
             DllCall("RtlMoveMemory", "ptr",pData, "ptr",&bin, "ptr",nSize)
             DllCall("GlobalUnlock", "ptr",hData)
             DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",1, "uptr*",pStream)
             DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
-            (cropArray) ? Vis2.library.Gdip_CropBitmap(pBitmap, cropArray) : ""
+            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
             Gdip_SaveBitmapToFile(pBitmap, outputFile, 92)
             DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
             DllCall("GlobalFree", "ptr",hData)
@@ -312,7 +199,6 @@ class Vis2 {
          Vis2.Graphics.Shutdown()
          return outputFile
       }
-
 
       ; returnText() is a wrapper function of Vis2.core.ux.start()
       ; Unlike Vis2.core.ux.start(), this function will return a string of text.
@@ -329,7 +215,6 @@ class Vis2 {
          }
       }
 
-
       class ux {
 
          ; start() is the function that launches the user interface.
@@ -340,7 +225,7 @@ class Vis2 {
             if (Vis2.obj != "")
                return "Already in use."
 
-            Vis2.core.setSystemCursor(32515) ; IDC_Cross := 32515
+            Vis2.stdlib.setSystemCursor(32515) ; IDC_Cross := 32515
             Hotkey, LButton, % null, On
             Hotkey, ^LButton, % null, On
             Hotkey, !LButton, % null, On
@@ -351,9 +236,6 @@ class Vis2 {
             Vis2.obj := IsObject(obj) ? obj : {}
             Vis2.obj.selectMode := "Quick"
             Vis2.obj.fileBitmap := A_Temp "\Vis2_screenshot.bmp"
-            Vis2.obj.fileProcessedImage := A_Temp "\Vis2_preprocess.tif"
-            Vis2.obj.fileConvert := A_Temp "\Vis2_text"
-            Vis2.obj.fileConvertedText := A_Temp "\Vis2_text.txt"
             Vis2.obj.Area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
             Vis2.obj.Image := new Vis2.Graphics.Image("Vis2_Kitsune")
             Vis2.obj.Subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
@@ -500,7 +382,7 @@ class Vis2 {
                else if (GetKeyState("Space", "P"))
                   Vis2.core.ux.process.finale(A_ThisFunc)
                else if (GetKeyState("LButton", "P") && GetKeyState("Alt", "P")) {
-                  Vis2.core.setSystemCursor(32515) ; IDC_Cross := 32515
+                  Vis2.stdlib.setSystemCursor(32515) ; IDC_Cross := 32515
                   Vis2.obj.tokenRedraw := 1
                   Vis2.obj.Area.Origin()
                }
@@ -537,24 +419,24 @@ class Vis2 {
                Vis2.Graphics.Shutdown()
 
                if (true) {
-                  Vis2.core.preprocess(Vis2.obj.fileBitmap, Vis2.obj.fileProcessedImage)
-                  Vis2.core.convert(Vis2.obj.fileProcessedImage, Vis2.obj.fileConvert)
+                  Vis2.obj.provider.preprocess()
+                  Vis2.obj.provider.convert_fast(,, Vis2.obj.language)
+                  Vis2.obj.database := Vis2.obj.provider.read()
+
                   if (Vis2.obj.Image.isVisible() == true)
-                     Vis2.obj.Image.Render(Vis2.obj.fileProcessedImage, 0.5)
+                     Vis2.obj.Image.Render(Vis2.obj.provider.fileProcessedImage, 0.5)
 
-                  database := FileOpen(Vis2.obj.fileConvertedText, "r`n", "UTF-8")
-                  i := 0
                   dialogue := ""
-
-                  while (i < 3) {
-                     data := database.ReadLine()
-                     data := RegExReplace(data, "^\s*(.*?)\s*$", "$1")
+                  i := 1
+                  Loop, Parse, % Vis2.obj.database, `r`n
+                  {
+                     if (i > 3)
+                        break
+                     data := RegExReplace(A_LoopField, "^\s*(.*?)\s*$", "$1")
                      if (data != "") {
-                        dialogue .= (i == 0) ? data : ("`n" . data)
+                        dialogue .= (dialogue) ? ("`n" . data) : data
                         i++
                      }
-                     if (!database || database.AtEOF)
-                        break
                   }
 
                   if (dialogue != "") {
@@ -566,12 +448,6 @@ class Vis2 {
                      Vis2.obj.dialogue := (Vis2.obj.firstDialogue == true) ? "ERROR: No Text Data Found" : "Searching for text..."
                      Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.backgroundStyle, Vis2.obj.textStyle)
                   }
-
-
-                  database.Seek(0, 0)
-                  Vis2.obj.database := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1") ; Trim whitespace
-                  Vis2.obj.database := RegExReplace(Vis2.obj.database, "(?<!\r)\n", "`r`n") ; Convert LF to CRLF
-                  database.Close()
                }
 
                if (Vis2.obj.unlock.1 != "")
@@ -617,9 +493,8 @@ class Vis2 {
                }
             }
 
-            FileDelete, % Vis2.obj.fileBitmap
-            FileDelete, % Vis2.obj.fileProcessedImage
-            FileDelete, % Vis2.obj.fileConvertedText
+            ; Delete temporary image and text files.
+            Vis2.obj.provider.cleanup()
 
             ; Fixes a bug where AHK does not detect key releases if there is an admin-level window beneath.
             if WinActive("ahk_id" Vis2.obj.Area.hWnd) {
@@ -672,19 +547,6 @@ class Vis2 {
          }
       }
 
-      setSystemCursor(CursorID = "", cx = 0, cy = 0 ) { ; Thanks to Serenity - https://autohotkey.com/board/topic/32608-changing-the-system-cursor/
-         static SystemCursors := "32512,32513,32514,32515,32516,32640,32641,32642,32643,32644,32645,32646,32648,32649,32650,32651"
-
-         Loop, Parse, SystemCursors, `,
-         {
-               Type := "SystemCursor"
-               CursorHandle := DllCall( "LoadCursor", "uInt",0, "Int",CursorID )
-               %Type%%A_Index% := DllCall( "CopyImage", "uInt",CursorHandle, "uInt",0x2, "Int",cx, "Int",cy, "uInt",0 )
-               CursorHandle := DllCall( "CopyImage", "uInt",%Type%%A_Index%, "uInt",0x2, "Int",0, "Int",0, "Int",0 )
-               DllCall( "SetSystemCursor", "uInt",CursorHandle, "Int",A_Loopfield)
-         }
-      }
-
       ; Takes a Screenshot of the Area. (including the Area Object itself, which lends the final image a grey tint.)
       ; To avoid the grey tint, call this.Destroy() before this to remove the window.
       ; If you do not input a fileName parameter, and do not set a fileName value (this.fileName)
@@ -697,85 +559,12 @@ class Vis2 {
          return true
       }
 
-
-      MD5(string, isFile := 0){
-         static BCRYPT_MD5_ALGORITHM := "MD5"
-         static BCRYPT_OBJECT_LENGTH := "ObjectLength"
-         static BCRYPT_HASH_LENGTH   := "HashDigestLength"
-
-         if !(hBCRYPT := DllCall("LoadLibrary", "str", "bcrypt.dll", "ptr"))
-            throw Exception("Failed to load bcrypt.dll", -1)
-
-         if (NT_STATUS := DllCall("bcrypt\BCryptOpenAlgorithmProvider", "ptr*", hAlgo, "ptr", &BCRYPT_MD5_ALGORITHM, "ptr", 0, "uint", 0) != 0)
-            throw Exception("BCryptOpenAlgorithmProvider: " NT_STATUS, -1)
-
-         if (NT_STATUS := DllCall("bcrypt\BCryptGetProperty", "ptr", hAlgo, "ptr", &BCRYPT_OBJECT_LENGTH, "uint*", cbHashObject, "uint", 4, "uint*", cbResult, "uint", 0) != 0)
-            throw Exception("BCryptGetProperty: " NT_STATUS, -1)
-
-         if (NT_STATUS := DllCall("bcrypt\BCryptGetProperty", "ptr", hAlgo, "ptr", &BCRYPT_HASH_LENGTH, "uint*", cbHash, "uint", 4, "uint*", cbResult, "uint", 0) != 0)
-            throw Exception("BCryptGetProperty: " NT_STATUS, -1)
-
-         VarSetCapacity(pbHashObject, cbHashObject, 0)
-         if (NT_STATUS := DllCall("bcrypt\BCryptCreateHash", "ptr", hAlgo, "ptr*", hHash, "ptr", &pbHashObject, "uint", cbHashObject, "ptr", 0, "uint", 0, "uint", 0) != 0)
-            throw Exception("BCryptCreateHash: " NT_STATUS, -1)
-
-         if (isFile) {
-            if !(f := FileOpen(string, "r", "UTF-8"))
-               throw Exception("Failed to open file: " filename, -1)
-            f.Seek(0)
-            while (dataread := f.RawRead(data, 262144))
-               if (NT_STATUS := DllCall("bcrypt\BCryptHashData", "ptr", hHash, "ptr", &data, "uint", dataread, "uint", 0) != 0)
-                  throw Exception("BCryptHashData: " NT_STATUS, -1)
-            f.Close()
-         }
-         else {
-            VarSetCapacity(pbInput, StrPut(string, "UTF-8"), 0) && cbInput := StrPut(string, &pbInput, "UTF-8") - 1
-            if (NT_STATUS := DllCall("bcrypt\BCryptHashData", "ptr", hHash, "ptr", &pbInput, "uint", cbInput, "uint", 0) != 0)
-                  throw Exception("BCryptHashData: " NT_STATUS, -1)
-         }
-
-         VarSetCapacity(pbHash, cbHash, 0)
-         if (NT_STATUS := DllCall("bcrypt\BCryptFinishHash", "ptr", hHash, "ptr", &pbHash, "uint", cbHash, "uint", 0) != 0)
-               throw Exception("BCryptFinishHash: " NT_STATUS, -1)
-
-         loop % cbHash
-               hash .= Format("{:02x}", NumGet(pbHash, A_Index - 1, "uchar"))
-
-         DllCall("bcrypt\BCryptDestroyHash", "ptr", hHash)
-         DllCall("bcrypt\BCryptCloseAlgorithmProvider", "ptr", hAlgo, "uint", 0)
-         DllCall("FreeLibrary", "ptr", hBCRYPT)
-
-         return hash
-      }
-
       isIdenticalScreenshot(){
-         return Vis2.obj.Area.Hash == Vis2.obj.Area.Hash := Vis2.core.MD5(Vis2.obj.fileBitmap, 1)
-      }
-
-
-      preprocess(f_in, f_out){
-         static ocrPreProcessing := 1
-         static negateArg := 2
-         static performScaleArg := 1
-         static scaleFactor := 3.5
-
-         RunWait, % Vis2.Tesseract.leptonica " " f_in " " f_out " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0", , Hide
-      }
-
-      convert(f_in, f_out){
-         RunWait, % Vis2.Tesseract.tesseract " " f_in " " f_out, , Hide
-      }
-
-      tesseractLanguage(){
-         Loop, Files, % Vis2.tessdata "\*.traineddata"
-         {
-            Vis2.Graphics.Subtitle.Render("Language: " RegExReplace(A_LoopFileName, "^(.*?)\.traineddata$", "$1"))
-         }
+         return Vis2.obj.Area.Hash == Vis2.obj.Area.Hash := Vis2.stdlib.MD5(Vis2.obj.fileBitmap, 1)
       }
    }
 
-
-   class Functor {
+   class functor {
 
       __Call(method, ByRef arg := "", args*)
       {
@@ -788,7 +577,6 @@ class Vis2 {
             return (new this).Call(arg, args*)
       }
    }
-
 
    class Graphics {
 
@@ -810,7 +598,6 @@ class Vis2 {
              return (ErrorLevel := 2) & 0
          return A_TickCount "n" SubStr(StrGet(suuid), 1, 8), DllCall("rpcrt4.dll\RpcStringFree", "uint*", suuid)
       }
-
 
       class Area{
 
@@ -1234,7 +1021,6 @@ class Vis2 {
          }
       }
 
-
       Class CustomFont{
          /*
          CustomFont v2.00 (2016-2-24) by tmplinshi
@@ -1314,7 +1100,6 @@ class Vis2 {
          }
       }
 
-
       class Image{
 
          __New(name := "") {
@@ -1376,7 +1161,6 @@ class Vis2 {
             Critical Off
          }
       }
-
 
       class Subtitle{
 
@@ -2187,8 +1971,178 @@ class Vis2 {
       }
    }
 
+   class provider {
 
-   class library {
+      class GoogleCloudVision {
+
+         ; Cloud Platform Console Help - Setting up API keys
+         ; Step 1: https://support.google.com/cloud/answer/6158862?hl=en
+         ; Step 2: https://cloud.google.com/vision/docs/before-you-begin
+
+         ; You must enter billing information to use the Cloud Vision API.
+         ; https://cloud.google.com/vision/pricing
+         ; First 1000 LABEL_DETECTION per month is free.
+
+         ; Please enter your api_key for Google Cloud Vision API.
+         static api_key := "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+         ; FOR SAFETY REASONS, DO NOT PASTE YOUR API KEY HERE.
+         ; Instead, keep your api_key in a separate file, "Vis2_API.txt"
+
+         getCredentials(){
+            if (Vis2.GoogleCloudVision.api_key ~= "^X{39}$") {
+               if FileExist("Vis2_API.txt") {
+                  file := FileOpen("Vis2_API.txt", "r")
+                  keys := file.Read()
+                  api_key := ((___ := RegExReplace(keys, "s)^.*?GoogleCloudVision(?:\s*)=(?:\s*)([A-Za-z0-9\-]+).*$", "$1")) != keys) ? ___ : ""
+                  file.close()
+
+                  if (api_key)
+                     return api_key
+               }
+               InputBox, api_key, Vis2.GoogleCloudVision.ImageIdentify, Enter your api_key for GoogleCloudVision.
+               FileAppend, GoogleCloudVision=%api_key%, Vis2_API.txt
+               return api_key
+            }
+            else
+               return Vis2.GoogleCloudVision.api_key
+         }
+
+         ; https://cloud.google.com/vision/docs/supported-files
+         ; Supported Image Formats
+         ; JPEG, PNG8, PNG24, GIF, Animated GIF (first frame only)
+         ; BMP, WEBP, RAW, ICO
+         ; Maximum Image Size - 4 MB
+         ; Maximum Size per Request - 8 MB
+         ; Compression to 640 x 480 - LABEL_DETECTION
+
+         ImageIdentify(image){
+
+            img64 := Vis2.core.toBase64(image)
+
+            req := {}
+            req.requests := {}
+            req.requests[1] := {"image":{}, "features":{}}
+            req.requests[1].image.content := img64
+            req.requests[1].features[1] := {"type":"LABEL_DETECTION"}
+            body := JSON.Dump(req)
+
+            VarSetCapacity(file, 0)
+            VarSetCapacity(img64, 0)
+            VarSetCapacity(req, 0)
+
+            whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+            whr.open("POST", "https://vision.googleapis.com/v1/images:annotate?key=" Vis2.GoogleCloudVision.getCredentials())
+            whr.send(body)
+
+            MsgBox % whr.ResponseText
+
+            reply := JSON.Load(whr.ResponseText)
+            i := 1
+            while (i <= reply.responses[1].labelAnnotations.length()) {
+               sentence  .= (i == 1) ? "" : ", "
+               sentence2 .= (i == 1) ? "" : ", "
+               sentence  .= reply.responses[1].labelAnnotations[i].description
+               sentence2 .= reply.responses[1].labelAnnotations[i].description " (" Format("{:i}",  100*reply.responses[1].labelAnnotations[i].score) "%)"
+               i++
+            }
+            VarSetCapacity(body, 0)
+            VarSetCapacity(whr, 0)
+            VarSetCapacity(reply, 0)
+
+
+            Vis2.Graphics.Subtitle.Render(sentence2)
+
+         }
+      }
+
+      class Tesseract extends Vis2.functor {
+
+         static leptonica := A_ScriptDir "\bin\leptonica_util\leptonica_util.exe"
+         static tesseract := A_ScriptDir "\bin\tesseract\tesseract.exe"
+         static tessdata_best := A_ScriptDir "\bin\tesseract\tessdata_best"
+         static tessdata_fast := A_ScriptDir "\bin\tesseract\tessdata_fast"
+
+         static fileBitmap := A_Temp "\Vis2_screenshot.bmp"
+         static fileProcessedImage := A_Temp "\Vis2_preprocess.tif"
+         static fileConvert := A_Temp "\Vis2_text"
+         static fileConvertedText := A_Temp "\Vis2_text.txt"
+
+         OCR(image, language:="", options:=""){
+            imgFile := Vis2.core.toFile(image, this.fileBitmap, options)
+            this.preprocess(imgFile, this.fileProcessedImage)
+            this.convert_best(this.fileProcessedImage, this.fileConvert, language)
+            return this.read(), this.cleanup()
+         }
+
+         cleanup(){
+            FileDelete, % this.fileBitmap
+            FileDelete, % this.fileProcessedImage
+            FileDelete, % this.fileConvertedText
+         }
+
+         convert_best(in:="", out:="", language:="", fast:=0){
+            _cmd .= this.tesseract " --tessdata-dir"
+            _cmd .= (fast)     ? " " this.tessdata_fast : " " this.tessdata_best
+            _cmd .= (in)       ? " " in                 : " " this.fileProcessedImage
+            _cmd .= (out)      ? " " out                : " " this.fileConvert
+            _cmd .= (language) ? " -l " language        : ""
+            RunWait, % _cmd,, Hide
+         }
+
+         convert_fast(in:="", out:="", language:=""){
+            return this.convert_best(in, out, language, 1)
+         }
+
+         preprocess(in:="", out:=""){
+            static ocrPreProcessing := 1
+            static negateArg := 2
+            static performScaleArg := 1
+            static scaleFactor := 3.5
+
+            _cmd .= this.leptonica
+            _cmd .= (in)       ? " " in                 : " " this.fileBitmap
+            _cmd .= (out)      ? " " out                : " " this.fileProcessedImage
+            _cmd .= " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
+            RunWait, % _cmd,, Hide
+         }
+
+         read(in:="", lines:=""){
+            in := (in) ? in : this.fileConvertedText
+            database := FileOpen(in, "r`n", "UTF-8")
+
+            if (lines == "") {
+               text := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1")
+               text := RegExReplace(text, "(?<!\r)\n", "`r`n")
+            } else {
+               while (lines > 0) {
+                  data := database.ReadLine()
+                  data := RegExReplace(data, "^\s*(.*?)\s*$", "$1")
+                  if (data != "") {
+                     text .= (text) ? ("`n" . data) : data
+                     lines--
+                  }
+                  if (!database || database.AtEOF)
+                     break
+               }
+            }
+            database.Close()
+            return text
+         }
+
+         readlines(lines){
+            return this.read(, lines)
+         }
+
+         tesseractLanguage(){
+            Loop, Files, % Vis2.Tesseract.tessdata "\*.traineddata"
+            {
+               Vis2.Graphics.Subtitle.Render("Language: " RegExReplace(A_LoopFileName, "^(.*?)\.traineddata$", "$1"))
+            }
+         }
+      }
+   }
+
+   class stdlib {
 
       isBinaryImageFormat(data){
          Loop 12
@@ -2334,6 +2288,56 @@ class Vis2 {
          pBitmap := pBitmap2
       }
 
+      MD5(string, isFile := 0){
+         static BCRYPT_MD5_ALGORITHM := "MD5"
+         static BCRYPT_OBJECT_LENGTH := "ObjectLength"
+         static BCRYPT_HASH_LENGTH   := "HashDigestLength"
+
+         if !(hBCRYPT := DllCall("LoadLibrary", "str", "bcrypt.dll", "ptr"))
+            throw Exception("Failed to load bcrypt.dll", -1)
+
+         if (NT_STATUS := DllCall("bcrypt\BCryptOpenAlgorithmProvider", "ptr*", hAlgo, "ptr", &BCRYPT_MD5_ALGORITHM, "ptr", 0, "uint", 0) != 0)
+            throw Exception("BCryptOpenAlgorithmProvider: " NT_STATUS, -1)
+
+         if (NT_STATUS := DllCall("bcrypt\BCryptGetProperty", "ptr", hAlgo, "ptr", &BCRYPT_OBJECT_LENGTH, "uint*", cbHashObject, "uint", 4, "uint*", cbResult, "uint", 0) != 0)
+            throw Exception("BCryptGetProperty: " NT_STATUS, -1)
+
+         if (NT_STATUS := DllCall("bcrypt\BCryptGetProperty", "ptr", hAlgo, "ptr", &BCRYPT_HASH_LENGTH, "uint*", cbHash, "uint", 4, "uint*", cbResult, "uint", 0) != 0)
+            throw Exception("BCryptGetProperty: " NT_STATUS, -1)
+
+         VarSetCapacity(pbHashObject, cbHashObject, 0)
+         if (NT_STATUS := DllCall("bcrypt\BCryptCreateHash", "ptr", hAlgo, "ptr*", hHash, "ptr", &pbHashObject, "uint", cbHashObject, "ptr", 0, "uint", 0, "uint", 0) != 0)
+            throw Exception("BCryptCreateHash: " NT_STATUS, -1)
+
+         if (isFile) {
+            if !(f := FileOpen(string, "r", "UTF-8"))
+               throw Exception("Failed to open file: " filename, -1)
+            f.Seek(0)
+            while (dataread := f.RawRead(data, 262144))
+               if (NT_STATUS := DllCall("bcrypt\BCryptHashData", "ptr", hHash, "ptr", &data, "uint", dataread, "uint", 0) != 0)
+                  throw Exception("BCryptHashData: " NT_STATUS, -1)
+            f.Close()
+         }
+         else {
+            VarSetCapacity(pbInput, StrPut(string, "UTF-8"), 0) && cbInput := StrPut(string, &pbInput, "UTF-8") - 1
+            if (NT_STATUS := DllCall("bcrypt\BCryptHashData", "ptr", hHash, "ptr", &pbInput, "uint", cbInput, "uint", 0) != 0)
+                  throw Exception("BCryptHashData: " NT_STATUS, -1)
+         }
+
+         VarSetCapacity(pbHash, cbHash, 0)
+         if (NT_STATUS := DllCall("bcrypt\BCryptFinishHash", "ptr", hHash, "ptr", &pbHash, "uint", cbHash, "uint", 0) != 0)
+               throw Exception("BCryptFinishHash: " NT_STATUS, -1)
+
+         loop % cbHash
+               hash .= Format("{:02x}", NumGet(pbHash, A_Index - 1, "uchar"))
+
+         DllCall("bcrypt\BCryptDestroyHash", "ptr", hHash)
+         DllCall("bcrypt\BCryptCloseAlgorithmProvider", "ptr", hAlgo, "uint", 0)
+         DllCall("FreeLibrary", "ptr", hBCRYPT)
+
+         return hash
+      }
+
       RPath_Absolute(AbsolutPath, RelativePath, s="\") {
 
          len := InStr(AbsolutPath, s, "", InStr(AbsolutPath, s . s) + 2) - 1   ;get server or drive string length
@@ -2355,8 +2359,20 @@ class Vis2 {
 
          Return, pr . AbsolutPath . s . RelativePath                           ;concatenate server + AbsolutPath + separator + RelativePath
       }
-   }
 
+      setSystemCursor(CursorID = "", cx = 0, cy = 0 ) { ; Thanks to Serenity - https://autohotkey.com/board/topic/32608-changing-the-system-cursor/
+         static SystemCursors := "32512,32513,32514,32515,32516,32640,32641,32642,32643,32644,32645,32646,32648,32649,32650,32651"
+
+         Loop, Parse, SystemCursors, `,
+         {
+               Type := "SystemCursor"
+               CursorHandle := DllCall( "LoadCursor", "uInt",0, "Int",CursorID )
+               %Type%%A_Index% := DllCall( "CopyImage", "uInt",CursorHandle, "uInt",0x2, "Int",cx, "Int",cy, "uInt",0 )
+               CursorHandle := DllCall( "CopyImage", "uInt",%Type%%A_Index%, "uInt",0x2, "Int",0, "Int",0, "Int",0 )
+               DllCall( "SetSystemCursor", "uInt",CursorHandle, "Int",A_Loopfield)
+         }
+      }
+   }
 
    class Text {
 
