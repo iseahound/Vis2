@@ -63,18 +63,15 @@ Note that only the client area is extracted, so the window border of Notepad is 
 If you know the window ID, or hwnd, you may use it as well. Note that this is equivalent to ```OCR("ahk_id" hWnd)```. 
 
 #### ```OCR( base64 )``` - Base64 encoded image string
-Pass a base64 string.
-
 #### ```OCR( GDI Bitmap )``` - Pointer to a memory bitmap
 #### ```OCR( HBITMAP )``` - Handle to a memory bitmap
-#### ```OCR( Binary )``` - Raw File Binary
-If you have loaded a file to memory, you may pass the data. Not recommended, pass the file name instead. 
 
-Note that the following snippet will also return text
+A sample script where you have to search for the text 'Vis2' on screen. 
 
     if ((text := OCR()) = "Vis2")
         MsgBox You have successfully used OCR!
     else
         MsgBox You have found [ %text% ] `, try finding 'Vis2' instead. 
 
+## Need more help?
 #### Be sure to visit https://autohotkey.com/boards/viewtopic.php?f=6&t=36047 for help and support. 
