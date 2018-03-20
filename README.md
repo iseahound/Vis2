@@ -32,14 +32,14 @@ Example: Pressing ```Ctrl``` + ```Win``` + ```c``` will allow the user to manual
 
     #^c:: OCR()
 
-#### ```OCR([x, y, w, h])``` - Array
+#### ```OCR([x, y, w, h])``` - Screen Coordinates as an Array
 To input a set of known coordinates, try inputting an array of 4 values, [x, y, w, h]
 
     text := OCR([0, 0, 430, 150])
 
 This will search the screen from point (0, 0) extending in a rectangle of width 430 pixels and height 150 px. 
 
-#### ```OCR( file )``` - File Name
+#### ```OCR( file )``` - Path to File
 File name can be an absolute or relative path
 
     text := OCR("myImage.jpg")
@@ -49,9 +49,6 @@ File name can be an absolute or relative path
 The image will be downloaded and OCRed. You may experience a delay depending on the image size. 
 
     text := OCR("https://www.blog.google/static/blog/images/google-200x200.7714256da16f.png")
-    
-#### ```OCR( base64 )``` - Base64 encoded image string
-Pass a base64 string.
 
 #### ```OCR( WinTitle )``` - Window Title
 You may enter a native AHK window type such as "ahk_class notepad", "ahk_exe", "ahk_id", "ahk_pid", or the exact name of the window. [Reference](https://autohotkey.com/docs/misc/WinTitle.htm)
@@ -64,6 +61,9 @@ Note that only the client area is extracted, so the window border of Notepad is 
 
 #### ```OCR( hWnd )``` - Unique Window ID
 If you know the window ID, or hwnd, you may use it as well. Note that this is equivalent to ```OCR("ahk_id" hWnd)```. 
+
+#### ```OCR( base64 )``` - Base64 encoded image string
+Pass a base64 string.
 
 #### ```OCR( GDI Bitmap )``` - Pointer to a memory bitmap
 #### ```OCR( HBITMAP )``` - Handle to a memory bitmap
