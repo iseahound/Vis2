@@ -1,5 +1,5 @@
-# Vis2 - OCR(), ImageIdentify()
-##### Automation using Computer Vision. 
+# Vis2 - OCR()
+##### Automation using Computer Vision. Convert images on screen, image files, or an image URL to text. 
 
 ### Quick Start
 1. [Download Vis2.](https://github.com/iseahound/Vis2/archive/master.zip)
