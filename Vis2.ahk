@@ -1,7 +1,7 @@
-; Script:    Vis2.ahk
+﻿; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2018-03-18
+; Recent:    2018-03-19
 
 #include <Gdip_All>
 
@@ -22,11 +22,12 @@ class Vis2 {
    class OCR extends Vis2.functor {
       call(self, image:="", language:="", options:=""){
          return (image) ? Vis2.provider.Tesseract.OCR(image, language, options)
-            : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract), "language":language, "tooltip":"Optical Character Recognition Tool"})
+            : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract(language)), "tooltip":"Optical Character Recognition Tool", "textPreview":true})
       }
 
       google(){
-         return Vis2.core.ux.start({"google":1, "tooltip":"Any selected text will be Googled."})
+         return (image) ? Vis2.provider.Tesseract.OCR(image, language, options).google()
+            : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract(language)), "tooltip":"Any selected text will be Googled.", "textPreview":true, "noCopy":true}).google()
       }
    }
 
@@ -36,169 +37,7 @@ class Vis2 {
       }
    }
 
-   ; ---------------------------------
-   ; LIST OF COMPUTER VISION PROVIDERS
-   ; ---------------------------------
-
    class core {
-
-      ; toBase64() - Converts the input to a Base 64 string.
-      ; Types of input accepted
-      ; Objects: Rectangle Array (Screenshot)
-      ; Strings: File, URL, Window Title (ahk_class...) OR hwnd (hex)
-      ; Numbers: GDI Bitmap, GDI HBitmap
-      ; Rawfile: Binary, base64
-      toBase64(image){
-         Vis2.Graphics.Startup()
-
-         ; Check if image is an array of 4 numbers
-         if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$") {
-            pBitmap := Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
-            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, "png")
-            Gdip_DisposeImage(pBitmap)
-         }
-         ; Check if image points to a valid file
-         else if FileExist(image) {
-            file := FileOpen(image, "r")
-            file.RawRead(data, file.length)
-            base64 := Vis2.stdlib.b64Encode(data, file.length)
-            file.Close()
-         }
-         ; Check if image points to a valid URL
-         else if Vis2.stdlib.isURL(image) {
-            static req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-            req.Open("GET",image)
-            req.Send()
-
-            pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
-            DllCall("ole32\GetHGlobalFromStream", "ptr",pStream, "uint*",hData)
-            pData := DllCall("GlobalLock", "ptr",hData, "uptr")
-            nSize := DllCall("GlobalSize", "uint",pData)
-
-            VarSetCapacity(Bin, nSize, 0)
-            DllCall("RtlMoveMemory", "ptr",&Bin , "ptr",pData , "uint",nSize)
-            DllCall("GlobalUnlock", "ptr",hData)
-            DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
-            DllCall("GlobalFree", "ptr",hData)
-            ObjRelease(pStream)
-
-            DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",0, "uint*",base64Length)
-            VarSetCapacity(base64, base64Length*2, 0)
-            DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",&base64, "uint*",base64Length)
-            Bin := ""
-            VarSetCapacity(Bin, 0)
-            VarSetCapacity(base64, -1)
-         }
-         ; Check if image matches a window title OR is a valid handle to a window
-         else if (DllCall("IsWindow", "ptr",image) || (hwnd := WinExist(image))) {
-            hwnd := (DllCall("IsWindow", "ptr",image)) ? image : hwnd
-            pBitmap := Vis2.stdlib.Gdip_BitmapFromClientHWND(hwnd)
-            Gdip_SaveBitmapToFile(pBitmap, "ttt.png")
-            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, "png")
-            Gdip_DisposeImage(pBitmap)
-         }
-         ; Check if image is a valid GDI Bitmap
-         else if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image)) {
-            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(image, "png")
-         }
-         ; Check if image is a valid handle to a GDI Bitmap
-         else if (DllCall("GetObjectType", "ptr",image) == 7) {
-            pBitmap := Gdip_CreateBitmapFromHBITMAP(image)
-            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, "png")
-            Gdip_DisposeImage(pBitmap)
-         }
-         ; Check if image is raw binary data
-         else if Vis2.stdlib.isBinaryImageFormat(image) {
-            base64 := Vis2.stdlib.b64Encode(image)
-         }
-         ; Check if image is a base64 string
-         else if (image ~= "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$") {
-            base64 := image
-         }
-         Vis2.Graphics.Shutdown()
-         return base64
-      }
-
-      ; toFile() - Saves the image as a temporary file.
-      toFile(image, outputFile:="", cropArray:=""){
-         Vis2.Graphics.Startup()
-         ; Check if image is an array of 4 numbers
-         if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$") {
-            pBitmap := Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
-            Gdip_SaveBitmapToFile(pBitmap, outputFile)
-            Gdip_DisposeImage(pBitmap)
-         }
-         ; Check if image points to a valid file
-         else if FileExist(image) {
-            Loop, Files, % image
-            {
-               if (A_LoopFileExt != "bmp" || IsObject(cropArray)) {
-                  pBitmap := Gdip_CreateBitmapFromFile(A_LoopFileLongPath)
-                  (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
-                  Gdip_SaveBitmapToFile(pBitmap, outputFile)
-                  Gdip_DisposeImage(pBitmap)
-               }
-               else outputFile := A_LoopFileLongPath
-            }
-         }
-         ; Check if image points to a valid URL
-         else if Vis2.stdlib.isURL(image) {
-            static req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-            req.Open("GET",image)
-            req.Send()
-
-            pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
-            DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
-            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
-            Gdip_SaveBitmapToFile(pBitmap, outputFile, 92)
-            ObjRelease(pStream)
-            Gdip_DisposeImage(pBitmap)
-         }
-         ; Check if image matches a window title OR is a valid handle to a window
-         else if (DllCall("IsWindow", "ptr",image) || (hwnd := WinExist(image))) {
-            hwnd := (DllCall("IsWindow", "ptr",image)) ? image : hwnd
-            pBitmap := Vis2.stdlib.Gdip_BitmapFromClientHWND(hwnd)
-            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
-            Gdip_SaveBitmapToFile(pBitmap, outputFile)
-            Gdip_DisposeImage(pBitmap)
-         }
-         ; Check if image is a valid GDI Bitmap
-         else if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image)) {
-            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(image, cropArray) : ""
-            Gdip_SaveBitmapToFile(image, outputFile)
-         }
-         ; Check if image is a valid handle to a GDI Bitmap
-         else if (DllCall("GetObjectType", "ptr",image) == 7) {
-            pBitmap := Gdip_CreateBitmapFromHBITMAP(image)
-            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
-            Gdip_SaveBitmapToFile(pBitmap, outputFile)
-            Gdip_DisposeImage(pBitmap)
-         }
-         ; Check if image is raw binary data
-         else if Vis2.stdlib.isBinaryImageFormat(image) {
-            ; Not working at the moment.
-            ; Would require the length of the binary data to be included.
-            ; Then use the code below.
-         }
-         ; Check if image is a base64 string
-         else if (image ~= "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$") {
-            nSize := Vis2.stdlib.b64Decode(image, bin)
-            hData := DllCall("GlobalAlloc", "uint",0x2, "ptr",nSize)
-            pData := DllCall("GlobalLock", "ptr",hData)
-            DllCall("RtlMoveMemory", "ptr",pData, "ptr",&bin, "ptr",nSize)
-            DllCall("GlobalUnlock", "ptr",hData)
-            DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",1, "uptr*",pStream)
-            DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
-            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
-            Gdip_SaveBitmapToFile(pBitmap, outputFile, 92)
-            DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
-            DllCall("GlobalFree", "ptr",hData)
-            ObjRelease(pStream)
-            Gdip_DisposeImage(pBitmap)
-         }
-         Vis2.Graphics.Shutdown()
-         return outputFile
-      }
 
       ; returnText() is a wrapper function of Vis2.core.ux.start()
       ; Unlike Vis2.core.ux.start(), this function will return a string of text.
@@ -218,7 +57,7 @@ class Vis2 {
       class ux {
 
          ; start() is the function that launches the user interface.
-         ; This can be called directly without calling returnText().
+         ; This can be called directly without calling Vis2.core.returnText().
          start(obj := ""){
          static null := ObjBindMethod({}, {})
 
@@ -235,13 +74,17 @@ class Vis2 {
 
             Vis2.obj := IsObject(obj) ? obj : {}
             Vis2.obj.selectMode := "Quick"
-            Vis2.obj.fileBitmap := A_Temp "\Vis2_screenshot.bmp"
             Vis2.obj.Area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
             Vis2.obj.Image := new Vis2.Graphics.Image("Vis2_Kitsune")
             Vis2.obj.Subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
-            Vis2.obj.backgroundStyle := {"x":"center", "y":"83%", "padding":"1.35%", "color":"dd000000", "radius":8}
-            Vis2.obj.textStyle :=       {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"ffffff"}
-            Vis2.obj.Subtitle.Render(Vis2.obj.tooltip, Vis2.obj.backgroundStyle, Vis2.obj.textStyle)
+
+            Vis2.obj.style1_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"dd000000", "radius":8}
+            Vis2.obj.style1_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"}
+            Vis2.obj.style2_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"c088EAB6", "radius":8}
+            Vis2.obj.style2_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"Black"}
+            Vis2.obj.style4_back := {"time":2500, "x":"center", "y":"83%", "padding":"1.35%", "color":"Black", "radius":8}
+            Vis2.obj.style4_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"}
+            Vis2.obj.Subtitle.Render(Vis2.obj.tooltip, Vis2.obj.style1_back, Vis2.obj.style1_text)
 
             return Vis2.core.ux.waitForUserInput()
          }
@@ -260,8 +103,10 @@ class Vis2 {
             }
             else if (GetKeyState("LButton", "P")) {
                SetTimer, % selectImage, -10
-               ;if (Vis2.obj.process = "continuous")
+               if (Vis2.obj.textPreview)
                   SetTimer, % textPreview, -25
+               else
+                  Vis2.obj.Subtitle.Render("Waiting for user selection...", Vis2.obj.style2_back, Vis2.obj.style2_text)
             }
             else {
                Vis2.obj.Area.Origin()
@@ -269,7 +114,6 @@ class Vis2 {
             }
             return
          }
-
 
          class process {
 
@@ -286,10 +130,16 @@ class Vis2 {
                if (Vis2.obj.selectMode == "Advanced")
                   Vis2.core.ux.process.selectImageAdvanced()
 
-               if (Vis2.core.ux.overlap() && Vis2.obj.dialogue != Vis2.obj.dialogue_past) {
-                  Vis2.obj.dialogue_past := Vis2.obj.dialogue
-                  Vis2.obj.backgroundStyle.y := (Vis2.obj.backgroundStyle.y == "83%") ? "2.07%" : "83%"
-                  Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.backgroundStyle, Vis2.obj.textStyle)
+               if (Vis2.core.ux.overlap()) {
+                  if (Vis2.obj.textPreview && Vis2.obj.dialogue != Vis2.obj.dialogue_past) {
+                     Vis2.obj.dialogue_past := Vis2.obj.dialogue
+                     Vis2.obj.style1_back.y := (Vis2.obj.style1_back.y == "83%") ? "2.07%" : "83%"
+                     Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style1_back, Vis2.obj.style1_text)
+                  }
+                  else if !(Vis2.obj.textPreview) {
+                     Vis2.obj.style2_back.y := (Vis2.obj.style2_back.y == "83%") ? "2.07%" : "83%"
+                     Vis2.obj.Subtitle.Render("Still patiently waiting for user selection...", Vis2.obj.style2_back, Vis2.obj.style2_text)
+                  }
                }
 
                if !(Vis2.obj.unlock.1 ~= "^Vis2.core.ux.process.selectImage" || Vis2.obj.unlock.2 ~= "^Vis2.core.ux.process.selectImage")
@@ -404,23 +254,20 @@ class Vis2 {
             textPreview(){
             static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
 
-               ; Takes a Screenshot
-               x := Vis2.obj.Area.x1()
-               y := Vis2.obj.Area.y1()
-               w := Vis2.obj.Area.width()
-               h := Vis2.obj.Area.height()
+               if (!Vis2.obj.ExitCode) {
+                  ; Takes a Screenshot of the Area. To avoid the grey tint, call Area.Hide() but this will cause flickering.
+                  Vis2.Graphics.Startup()
+                  pBitmap := Gdip_BitmapFromScreen(Vis2.obj.Area.ScreenshotRectangle())
+                  if (Vis2.obj.provider.file)
+                     Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.provider.file, Vis2.obj.provider.jpegQuality)
+                  else if (Vis2.obj.provider.base64)
+                     Vis2.obj.provider.base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, Vis2.obj.provider.base64)
+                  Gdip_DisposeImage(pBitmap)
+                  Vis2.Graphics.Shutdown()
 
-               ; Note to self: Encode this function in the Graphics.Area Object
-               Vis2.Graphics.Startup()
-               pBitmap := Gdip_BitmapFromScreen(x "|" y "|" w "|" h)
-               ;Vis2.obj.Area.ImageData := Gdip_EncodeBitmapTo64string(pBitmap, "jpg")
-               Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.fileBitmap, 92)
-               Gdip_DisposeImage(pBitmap)
-               Vis2.Graphics.Shutdown()
-
-               if (true) {
+                  ; Process screenshot. 
                   Vis2.obj.provider.preprocess()
-                  Vis2.obj.provider.convert_fast(,, Vis2.obj.language)
+                  Vis2.obj.provider.convert_fast()
                   Vis2.obj.database := Vis2.obj.provider.read()
 
                   if (Vis2.obj.Image.isVisible() == true)
@@ -430,24 +277,23 @@ class Vis2 {
                   i := 1
                   Loop, Parse, % Vis2.obj.database, `r`n
                   {
-                     if (i > 3)
-                        break
                      data := RegExReplace(A_LoopField, "^\s*(.*?)\s*$", "$1")
                      if (data != "") {
                         dialogue .= (dialogue) ? ("`n" . data) : data
                         i++
                      }
-                  }
+                  } until (i > 3)
 
                   if (dialogue != "") {
                      Vis2.obj.firstDialogue := true
                      Vis2.obj.dialogue := dialogue
-                     Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.backgroundStyle, Vis2.obj.textStyle)  ; condensed font
                   }
                   else {
                      Vis2.obj.dialogue := (Vis2.obj.firstDialogue == true) ? "ERROR: No Text Data Found" : "Searching for text..."
-                     Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.backgroundStyle, Vis2.obj.textStyle)
                   }
+
+                  if (Vis2.obj.textPreview)
+                     Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style1_back, Vis2.obj.style1_text)
                }
 
                if (Vis2.obj.unlock.1 != "")
@@ -462,16 +308,19 @@ class Vis2 {
 
                (IsObject(Vis2.obj.unlock) && key != Vis2.obj.unlock.1) ? Vis2.obj.unlock.push(key) : (Vis2.obj.unlock := [key])
 
-               if (key ~= "^Vis2.core.ux.process.selectImage")
-                  Vis2.obj.Area.ChangeColor(0x01FFFFFF)
+               if (key ~= "^Vis2.core.ux.process.selectImage") {
+                  Vis2.obj.Area.ChangeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up. 
+                  if (!Vis.obj.textPreview)
+                     Vis2.core.ux.process.textPreview()
+               }
 
                if (Vis2.obj.unlock.MaxIndex() == 2) {
                   if (Vis2.obj.database != "" && !Vis2.obj.ExitCode) {
-                     if (Vis2.obj.google == 1 && Vis2.obj.noCopy != true)
-                        Run % "https://www.google.com/search?&q=" . RegExReplace(Vis2.obj.database, "\s", "+")
-                     else if (Vis2.obj.noCopy != true) {
+                     if (Vis2.obj.noCopy == "") {
                         clipboard := Vis2.obj.database
-                        Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: 1250, x: center, y: 83%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:24, f:Arial")
+                        Vis2.obj.Subtitle.Hide()
+                        Vis2.Graphics.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style4_back, Vis2.obj.style4_text)
+                        Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: 2500, x: center, y: 75%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:24, f:Arial")
                      }
                      Vis2.obj.ExitCode := 1
                   }
@@ -495,6 +344,13 @@ class Vis2 {
 
             ; Delete temporary image and text files.
             Vis2.obj.provider.cleanup()
+            Vis2.obj.Area.Destroy()
+            Vis2.obj.Image.Destroy()
+            Vis2.obj.Subtitle.Destroy()
+            Vis2.obj.note_01.Hide() ; Let them time out instead of Destroy()
+            Vis2.obj.note_02.Destroy()
+            Vis2.obj.note_03.Hide()
+            Vis2.obj := "" ; Goodbye all, you were loved :c
 
             ; Fixes a bug where AHK does not detect key releases if there is an admin-level window beneath.
             if WinActive("ahk_id" Vis2.obj.Area.hWnd) {
@@ -518,13 +374,6 @@ class Vis2 {
             Hotkey, !Space, % null, Off
             Hotkey, +Space, % null, Off
 
-            Vis2.obj.Area.Destroy()
-            Vis2.obj.Image.Destroy()
-            Vis2.obj.Subtitle.Destroy()
-            Vis2.obj.note_01.Hide() ; Let them time out instead of Destroy()
-            Vis2.obj.note_02.Destroy()
-            Vis2.obj.note_03.Hide()
-            Vis2.obj := "" ; Goodbye all, you were loved :c
             return DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
          }
 
@@ -545,22 +394,6 @@ class Vis2 {
             ;Tooltip % a "`t" b "`n`n" p1 "`t" r1 "`n" p2 "`t" r2 "`n`n" q1 "`t" s1 "`n" q2 "`t" s2
             return (a && b)
          }
-      }
-
-      ; Takes a Screenshot of the Area. (including the Area Object itself, which lends the final image a grey tint.)
-      ; To avoid the grey tint, call this.Destroy() before this to remove the window.
-      ; If you do not input a fileName parameter, and do not set a fileName value (this.fileName)
-      ; then it will return a pBitmap object.
-      screenshot(fileName := "", quality := 92){
-         pBitmap := Gdip_BitmapFromScreen(Vis2.obj.Area.ScreenshotRectangle())
-         ;Vis2.obj.Area.ImageData := Gdip_EncodeBitmapTo64string(pBitmap, "jpg")
-         Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.fileBitmap, quality)
-         Gdip_DisposeImage(pBitmap)
-         return true
-      }
-
-      isIdenticalScreenshot(){
-         return Vis2.obj.Area.Hash == Vis2.obj.Area.Hash := Vis2.stdlib.MD5(Vis2.obj.fileBitmap, 1)
       }
    }
 
@@ -2017,7 +1850,7 @@ class Vis2 {
 
          ImageIdentify(image){
 
-            img64 := Vis2.core.toBase64(image)
+            img64 := Vis2.stdlib.toBase64(image)
 
             req := {}
             req.requests := {}
@@ -2062,35 +1895,41 @@ class Vis2 {
          static tessdata_best := A_ScriptDir "\bin\tesseract\tessdata_best"
          static tessdata_fast := A_ScriptDir "\bin\tesseract\tessdata_fast"
 
-         static fileBitmap := A_Temp "\Vis2_screenshot.bmp"
+         static file := A_Temp "\Vis2_screenshot.bmp"
          static fileProcessedImage := A_Temp "\Vis2_preprocess.tif"
          static fileConvert := A_Temp "\Vis2_text"
          static fileConvertedText := A_Temp "\Vis2_text.txt"
 
+         ; OCR() can be called directly, Vis2.functor will create a temporary instance so new is not needed. 
          OCR(image, language:="", options:=""){
-            imgFile := Vis2.core.toFile(image, this.fileBitmap, options)
+            this.language := language
+            imgFile := Vis2.stdlib.toFile(image, this.file, options)
             this.preprocess(imgFile, this.fileProcessedImage)
-            this.convert_best(this.fileProcessedImage, this.fileConvert, language)
+            this.convert_best(this.fileProcessedImage, this.fileConvert)
             return this.read(), this.cleanup()
          }
 
+         __New(language:="", options:=""){
+            this.language := language
+         }
+
          cleanup(){
-            FileDelete, % this.fileBitmap
+            FileDelete, % this.file
             FileDelete, % this.fileProcessedImage
             FileDelete, % this.fileConvertedText
          }
 
-         convert_best(in:="", out:="", language:="", fast:=0){
+         convert_best(in:="", out:="", fast:=0){
             _cmd .= this.tesseract " --tessdata-dir"
             _cmd .= (fast)     ? " " this.tessdata_fast : " " this.tessdata_best
             _cmd .= (in)       ? " " in                 : " " this.fileProcessedImage
             _cmd .= (out)      ? " " out                : " " this.fileConvert
-            _cmd .= (language) ? " -l " language        : ""
+            _cmd .= (this.language) ? " -l " this.language : ""
             RunWait, % _cmd,, Hide
          }
 
-         convert_fast(in:="", out:="", language:=""){
-            return this.convert_best(in, out, language, 1)
+         convert_fast(in:="", out:=""){
+            return this.convert_best(in, out, 1)
          }
 
          preprocess(in:="", out:=""){
@@ -2100,7 +1939,7 @@ class Vis2 {
             static scaleFactor := 3.5
 
             _cmd .= this.leptonica
-            _cmd .= (in)       ? " " in                 : " " this.fileBitmap
+            _cmd .= (in)       ? " " in                 : " " this.file
             _cmd .= (out)      ? " " out                : " " this.fileProcessedImage
             _cmd .= " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
             RunWait, % _cmd,, Hide
@@ -2288,56 +2127,6 @@ class Vis2 {
          pBitmap := pBitmap2
       }
 
-      MD5(string, isFile := 0){
-         static BCRYPT_MD5_ALGORITHM := "MD5"
-         static BCRYPT_OBJECT_LENGTH := "ObjectLength"
-         static BCRYPT_HASH_LENGTH   := "HashDigestLength"
-
-         if !(hBCRYPT := DllCall("LoadLibrary", "str", "bcrypt.dll", "ptr"))
-            throw Exception("Failed to load bcrypt.dll", -1)
-
-         if (NT_STATUS := DllCall("bcrypt\BCryptOpenAlgorithmProvider", "ptr*", hAlgo, "ptr", &BCRYPT_MD5_ALGORITHM, "ptr", 0, "uint", 0) != 0)
-            throw Exception("BCryptOpenAlgorithmProvider: " NT_STATUS, -1)
-
-         if (NT_STATUS := DllCall("bcrypt\BCryptGetProperty", "ptr", hAlgo, "ptr", &BCRYPT_OBJECT_LENGTH, "uint*", cbHashObject, "uint", 4, "uint*", cbResult, "uint", 0) != 0)
-            throw Exception("BCryptGetProperty: " NT_STATUS, -1)
-
-         if (NT_STATUS := DllCall("bcrypt\BCryptGetProperty", "ptr", hAlgo, "ptr", &BCRYPT_HASH_LENGTH, "uint*", cbHash, "uint", 4, "uint*", cbResult, "uint", 0) != 0)
-            throw Exception("BCryptGetProperty: " NT_STATUS, -1)
-
-         VarSetCapacity(pbHashObject, cbHashObject, 0)
-         if (NT_STATUS := DllCall("bcrypt\BCryptCreateHash", "ptr", hAlgo, "ptr*", hHash, "ptr", &pbHashObject, "uint", cbHashObject, "ptr", 0, "uint", 0, "uint", 0) != 0)
-            throw Exception("BCryptCreateHash: " NT_STATUS, -1)
-
-         if (isFile) {
-            if !(f := FileOpen(string, "r", "UTF-8"))
-               throw Exception("Failed to open file: " filename, -1)
-            f.Seek(0)
-            while (dataread := f.RawRead(data, 262144))
-               if (NT_STATUS := DllCall("bcrypt\BCryptHashData", "ptr", hHash, "ptr", &data, "uint", dataread, "uint", 0) != 0)
-                  throw Exception("BCryptHashData: " NT_STATUS, -1)
-            f.Close()
-         }
-         else {
-            VarSetCapacity(pbInput, StrPut(string, "UTF-8"), 0) && cbInput := StrPut(string, &pbInput, "UTF-8") - 1
-            if (NT_STATUS := DllCall("bcrypt\BCryptHashData", "ptr", hHash, "ptr", &pbInput, "uint", cbInput, "uint", 0) != 0)
-                  throw Exception("BCryptHashData: " NT_STATUS, -1)
-         }
-
-         VarSetCapacity(pbHash, cbHash, 0)
-         if (NT_STATUS := DllCall("bcrypt\BCryptFinishHash", "ptr", hHash, "ptr", &pbHash, "uint", cbHash, "uint", 0) != 0)
-               throw Exception("BCryptFinishHash: " NT_STATUS, -1)
-
-         loop % cbHash
-               hash .= Format("{:02x}", NumGet(pbHash, A_Index - 1, "uchar"))
-
-         DllCall("bcrypt\BCryptDestroyHash", "ptr", hHash)
-         DllCall("bcrypt\BCryptCloseAlgorithmProvider", "ptr", hAlgo, "uint", 0)
-         DllCall("FreeLibrary", "ptr", hBCRYPT)
-
-         return hash
-      }
-
       RPath_Absolute(AbsolutPath, RelativePath, s="\") {
 
          len := InStr(AbsolutPath, s, "", InStr(AbsolutPath, s . s) + 2) - 1   ;get server or drive string length
@@ -2371,6 +2160,164 @@ class Vis2 {
                CursorHandle := DllCall( "CopyImage", "uInt",%Type%%A_Index%, "uInt",0x2, "Int",0, "Int",0, "Int",0 )
                DllCall( "SetSystemCursor", "uInt",CursorHandle, "Int",A_Loopfield)
          }
+      }
+
+      ; toBase64() - Converts the input to a Base 64 string.
+      ; Types of input accepted
+      ; Objects: Rectangle Array (Screenshot)
+      ; Strings: File, URL, Window Title (ahk_class...) OR hwnd (hex)
+      ; Numbers: GDI Bitmap, GDI HBitmap
+      ; Rawfile: Binary, base64
+      toBase64(image){
+         Vis2.Graphics.Startup()
+
+         ; Check if image is an array of 4 numbers
+         if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$") {
+            pBitmap := Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
+            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, "png")
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image points to a valid file
+         else if FileExist(image) {
+            file := FileOpen(image, "r")
+            file.RawRead(data, file.length)
+            base64 := Vis2.stdlib.b64Encode(data, file.length)
+            file.Close()
+         }
+         ; Check if image points to a valid URL
+         else if Vis2.stdlib.isURL(image) {
+            static req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+            req.Open("GET",image)
+            req.Send()
+
+            pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
+            DllCall("ole32\GetHGlobalFromStream", "ptr",pStream, "uint*",hData)
+            pData := DllCall("GlobalLock", "ptr",hData, "uptr")
+            nSize := DllCall("GlobalSize", "uint",pData)
+
+            VarSetCapacity(Bin, nSize, 0)
+            DllCall("RtlMoveMemory", "ptr",&Bin , "ptr",pData , "uint",nSize)
+            DllCall("GlobalUnlock", "ptr",hData)
+            DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
+            DllCall("GlobalFree", "ptr",hData)
+            ObjRelease(pStream)
+
+            DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",0, "uint*",base64Length)
+            VarSetCapacity(base64, base64Length*2, 0)
+            DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",&base64, "uint*",base64Length)
+            Bin := ""
+            VarSetCapacity(Bin, 0)
+            VarSetCapacity(base64, -1)
+         }
+         ; Check if image matches a window title OR is a valid handle to a window
+         else if (DllCall("IsWindow", "ptr",image) || (hwnd := WinExist(image))) {
+            hwnd := (DllCall("IsWindow", "ptr",image)) ? image : hwnd
+            pBitmap := Vis2.stdlib.Gdip_BitmapFromClientHWND(hwnd)
+            Gdip_SaveBitmapToFile(pBitmap, "ttt.png")
+            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, "png")
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image is a valid GDI Bitmap
+         else if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image)) {
+            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(image, "png")
+         }
+         ; Check if image is a valid handle to a GDI Bitmap
+         else if (DllCall("GetObjectType", "ptr",image) == 7) {
+            pBitmap := Gdip_CreateBitmapFromHBITMAP(image)
+            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, "png")
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image is raw binary data
+         else if Vis2.stdlib.isBinaryImageFormat(image) {
+            base64 := Vis2.stdlib.b64Encode(image)
+         }
+         ; Check if image is a base64 string
+         else if (image ~= "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$") {
+            base64 := image
+         }
+         Vis2.Graphics.Shutdown()
+         return base64
+      }
+
+      ; toFile() - Saves the image as a temporary file.
+      toFile(image, outputFile:="", cropArray:=""){
+         Vis2.Graphics.Startup()
+         ; Check if image is an array of 4 numbers
+         if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$") {
+            pBitmap := Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
+            Gdip_SaveBitmapToFile(pBitmap, outputFile)
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image points to a valid file
+         else if FileExist(image) {
+            Loop, Files, % image
+            {
+               if (A_LoopFileExt != "bmp" || IsObject(cropArray)) {
+                  pBitmap := Gdip_CreateBitmapFromFile(A_LoopFileLongPath)
+                  (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
+                  Gdip_SaveBitmapToFile(pBitmap, outputFile)
+                  Gdip_DisposeImage(pBitmap)
+               }
+               else outputFile := A_LoopFileLongPath
+            }
+         }
+         ; Check if image points to a valid URL
+         else if Vis2.stdlib.isURL(image) {
+            static req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+            req.Open("GET",image)
+            req.Send()
+
+            pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
+            DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
+            Gdip_SaveBitmapToFile(pBitmap, outputFile, 92)
+            ObjRelease(pStream)
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image matches a window title OR is a valid handle to a window
+         else if (DllCall("IsWindow", "ptr",image) || (hwnd := WinExist(image))) {
+            hwnd := (DllCall("IsWindow", "ptr",image)) ? image : hwnd
+            pBitmap := Vis2.stdlib.Gdip_BitmapFromClientHWND(hwnd)
+            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
+            Gdip_SaveBitmapToFile(pBitmap, outputFile)
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image is a valid GDI Bitmap
+         else if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image)) {
+            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(image, cropArray) : ""
+            Gdip_SaveBitmapToFile(image, outputFile)
+         }
+         ; Check if image is a valid handle to a GDI Bitmap
+         else if (DllCall("GetObjectType", "ptr",image) == 7) {
+            pBitmap := Gdip_CreateBitmapFromHBITMAP(image)
+            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
+            Gdip_SaveBitmapToFile(pBitmap, outputFile)
+            Gdip_DisposeImage(pBitmap)
+         }
+         ; Check if image is raw binary data
+         else if Vis2.stdlib.isBinaryImageFormat(image) {
+            ; Not working at the moment.
+            ; Would require the length of the binary data to be included.
+            ; Then use the code below.
+         }
+         ; Check if image is a base64 string
+         else if (image ~= "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$") {
+            nSize := Vis2.stdlib.b64Decode(image, bin)
+            hData := DllCall("GlobalAlloc", "uint",0x2, "ptr",nSize)
+            pData := DllCall("GlobalLock", "ptr",hData)
+            DllCall("RtlMoveMemory", "ptr",pData, "ptr",&bin, "ptr",nSize)
+            DllCall("GlobalUnlock", "ptr",hData)
+            DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",1, "uptr*",pStream)
+            DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
+            Gdip_SaveBitmapToFile(pBitmap, outputFile, 92)
+            DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
+            DllCall("GlobalFree", "ptr",hData)
+            ObjRelease(pStream)
+            Gdip_DisposeImage(pBitmap)
+         }
+         Vis2.Graphics.Shutdown()
+         return outputFile
       }
    }
 
