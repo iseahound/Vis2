@@ -16,7 +16,7 @@
 Go to https://github.com/tesseract-ocr/tessdata_best and place your desired languages in bin/tessdata_best. 
 Go to https://github.com/tesseract-ocr/tessdata_fast and place your desired languages in bin/tessdata_fast. 
 
-Fast is used in the interactive GUI implementation, while best will be used for othe cases. See below for what I mean. 
+Fast is used in the interactive GUI implementation, while best will be used for other cases. See below for what I mean. 
 
 
     #c:: OCR(, "fra")      ; French (requires fast fra.traineddata)
@@ -24,6 +24,9 @@ Fast is used in the interactive GUI implementation, while best will be used for 
 
 
     MsgBox % OCR("https://i.imgur.com/T7WMxMs.png", "rus+eng")  ; Requires best eng.traineddata and rus.traineddata. 
+
+### Advanced Interactive Mode
+While using ```#c:: OCR()``` you can press ```Ctrl```, ```Alt```, or ```Shift``` to enter Advanced Mode. (You should see a pink pop up.) While in this mode, press ```Ctrl``` + ```Space``` to see a preview of the preprocessed image. Press ```Alt``` + ```Space``` to get the coordinates of the grey rectangle. Holding ```Ctrl``` and ```LButton``` will allow you to resize the corners of the box. ```Shift``` and ```LButton``` will resize edges. ```Alt``` and ```LButton``` to draw a new rectangle. 
 
 ## Documentation
 ### Input Data Types
