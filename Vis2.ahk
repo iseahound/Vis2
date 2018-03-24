@@ -1,7 +1,7 @@
 ﻿; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2018-03-19
+; Recent:    2018-03-24
 
 #include <Gdip_All>
 
@@ -21,12 +21,12 @@ class Vis2 {
 
    class OCR extends Vis2.functor {
       call(self, image:="", language:="", options:=""){
-         return (image) ? Vis2.provider.Tesseract.OCR(image, language, options)
+         return (image) ? new Vis2.provider.Tesseract().OCR(image, language, options)
             : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract(language)), "tooltip":"Optical Character Recognition Tool", "textPreview":true})
       }
 
       google(){
-         return (image) ? Vis2.provider.Tesseract.OCR(image, language, options).google()
+         return (image) ? new Vis2.provider.Tesseract().OCR(image, language, options).google()
             : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract(language)), "tooltip":"Any selected text will be Googled.", "textPreview":true, "noCopy":true}).google()
       }
    }
@@ -50,6 +50,7 @@ class Vis2 {
             Vis2.obj.callbackConfirmed := true
             text := Vis2.obj.database
             text.base.google := ObjBindMethod(Vis2.Text, "google")
+            text.base.clipboard := ObjBindMethod(Vis2.Text, "clipboard")
             return (ExitCode > 0) ? text : ""
          }
       }
@@ -78,9 +79,9 @@ class Vis2 {
             Vis2.obj.Image := new Vis2.Graphics.Image("Vis2_Kitsune")
             Vis2.obj.Subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
 
-            Vis2.obj.style1_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"dd000000", "radius":8}
+            Vis2.obj.style1_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"DD000000", "radius":8}
             Vis2.obj.style1_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"}
-            Vis2.obj.style2_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"c088EAB6", "radius":8}
+            Vis2.obj.style2_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"C088EAB6", "radius":8}
             Vis2.obj.style2_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"Black"}
             Vis2.obj.style4_back := {"time":2500, "x":"center", "y":"83%", "padding":"1.35%", "color":"Black", "radius":8}
             Vis2.obj.style4_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"}
@@ -172,7 +173,7 @@ class Vis2 {
                Hotkey, ^Space, % null, On
                Hotkey, !Space, % null, On
                Hotkey, +Space, % null, On
-               Vis2.obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35% cFFB1AC r8", "c000000 s24")
+               Vis2.obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35% cFFB1AC r8", "c000000 s2.23%")
                (Vis2.obj.note_02 := new Vis2.Graphics.Subtitle()).Hide().ClickThrough() ; Create a Subtitle Object that is Hidden & ClickThrough.
                Vis2.obj.tokenMousePressed := 1
                Vis2.obj.selectMode := "Advanced" ; Exit selectImageQuick.
@@ -189,7 +190,7 @@ class Vis2 {
                }
 
                if ((Vis2.obj.Area.width() < -25 || Vis2.obj.Area.height() < -25) && !Vis2.obj.note_03)
-                  Vis2.obj.note_03 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 92%, p1.35%, c: FCF9AF, r8", "c000000 s24")
+                  Vis2.obj.note_03 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 92%, p1.35%, c: FCF9AF, r8", "c000000 s2.23%")
 
 
                if (Vis2.obj.tokenRenderImage == 1 && !GetKeyState("Space", "P")) {
@@ -267,11 +268,10 @@ class Vis2 {
 
                   ; Process screenshot. 
                   Vis2.obj.provider.preprocess()
-                  Vis2.obj.provider.convert_fast()
-                  Vis2.obj.database := Vis2.obj.provider.read()
-
                   if (Vis2.obj.Image.isVisible() == true)
                      Vis2.obj.Image.Render(Vis2.obj.provider.fileProcessedImage, 0.5)
+                  Vis2.obj.provider.convert_fast()
+                  Vis2.obj.database := Vis2.obj.provider.read()
 
                   dialogue := ""
                   i := 1
@@ -320,7 +320,7 @@ class Vis2 {
                         clipboard := Vis2.obj.database
                         Vis2.obj.Subtitle.Hide()
                         Vis2.Graphics.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style4_back, Vis2.obj.style4_text)
-                        Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: 2500, x: center, y: 75%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:24, f:Arial")
+                        Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: 2500, x: center, y: 75%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial")
                      }
                      Vis2.obj.ExitCode := 1
                   }
@@ -935,6 +935,8 @@ class Vis2 {
 
       class Image{
 
+         ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
+
          __New(name := "") {
             this.name := name := (name == "") ? Vis2.Graphics.Name() "_Graphics_Image" : name "_Graphics_Image"
 
@@ -988,10 +990,28 @@ class Vis2 {
             Critical On
             pBitmap := Gdip_CreateBitmapFromFile(file)
             Width := Gdip_GetImageWidth(pBitmap), Height := Gdip_GetImageHeight(pBitmap)
+            this.DetectScreenResolutionChange(Width, Height)
             Gdip_DrawImage(this.G, pBitmap, 0, 0, Floor(Width*scale), Floor(Height*scale), 0, 0, Width, Height)
             UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, Floor(Width*scale), Floor(Height*scale))
             Gdip_DisposeImage(pBitmap)
             Critical Off
+         }
+
+         DetectScreenResolutionChange(w:="", h:=""){
+            w := (w) ? w : A_ScreenWidth
+            h := (h) ? h : A_ScreenHeight
+            if (this.ScreenWidth != w || this.ScreenHeight != h) {
+               this.ScreenWidth := w, this.ScreenHeight := h
+               SelectObject(this.hdc, this.obm)
+               DeleteObject(this.hbm)
+               DeleteDC(this.hdc)
+               Gdip_DeleteGraphics(this.G)
+               this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
+               this.hdc := CreateCompatibleDC()
+               this.obm := SelectObject(this.hdc, this.hbm)
+               this.G := Gdip_GraphicsFromHDC(this.hdc)
+               Gdip_SetInterpolationMode(this.G, 7)
+            }
          }
       }
 
@@ -1008,8 +1028,8 @@ class Vis2 {
             Gui, New, +LastFound +AlwaysOnTop -Caption -DPIScale +E0x80000 +ToolWindow +hwndSecretName
             this.hwnd := SecretName
             this.name := (name != "") ? name "_Subtitle" : "Subtitle_" this.hwnd
-            DllCall("ShowWindow", "ptr",this.hWnd, "int",8)
-            DllCall("SetWindowText", "ptr",this.hWnd, "str",this.name)
+            DllCall("ShowWindow", "ptr",this.hwnd, "int",8)
+            DllCall("SetWindowText", "ptr",this.hwnd, "str",this.name)
             this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
             this.hdc := CreateCompatibleDC()
             this.obm := SelectObject(this.hdc, this.hbm)
@@ -1031,17 +1051,17 @@ class Vis2 {
 
          Destroy(){
             this.FreeMemory()
-            DllCall("DestroyWindow", "ptr",this.hWnd)
+            DllCall("DestroyWindow", "ptr",this.hwnd)
             return this
          }
 
          Hide(){
-            DllCall("ShowWindow", "ptr",this.hWnd, "int",0)
+            DllCall("ShowWindow", "ptr",this.hwnd, "int",0)
             return this
          }
 
          Show(){
-            DllCall("ShowWindow", "ptr",this.hWnd, "int",8)
+            DllCall("ShowWindow", "ptr",this.hwnd, "int",8)
             return this
          }
 
@@ -1051,12 +1071,12 @@ class Vis2 {
          }
 
          isVisible(){
-            return DllCall("IsWindowVisible", "ptr",this.hWnd)
+            return DllCall("IsWindowVisible", "ptr",this.hwnd)
          }
 
          ClickThrough(){
             DetectHiddenWindows On
-            WinSet, ExStyle, +0x20, % "ahk_id" this.hWnd
+            WinSet, ExStyle, +0x20, % "ahk_id" this.hwnd
             DetectHiddenWindows Off
             return this
          }
@@ -1895,22 +1915,26 @@ class Vis2 {
          static tessdata_best := A_ScriptDir "\bin\tesseract\tessdata_best"
          static tessdata_fast := A_ScriptDir "\bin\tesseract\tessdata_fast"
 
-         static file := A_Temp "\Vis2_screenshot.bmp"
-         static fileProcessedImage := A_Temp "\Vis2_preprocess.tif"
-         static fileConvert := A_Temp "\Vis2_text"
-         static fileConvertedText := A_Temp "\Vis2_text.txt"
+         uuid := Vis2.stdlib.CreateUUID()
+         file := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
+         fileProcessedImage := A_Temp "\Vis2_preprocess" this.uuid ".tif"
+         fileConvert := A_Temp "\Vis2_text" this.uuid
+         fileConvertedText := A_Temp "\Vis2_text" this.uuid ".txt"
 
-         ; OCR() can be called directly, Vis2.functor will create a temporary instance so new is not needed. 
+         __New(language:=""){
+            this.language := language
+         }
+
          OCR(image, language:="", options:=""){
             this.language := language
             imgFile := Vis2.stdlib.toFile(image, this.file, options)
             this.preprocess(imgFile, this.fileProcessedImage)
             this.convert_best(this.fileProcessedImage, this.fileConvert)
-            return this.read(), this.cleanup()
-         }
-
-         __New(language:="", options:=""){
-            this.language := language
+            text := this.read()
+            this.cleanup()
+            text.base.google := ObjBindMethod(Vis2.Text, "google")
+            text.base.clipboard := ObjBindMethod(Vis2.Text, "clipboard")
+            return text
          }
 
          cleanup(){
@@ -2032,6 +2056,14 @@ class Vis2 {
          DllCall( CryptStringToBinary, "ptr", &b64str, "UInt", 0, "Uint", 1, "Ptr", &outBuf, "UInt*", outLen, "ptr", 0, "ptr", 0 )
 
          return outLen
+      }
+
+      CreateUUID() {
+         VarSetCapacity(puuid, 16, 0)
+         if !(DllCall("rpcrt4.dll\UuidCreate", "ptr", &puuid))
+            if !(DllCall("rpcrt4.dll\UuidToString", "ptr", &puuid, "uint*", suuid))
+               return StrGet(suuid), DllCall("rpcrt4.dll\RpcStringFree", "uint*", suuid)
+         return ""
       }
 
       Gdip_EncodeBitmapTo64string(pBitmap, ext, Quality=75) {
@@ -2425,26 +2457,20 @@ class Vis2 {
          return (data == "") ? Vis2.Text.paste(text) : text
       }
 
-      google(data := ""){
+      clipboard(data := ""){
          text := (data == "") ? Vis2.Text.copy() : data
-         Run % "https://www.google.com/search?&q=" . RegExReplace(text, "\s", "+")
+         clipboard := text
          return (data == "") ? Vis2.Text.restore() : text
       }
 
-      google2(data := "", prefix := "") {
-         text := (data == "") ? Vis2.Text.copy() : data
-         url := RegExReplace(text, "^\s+|\s+$")                ; Trim whitespace
-         if RegExMatch(url, "^(http|ftp|telnet)") {
+      google(text := "") {
+         if RegExMatch(text, "^(http|ftp|telnet)") {
             ; Do nothing if it already looks like a URL
          } else {
-            ; Escape the query string. Could escape more, but this seems sufficient for Chrome
-            StringReplace, url, url, `%, `%25, All
-            StringReplace, url, url,  &, `%26, All
-            StringReplace, url, url,  +, `%2B, All
-            url := "https://www.google.com/search?&q=" . prefix . url
+            text := "https://www.google.com/search?&q=" . RegExReplace(text, "\s", "+")
          }
-         Run %url%
-         return Vis2.Text.restore()
+         Run % text
+         return text
       }
    }
 }
