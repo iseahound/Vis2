@@ -21,12 +21,12 @@ class Vis2 {
 
    class OCR extends Vis2.functor {
       call(self, image:="", language:="", options:=""){
-         return (image) ? new Vis2.provider.Tesseract().OCR(image, language, options)
+         return (image) ? (new Vis2.provider.Tesseract()).OCR(image, language, options)
             : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract(language)), "tooltip":"Optical Character Recognition Tool", "textPreview":true})
       }
 
       google(){
-         return (image) ? new Vis2.provider.Tesseract().OCR(image, language, options).google()
+         return (image) ? (new Vis2.provider.Tesseract()).OCR(image, language, options).google()
             : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract(language)), "tooltip":"Any selected text will be Googled.", "textPreview":true, "noCopy":true}).google()
       }
    }
@@ -1949,7 +1949,7 @@ class Vis2 {
             _cmd .= (in)       ? " " in                 : " " this.fileProcessedImage
             _cmd .= (out)      ? " " out                : " " this.fileConvert
             _cmd .= (this.language) ? " -l " this.language : ""
-            RunWait, % _cmd,, Hide
+            RunWait % ComSpec " /C " _cmd,, Hide
          }
 
          convert_fast(in:="", out:=""){
@@ -1966,7 +1966,7 @@ class Vis2 {
             _cmd .= (in)       ? " " in                 : " " this.file
             _cmd .= (out)      ? " " out                : " " this.fileProcessedImage
             _cmd .= " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
-            RunWait, % _cmd,, Hide
+            RunWait % ComSpec " /C " _cmd,, Hide
          }
 
          read(in:="", lines:=""){
