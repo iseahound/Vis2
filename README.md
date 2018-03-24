@@ -1,12 +1,16 @@
 # Vis2 - OCR()
 ##### Automation using Computer Vision. Convert images on screen, image files, or an image URL to text. 
 
+### Super Quick Start
+
+Run demo.ahk
+
 ### Quick Start
 1. [Download Vis2.](https://github.com/iseahound/Vis2/archive/master.zip)
 2. Create a new AHK script in the same folder as Vis2.ahk, copying the code below.
 
 ```
-    #include Vis2.ahk
+    #include <Vis2>
     MsgBox % OCR("https://i.stack.imgur.com/sFPWe.png")
 ```
     
