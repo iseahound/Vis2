@@ -2463,14 +2463,13 @@ class Vis2 {
          return (data == "") ? Vis2.Text.restore() : text
       }
 
-      google(text := "") {
-         if RegExMatch(text, "^(http|ftp|telnet)") {
-            ; Do nothing if it already looks like a URL
-         } else {
+      google(data := "") {
+         text := data
+         if not RegExMatch(text, "^(http|ftp|telnet)")
             text := "https://www.google.com/search?&q=" . RegExReplace(text, "\s", "+")
-         }
-         Run % text
-         return text
+         if (data)
+            Run % text
+         return data
       }
    }
 }
