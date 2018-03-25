@@ -256,14 +256,26 @@ class Vis2 {
             static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
 
                if (!Vis2.obj.ExitCode) {
-                  ; Takes a Screenshot of the Area. To avoid the grey tint, call Area.Hide() but this will cause flickering.
-                  Vis2.Graphics.Startup()
-                  pBitmap := Gdip_BitmapFromScreen(Vis2.obj.Area.ScreenshotRectangle())
+                  coordinates := Vis2.obj.Area.ScreenshotRectangle()
+                  if (coordinates == Vis2.obj.coordinates) {
+                     Vis2.Graphics.Startup()
+                     pBitmap := Gdip_BitmapFromScreen(coordinates)                     ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
+                     if (Vis2.stdlib.Gdip_isBitmapEqual(pBitmap, Vis2.obj.Bitmap)) {
+                        SAME_IMAGE := true
+                        Vis2.Graphics.Shutdown()
+                     }
+                  }
+               }
+
+               if not SAME_IMAGE {
+                  Vis2.obj.coordinates := coordinates
+                  Gdip_DisposeImage(Vis2.obj.Bitmap)
+                  Vis2.obj.Bitmap := pBitmap
+
                   if (Vis2.obj.provider.file)
                      Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.provider.file, Vis2.obj.provider.jpegQuality)
-                  else if (Vis2.obj.provider.base64)
+                  if (Vis2.obj.provider.base64)
                      Vis2.obj.provider.base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, Vis2.obj.provider.base64)
-                  Gdip_DisposeImage(pBitmap)
                   Vis2.Graphics.Shutdown()
 
                   ; Process screenshot. 
@@ -343,6 +355,7 @@ class Vis2 {
             }
 
             ; Delete temporary image and text files.
+            Gdip_DisposeImage(Vis2.obj.Bitmap)
             Vis2.obj.provider.cleanup()
             Vis2.obj.Area.Destroy()
             Vis2.obj.Image.Destroy()
@@ -2157,6 +2170,30 @@ class Vis2 {
          pBitmap2 := Gdip_CloneBitmapArea(pBitmap, c.1, c.2, (c.1 + c.3 > w) ? w - c.1 : c.3 , (c.2 + c.4 > h) ? h - c.2 : c.4)
          Gdip_DisposeImage(pBitmap)
          pBitmap := pBitmap2
+      }
+
+      Gdip_isBitmapEqual(pBitmap1, pBitmap2, width:="", height:="") {
+         if (pBitmap1 == pBitmap2)
+            return true
+
+         ; Assume both Bitmaps are equal in width and height.
+         width := (width) ? width : Gdip_GetImageWidth(pBitmap1)
+         height := (height) ? height : Gdip_GetImageHeight(pBitmap1)
+         E1 := Gdip_LockBits(pBitmap1, 0, 0, width, height, Stride1, Scan01, BitmapData1)
+         E2 := Gdip_LockBits(pBitmap2, 0, 0, width, height, Stride2, Scan02, BitmapData2)
+
+         loop % width * height {
+            x := numget(scan01+0, 4*(A_Index-1), "uint")
+            y := numget(scan02+0, 4*(A_Index-1), "uint")
+            if (x != y) {
+               stop := true
+               break
+            }
+         }
+
+         Gdip_UnlockBits(pBitmap1, BitmapData1)
+         Gdip_UnlockBits(pBitmap2, BitmapData2)
+         return (stop) ? false : true
       }
 
       RPath_Absolute(AbsolutPath, RelativePath, s="\") {
