@@ -1,7 +1,7 @@
 ﻿; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2018-03-24
+; Recent:    2018-03-26
 
 #include <Gdip_All>
 
@@ -47,8 +47,8 @@ class Vis2 {
          if (Vis2.core.ux.start(obj) == "") {
             while !(ExitCode := Vis2.obj.ExitCode)
                Sleep 1
-            Vis2.obj.callbackConfirmed := true
             text := Vis2.obj.database
+            Vis2.obj.callbackConfirmed := true
             text.base.google := ObjBindMethod(Vis2.Text, "google")
             text.base.clipboard := ObjBindMethod(Vis2.Text, "clipboard")
             return (ExitCode > 0) ? text : ""
@@ -74,6 +74,7 @@ class Vis2 {
             Hotkey, Escape, % null, On
 
             Vis2.obj := IsObject(obj) ? obj : {}
+            Vis2.obj.ExitCode := 0 ; 0 = in progress, -1 = escape, 1 = success
             Vis2.obj.selectMode := "Quick"
             Vis2.obj.Area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
             Vis2.obj.Image := new Vis2.Graphics.Image("Vis2_Kitsune")
@@ -85,7 +86,7 @@ class Vis2 {
             Vis2.obj.style2_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"Black"}
             Vis2.obj.style4_back := {"time":2500, "x":"center", "y":"83%", "padding":"1.35%", "color":"Black", "radius":8}
             Vis2.obj.style4_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"}
-            Vis2.obj.Subtitle.Render(Vis2.obj.tooltip, Vis2.obj.style1_back, Vis2.obj.style1_text)
+            Vis2.obj.subtitle.render(Vis2.obj.tooltip, Vis2.obj.style1_back, Vis2.obj.style1_text)
 
             return Vis2.core.ux.waitForUserInput()
          }
@@ -96,10 +97,9 @@ class Vis2 {
          static selectImage := ObjBindMethod(Vis2.core.ux.process, "selectImage")
          static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
 
-
             if (GetKeyState("Escape", "P")) {
                Vis2.obj.ExitCode := -1
-               SetTimer, % escape, -35
+               SetTimer, % escape, -9
                return
             }
             else if (GetKeyState("LButton", "P")) {
@@ -107,10 +107,10 @@ class Vis2 {
                if (Vis2.obj.textPreview)
                   SetTimer, % textPreview, -25
                else
-                  Vis2.obj.Subtitle.Render("Waiting for user selection...", Vis2.obj.style2_back, Vis2.obj.style2_text)
+                  Vis2.obj.subtitle.render("Waiting for user selection...", Vis2.obj.style2_back, Vis2.obj.style2_text)
             }
             else {
-               Vis2.obj.Area.Origin()
+               Vis2.obj.area.origin()
                SetTimer, % waitForUserInput, -10
             }
             return
@@ -135,11 +135,11 @@ class Vis2 {
                   if (Vis2.obj.textPreview && Vis2.obj.dialogue != Vis2.obj.dialogue_past) {
                      Vis2.obj.dialogue_past := Vis2.obj.dialogue
                      Vis2.obj.style1_back.y := (Vis2.obj.style1_back.y == "83%") ? "2.07%" : "83%"
-                     Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style1_back, Vis2.obj.style1_text)
+                     Vis2.obj.subtitle.render(Vis2.obj.dialogue, Vis2.obj.style1_back, Vis2.obj.style1_text)
                   }
                   else if !(Vis2.obj.textPreview) {
                      Vis2.obj.style2_back.y := (Vis2.obj.style2_back.y == "83%") ? "2.07%" : "83%"
-                     Vis2.obj.Subtitle.Render("Still patiently waiting for user selection...", Vis2.obj.style2_back, Vis2.obj.style2_text)
+                     Vis2.obj.subtitle.render("Still patiently waiting for user selection...", Vis2.obj.style2_back, Vis2.obj.style2_text)
                   }
                }
 
@@ -153,12 +153,12 @@ class Vis2 {
                   if (GetKeyState("Control", "P") || GetKeyState("Alt", "P") || GetKeyState("Shift", "P"))
                      Vis2.core.ux.process.selectImageTransition()
                   else if (GetKeyState("RButton", "P")) {
-                     Vis2.obj.Area.Move()
-                     if (!Vis2.obj.Area.isMouseOnCorner() && Vis2.obj.Area.isMouseStopped())
-                        Vis2.obj.Area.Draw() ; Error Correction of Offset
+                     Vis2.obj.area.move()
+                     if (!Vis2.obj.area.isMouseOnCorner() && Vis2.obj.area.isMouseStopped())
+                        Vis2.obj.area.draw() ; Error Correction of Offset
                   }
                   else
-                     Vis2.obj.Area.Draw()
+                     Vis2.obj.area.draw()
                }
                else
                   Vis2.core.ux.process.finale(A_ThisFunc)
@@ -174,74 +174,75 @@ class Vis2 {
                Hotkey, !Space, % null, On
                Hotkey, +Space, % null, On
                Vis2.obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35% cFFB1AC r8", "c000000 s2.23%")
-               (Vis2.obj.note_02 := new Vis2.Graphics.Subtitle()).Hide().ClickThrough() ; Create a Subtitle Object that is Hidden & ClickThrough.
                Vis2.obj.tokenMousePressed := 1
                Vis2.obj.selectMode := "Advanced" ; Exit selectImageQuick.
+               Vis2.obj.key := {}
+               Vis2.obj.action := {}
             }
 
             selectImageAdvanced(){
             static null := ObjBindMethod({}, {})
 
-               if (Vis2.obj.note_02.isVisible()) {
-                  CoordMode, Mouse, Screen
-                  MouseGetPos, x_mouse, y_mouse
-                  Vis2.obj.note_02.Render("x: " Vis2.obj.Area.x1() " │ y: " Vis2.obj.Area.y1() " │ w: " Vis2.obj.Area.width() " │ h: " Vis2.obj.Area.height()
-                     , {"x":x_mouse+16, "y":y_mouse+16, "color":"Black", "padding":"0.37%"}, {"font":"Lucida Sans Typewriter", "size":"1.67%"})
-               }
+               if ((Vis2.obj.area.width() < -25 || Vis2.obj.area.height() < -25) && !Vis2.obj.note_03)
+                  Vis2.obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 92%, p1.35%, c: FCF9AF, r8", "c000000 s2.23%")
 
-               if ((Vis2.obj.Area.width() < -25 || Vis2.obj.Area.height() < -25) && !Vis2.obj.note_03)
-                  Vis2.obj.note_03 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 92%, p1.35%, c: FCF9AF, r8", "c000000 s2.23%")
+               Vis2.obj.key.LButton := GetKeyState("LButton", "P") ? 1 : 0
+               Vis2.obj.key.RButton := GetKeyState("RButton", "P") ? 1 : 0
+               Vis2.obj.key.Space   := GetKeyState("Space", "P")   ? 1 : 0
+               Vis2.obj.key.Control := GetKeyState("Control", "P") ? 1 : 0
+               Vis2.obj.key.Alt     := GetKeyState("Alt", "P")     ? 1 : 0
+               Vis2.obj.key.Shift   := GetKeyState("Shift", "P")   ? 1 : 0
 
+               ; Check if mouse is inside on activation.
+               Vis2.obj.action.Control_LButton := (Vis2.obj.area.isMouseInside() && Vis2.obj.key.Control && Vis2.obj.key.LButton)
+                  ? 1 : (Vis2.obj.key.Control && Vis2.obj.key.LButton) ? Vis2.obj.action.Control_LButton : 0
+               Vis2.obj.action.Shift_LButton   := (Vis2.obj.area.isMouseInside() && Vis2.obj.key.Shift && Vis2.obj.key.LButton)
+                  ? 1 : (Vis2.obj.key.Shift && Vis2.obj.key.LButton) ? Vis2.obj.action.Shift_LButton : 0
+               Vis2.obj.action.LButton         := (Vis2.obj.area.isMouseInside() && Vis2.obj.key.LButton)
+                  ? 1 : (Vis2.obj.key.LButton) ? Vis2.obj.action.LButton : 0
+               Vis2.obj.action.RButton         := (Vis2.obj.area.isMouseInside() && Vis2.obj.key.RButton)
+                  ? 1 : (Vis2.obj.key.RButton) ? Vis2.obj.action.RButton : 0
 
-               if (Vis2.obj.tokenRenderImage == 1 && !GetKeyState("Space", "P")) {
-                  Vis2.obj.Image.Render(Vis2.obj.fileProcessedImage, 0.5)
-                  Vis2.obj.Image.ToggleVisible()
-                  Vis2.obj.tokenRenderImage := 0
-               }
-               else if (Vis2.obj.tokenShowCoordinates == 1 && !GetKeyState("Space", "P")) {
-                  Vis2.obj.note_02.ToggleVisible()
-                  Vis2.obj.tokenShowCoordinates := 0
-               }
-               else if (Vis2.obj.tokenTesseractLanguage == 1 && !GetKeyState("Space", "P")) {
-                  Vis2.obj.tokenTesseractLanguage := 0
-               }
-               else if (Vis2.obj.tokenRedraw == 1) {                                   ; Alt + LButton
-                  Vis2.obj.Area.Draw()                                                    ; Redraw
-                  if (!GetKeyState("LButton", "P"))
-                     Vis2.obj.tokenRedraw := 0, DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
-               }
-               else if (Vis2.obj.tokenMousePressed == 1) {
-                  if (GetKeyState("LButton", "P")) {
-                     if (GetKeyState("Control", "P"))                                  ; Ctrl + LButton
-                        Vis2.obj.Area.ResizeCorners()                                     ; Drag Rectangle Corners.
-                     else if (GetKeyState("Shift", "P"))                               ; Shift + LButton
-                        Vis2.obj.Area.ResizeEdges()                                       ; Resize Rectangle Edges
-                     else
-                        Vis2.obj.Area.Move()                                              ; Transform Rectangle, 2D
-                  }
-                  else if (GetKeyState("RButton", "P"))
-                     Vis2.obj.Area.Move()
-                  if (!GetKeyState("LButton", "P") && !GetKeyState("RButton", "P"))
-                     Vis2.obj.tokenMousePressed := 0
-               }
-               else if (GetKeyState("Space", "P") && GetKeyState("Control", "P"))
-                  Vis2.obj.tokenRenderImage := 1
-               else if (GetKeyState("Space", "P") && GetKeyState("Alt", "P"))
-                  Vis2.obj.tokenShowCoordinates := 1
-               else if (GetKeyState("Space", "P") && GetKeyState("Shift", "P"))
-                  Vis2.obj.tokenTesseractLanguage := 1
-               else if (GetKeyState("Space", "P"))
-                  Vis2.core.ux.process.finale(A_ThisFunc)
-               else if (GetKeyState("LButton", "P") && GetKeyState("Alt", "P")) {
-                  Vis2.stdlib.setSystemCursor(32515) ; IDC_Cross := 32515
-                  Vis2.obj.tokenRedraw := 1
-                  Vis2.obj.Area.Origin()
-               }
-               else if ((GetKeyState("LButton", "P") || GetKeyState("RButton", "P")) && Vis2.obj.Area.isMouseInside())
-                  Vis2.obj.tokenMousePressed := 1                                      ; Check if isMouseInside only ONCE.
-               else {                                                                  ; If no mouse buttons are pressed
-                  Vis2.obj.Area.Hover()                                                   ; Collapse Stack
-                  if Vis2.obj.Area.isMouseInside() {
+               ;___|¯¯¯|___ 00011111000 Keypress
+               ;___|_______ 0001----000 Activation Function (pseudo heaviside)
+               Vis2.obj.action.Control_Space   := (Vis2.obj.key.Control && Vis2.obj.key.Space)
+                  ? ((!Vis2.obj.action.Control_Space) ? 1 : -1) : 0
+               Vis2.obj.action.Alt_Space       := (Vis2.obj.key.Alt && Vis2.obj.key.Space)
+                  ? ((!Vis2.obj.action.Alt_Space) ? 1 : -1) : 0
+               Vis2.obj.action.Shift_Space     := (Vis2.obj.key.Shift && Vis2.obj.key.Space)
+                  ? ((!Vis2.obj.action.Shift_Space) ? 1 : -1) : 0
+               Vis2.obj.action.Alt_LButton     := (Vis2.obj.key.Alt && Vis2.obj.key.LButton)
+                  ? ((!Vis2.obj.action.Alt_LButton) ? 1 : -1) : 0
+
+               ; Ensure only Space is pressed.
+               Vis2.obj.action.Space := (Vis2.obj.key.Space && !Vis2.obj.key.Control && !Vis2.obj.key.Alt && !Vis2.obj.key.Shift)
+                  ? ((!Vis2.obj.action.Space) ? 1 : -1) : 0
+
+               ; Space Hotkeys
+               if (Vis2.obj.action.Control_Space = 1){
+                  Vis2.obj.image.render(Vis2.obj.provider.fileProcessedImage, 0.5)
+                  Vis2.obj.image.toggleVisible()
+               } else if (Vis2.obj.action.Alt_Space = 1){
+                  Vis2.obj.area.toggleCoordinates()
+               } else if (Vis2.obj.action.Shift_Space = 1){
+
+               } else if (Vis2.obj.action.Space = 1)
+                  Vis2.core.ux.process.finale(A_ThisFunc) ; Exit function.
+
+               ; Mouse Hotkeys
+               if (Vis2.obj.action.Control_LButton)
+                  Vis2.obj.area.resizeCorners()
+               else if (Vis2.obj.action.Alt_LButton = 1)
+                  Vis2.obj.area.origin()
+               else if (Vis2.obj.action.Alt_LButton = -1)
+                  Vis2.obj.area.draw()
+               else if (Vis2.obj.action.Shift_LButton)
+                  Vis2.obj.area.resizeEdges()
+               else if (Vis2.obj.action.LButton || Vis2.obj.action.RButton)
+                  Vis2.obj.area.move()
+               else {
+                  Vis2.obj.area.hover() ; Collapse Stack
+                  if Vis2.obj.area.isMouseInside() {
                      Hotkey, LButton, % null, On
                      Hotkey, RButton, % null, On
                   } else {
@@ -255,60 +256,52 @@ class Vis2 {
             textPreview(){
             static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
 
-               if (!Vis2.obj.ExitCode) {
+               if (Vis2.obj.ExitCode == 0) {
+                  Vis2.Graphics.Startup()
                   coordinates := Vis2.obj.Area.ScreenshotRectangle()
-                  if (coordinates == Vis2.obj.coordinates) {
-                     Vis2.Graphics.Startup()
-                     pBitmap := Gdip_BitmapFromScreen(coordinates)                     ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
-                     if (Vis2.stdlib.Gdip_isBitmapEqual(pBitmap, Vis2.obj.Bitmap)) {
-                        SAME_IMAGE := true
-                        Vis2.Graphics.Shutdown()
+                  pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
+                  if !(coordinates == Vis2.obj.coordinates && Vis2.stdlib.Gdip_isBitmapEqual(pBitmap, Vis2.obj.Bitmap)) {
+                     Gdip_DisposeImage(Vis2.obj.Bitmap)
+                     Vis2.obj.coordinates := coordinates
+                     Vis2.obj.Bitmap := pBitmap
+
+                     ; Process screenshot.
+                     if (Vis2.obj.provider.file)
+                        Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.provider.file, Vis2.obj.provider.jpegQuality)
+                     if (Vis2.obj.provider.base64)
+                        Vis2.obj.provider.base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, Vis2.obj.provider.base64)
+                     Vis2.obj.provider.preprocess()
+                     if (Vis2.obj.Image.isVisible() == true)
+                        Vis2.obj.Image.Render(Vis2.obj.provider.fileProcessedImage, 0.5)
+                     Vis2.obj.provider.convert_fast()
+                     Vis2.obj.database := Vis2.obj.provider.read()
+
+                     ; Retrieve three lines of text.
+                     dialogue := ""
+                     i := 1
+                     Loop, Parse, % Vis2.obj.database, `r`n
+                     {
+                        data := RegExReplace(A_LoopField, "^\s*(.*?)\s*$", "$1")
+                        if (data != "") {
+                           dialogue .= (dialogue) ? ("`n" . data) : data
+                           i++
+                        }
+                     } until (i > 3)
+
+                     if (dialogue != "") {
+                        Vis2.obj.firstDialogue := true
+                        Vis2.obj.dialogue := dialogue
                      }
+                     else
+                        Vis2.obj.dialogue := (Vis2.obj.firstDialogue == true) ? "ERROR: No Text Data Found" : "Searching for text..."
+
+                     if (Vis2.obj.textPreview)
+                        Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style1_back, Vis2.obj.style1_text)
                   }
-               }
-
-               if not SAME_IMAGE {
-                  Vis2.obj.coordinates := coordinates
-                  Gdip_DisposeImage(Vis2.obj.Bitmap)
-                  Vis2.obj.Bitmap := pBitmap
-
-                  if (Vis2.obj.provider.file)
-                     Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.provider.file, Vis2.obj.provider.jpegQuality)
-                  if (Vis2.obj.provider.base64)
-                     Vis2.obj.provider.base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, Vis2.obj.provider.base64)
                   Vis2.Graphics.Shutdown()
-
-                  ; Process screenshot. 
-                  Vis2.obj.provider.preprocess()
-                  if (Vis2.obj.Image.isVisible() == true)
-                     Vis2.obj.Image.Render(Vis2.obj.provider.fileProcessedImage, 0.5)
-                  Vis2.obj.provider.convert_fast()
-                  Vis2.obj.database := Vis2.obj.provider.read()
-
-                  dialogue := ""
-                  i := 1
-                  Loop, Parse, % Vis2.obj.database, `r`n
-                  {
-                     data := RegExReplace(A_LoopField, "^\s*(.*?)\s*$", "$1")
-                     if (data != "") {
-                        dialogue .= (dialogue) ? ("`n" . data) : data
-                        i++
-                     }
-                  } until (i > 3)
-
-                  if (dialogue != "") {
-                     Vis2.obj.firstDialogue := true
-                     Vis2.obj.dialogue := dialogue
-                  }
-                  else {
-                     Vis2.obj.dialogue := (Vis2.obj.firstDialogue == true) ? "ERROR: No Text Data Found" : "Searching for text..."
-                  }
-
-                  if (Vis2.obj.textPreview)
-                     Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style1_back, Vis2.obj.style1_text)
                }
 
-               if (Vis2.obj.unlock.1 != "")
+               if (Vis2.obj.unlock.1)
                   return Vis2.core.ux.process.finale(A_ThisFunc)
                else
                   SetTimer, % textPreview, -100
@@ -321,13 +314,13 @@ class Vis2 {
                (IsObject(Vis2.obj.unlock) && key != Vis2.obj.unlock.1) ? Vis2.obj.unlock.push(key) : (Vis2.obj.unlock := [key])
 
                if (key ~= "^Vis2.core.ux.process.selectImage") {
-                  Vis2.obj.Area.ChangeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up. 
+                  Vis2.obj.Area.ChangeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
                   if (!Vis.obj.textPreview)
                      Vis2.core.ux.process.textPreview()
                }
 
                if (Vis2.obj.unlock.MaxIndex() == 2) {
-                  if (Vis2.obj.database != "" && !Vis2.obj.ExitCode) {
+                  if (Vis2.obj.database != "" && Vis2.obj.ExitCode == 0) {
                      if (Vis2.obj.noCopy == "") {
                         clipboard := Vis2.obj.database
                         Vis2.obj.Subtitle.Hide()
@@ -336,8 +329,8 @@ class Vis2 {
                      }
                      Vis2.obj.ExitCode := 1
                   }
-                  Vis2.obj.ExitCode := (Vis2.obj.ExitCode) ? Vis2.obj.ExitCode : -1
-                  SetTimer, % escape, -35
+                  Vis2.obj.ExitCode := (Vis2.obj.ExitCode == 0) ? -1 : Vis2.obj.ExitCode
+                  SetTimer, % escape, -9
                }
                return
             }
@@ -349,7 +342,7 @@ class Vis2 {
 
             if (Vis2.obj.callback) {
                if !(Vis2.obj.callbackConfirmed) {
-                  SetTimer, % escape, -35
+                  SetTimer, % escape, -9
                   return
                }
             }
@@ -412,8 +405,7 @@ class Vis2 {
 
    class functor {
 
-      __Call(method, ByRef arg := "", args*)
-      {
+      __Call(method, ByRef arg := "", args*) {
       ; When casting to Call(), use a new instance of the "function object"
       ; so as to avoid directly storing the properties(used across sub-methods)
       ; into the "function object" itself.
@@ -530,6 +522,9 @@ class Vis2 {
             this.DetectScreenResolutionChange()
             Gdip_GraphicsClear(this.G)
             Gdip_FillRectangle(this.G, this.pBrush, x, y, w, h)
+            if (this.coordinates)
+               Vis2.Graphics.Subtitle.Draw("x: " this.x1() " │ y: " this.y1() " │ w: " this.width() " │ h: " this.height()
+                  , {"a":"top_right", "x":"right", "y":"top", "color":"Black"}, {"font":"Lucida Sans Typewriter", "size":"1.67%"}, this.G)
             UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
             Critical Off
          }
@@ -538,6 +533,21 @@ class Vis2 {
             this.color := color
             Gdip_DeleteBrush(this.pBrush)
             this.pBrush := Gdip_BrushCreateSolid(this.color)
+            this.Redraw(this.x[this.x.MaxIndex()], this.y[this.y.MaxIndex()], this.w[this.w.MaxIndex()], this.h[this.h.MaxIndex()])
+         }
+
+         ShowCoordinates(){
+            this.coordinates := true
+            this.Redraw(this.x[this.x.MaxIndex()], this.y[this.y.MaxIndex()], this.w[this.w.MaxIndex()], this.h[this.h.MaxIndex()])
+         }
+
+         HideCoordinates(){
+            this.coodinates := false
+            this.Redraw(this.x[this.x.MaxIndex()], this.y[this.y.MaxIndex()], this.w[this.w.MaxIndex()], this.h[this.h.MaxIndex()])
+         }
+
+         ToggleCoordinates(){
+            this.coordinates := !this.coordinates
             this.Redraw(this.x[this.x.MaxIndex()], this.y[this.y.MaxIndex()], this.w[this.w.MaxIndex()], this.h[this.h.MaxIndex()])
          }
 
