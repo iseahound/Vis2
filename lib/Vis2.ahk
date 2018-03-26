@@ -60,18 +60,18 @@ class Vis2 {
          ; start() is the function that launches the user interface.
          ; This can be called directly without calling Vis2.core.returnText().
          start(obj := ""){
-         static null := ObjBindMethod({}, {})
+         static void := ObjBindMethod({}, {})
 
             if (Vis2.obj != "")
                return "Already in use."
 
             Vis2.stdlib.setSystemCursor(32515) ; IDC_Cross := 32515
-            Hotkey, LButton, % null, On
-            Hotkey, ^LButton, % null, On
-            Hotkey, !LButton, % null, On
-            Hotkey, +LButton, % null, On
-            Hotkey, RButton, % null, On
-            Hotkey, Escape, % null, On
+            Hotkey, LButton, % void, On
+            Hotkey, ^LButton, % void, On
+            Hotkey, !LButton, % void, On
+            Hotkey, +LButton, % void, On
+            Hotkey, RButton, % void, On
+            Hotkey, Escape, % void, On
 
             Vis2.obj := IsObject(obj) ? obj : {}
             Vis2.obj.ExitCode := 0 ; 0 = in progress, -1 = escape, 1 = success
@@ -166,13 +166,13 @@ class Vis2 {
             }
 
             selectImageTransition(){
-            static null := ObjBindMethod({}, {})
+            static void := ObjBindMethod({}, {})
 
                DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
-               Hotkey, Space, % null, On
-               Hotkey, ^Space, % null, On
-               Hotkey, !Space, % null, On
-               Hotkey, +Space, % null, On
+               Hotkey, Space, % void, On
+               Hotkey, ^Space, % void, On
+               Hotkey, !Space, % void, On
+               Hotkey, +Space, % void, On
                Vis2.obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35% cFFB1AC r8", "c000000 s2.23%")
                Vis2.obj.tokenMousePressed := 1
                Vis2.obj.selectMode := "Advanced" ; Exit selectImageQuick.
@@ -181,7 +181,7 @@ class Vis2 {
             }
 
             selectImageAdvanced(){
-            static null := ObjBindMethod({}, {})
+            static void := ObjBindMethod({}, {})
 
                if ((Vis2.obj.area.width() < -25 || Vis2.obj.area.height() < -25) && !Vis2.obj.note_03)
                   Vis2.obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 92%, p1.35%, c: FCF9AF, r8", "c000000 s2.23%")
@@ -243,11 +243,11 @@ class Vis2 {
                else {
                   Vis2.obj.area.hover() ; Collapse Stack
                   if Vis2.obj.area.isMouseInside() {
-                     Hotkey, LButton, % null, On
-                     Hotkey, RButton, % null, On
+                     Hotkey, LButton, % void, On
+                     Hotkey, RButton, % void, On
                   } else {
-                     Hotkey, LButton, % null, Off
-                     Hotkey, RButton, % null, Off
+                     Hotkey, LButton, % void, Off
+                     Hotkey, RButton, % void, Off
                   }
                }
                ; Do not return.
@@ -338,7 +338,7 @@ class Vis2 {
 
          escape(){
          static escape := ObjBindMethod(Vis2.core.ux, "escape")
-         static null := ObjBindMethod({}, {})
+         static void := ObjBindMethod({}, {})
 
             if (Vis2.obj.callback) {
                if !(Vis2.obj.callbackConfirmed) {
@@ -369,16 +369,16 @@ class Vis2 {
                KeyWait Escape
             }
 
-            Hotkey, LButton, % null, Off
-            Hotkey, ^LButton, % null, Off
-            Hotkey, !LButton, % null, Off
-            Hotkey, +LButton, % null, Off
-            Hotkey, RButton, % null, Off
-            Hotkey, Escape, % null, Off
-            Hotkey, Space, % null, Off
-            Hotkey, ^Space, % null, Off
-            Hotkey, !Space, % null, Off
-            Hotkey, +Space, % null, Off
+            Hotkey, LButton, % void, Off
+            Hotkey, ^LButton, % void, Off
+            Hotkey, !LButton, % void, Off
+            Hotkey, +LButton, % void, Off
+            Hotkey, RButton, % void, Off
+            Hotkey, Escape, % void, Off
+            Hotkey, Space, % void, Off
+            Hotkey, ^Space, % void, Off
+            Hotkey, !Space, % void, Off
+            Hotkey, +Space, % void, Off
 
             return DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
          }
