@@ -21,19 +21,19 @@ class Vis2 {
 
    class OCR extends Vis2.functor {
       call(self, image:="", language:="", options:=""){
-         return (image) ? (new Vis2.provider.Tesseract()).OCR(image, language, options)
+         return (image != "") ? (new Vis2.provider.Tesseract()).OCR(image, language, options)
             : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract(language)), "tooltip":"Optical Character Recognition Tool", "textPreview":true})
       }
 
       google(){
-         return (image) ? (new Vis2.provider.Tesseract()).OCR(image, language, options).google()
+         return (image != "") ? (new Vis2.provider.Tesseract()).OCR(image, language, options).google()
             : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract(language)), "tooltip":"Any selected text will be Googled.", "textPreview":true, "noCopy":true}).google()
       }
    }
 
    class ImageIdentify extends Vis2.functor {
       call(self, image:="", search:="", options:=""){
-         return (image) ? Vis2.wrapper.ImageIdentify(image) : Vis2.core.start()
+         return (image != "") ? Vis2.wrapper.ImageIdentify(image) : Vis2.core.start()
       }
    }
 
