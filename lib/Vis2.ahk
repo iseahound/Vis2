@@ -421,11 +421,13 @@ class Vis2 {
       static pToken, Gdip := 0
 
       Startup(){
-         return Vis2.Graphics.pToken := (Vis2.Graphics.Gdip++ > 0) ? Vis2.Graphics.pToken : Gdip_Startup()
+         global pToken
+         return Vis2.Graphics.pToken := (Vis2.Graphics.Gdip++ > 0) ? Vis2.Graphics.pToken : (pToken) ? pToken : Gdip_Startup()
       }
 
       Shutdown(){
-         return Vis2.Graphics.pToken := (--Vis2.Graphics.Gdip == 0) ? Gdip_Shutdown(Vis2.Graphics.pToken) : Vis2.Graphics.pToken
+         global pToken
+         return Vis2.Graphics.pToken := (--Vis2.Graphics.Gdip <= 0) ? ((pToken) ? pToken : Gdip_Shutdown(Vis2.Graphics.pToken)) : Vis2.Graphics.pToken
       }
 
       Name(){
@@ -2320,9 +2322,7 @@ class Vis2 {
 
       ; toFile() - Saves the image as a temporary file.
       toFile(image, outputFile:="", cropArray:=""){
-         global pToken
-         if (!pToken)
-            Vis2.Graphics.Startup()
+         Vis2.Graphics.Startup()
          ; Check if image is an array of 4 numbers
          if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$") {
             pBitmap := Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
@@ -2397,8 +2397,7 @@ class Vis2 {
             ObjRelease(pStream)
             Gdip_DisposeImage(pBitmap)
          }
-         if (!pToken)
-            Vis2.Graphics.Shutdown()
+         Vis2.Graphics.Shutdown()
          return outputFile
       }
    }
