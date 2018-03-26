@@ -184,7 +184,7 @@ class Vis2 {
             static void := ObjBindMethod({}, {})
 
                if ((Vis2.obj.area.width() < -25 || Vis2.obj.area.height() < -25) && !Vis2.obj.note_03)
-                  Vis2.obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 92%, p1.35%, c: FCF9AF, r8", "c000000 s2.23%")
+                  Vis2.obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 67%, p1.35%, c: FCF9AF, r8", "c000000 s2.23%")
 
                Vis2.obj.key.LButton := GetKeyState("LButton", "P") ? 1 : 0
                Vis2.obj.key.RButton := GetKeyState("RButton", "P") ? 1 : 0
@@ -297,6 +297,9 @@ class Vis2 {
 
                      if (Vis2.obj.textPreview)
                         Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style1_back, Vis2.obj.style1_text)
+                  } 
+                  else {
+                     Gdip_DisposeImage(pBitmap)
                   }
                   Vis2.Graphics.Shutdown()
                }
@@ -348,7 +351,9 @@ class Vis2 {
             }
 
             ; Delete temporary image and text files.
+            Vis2.Graphics.Startup()
             Gdip_DisposeImage(Vis2.obj.Bitmap)
+            Vis2.Graphics.Shutdown()
             Vis2.obj.provider.cleanup()
             Vis2.obj.Area.Destroy()
             Vis2.obj.Image.Destroy()
