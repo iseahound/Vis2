@@ -253,10 +253,10 @@ class Vis2 {
                ; Do not return.
             }
 
-            textPreview(){
+            textPreview(bypass:=""){
             static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
 
-               if (Vis2.obj.ExitCode == 0) {
+               if (!Vis2.obj.unlock.1 || bypass) {
                   Vis2.Graphics.Startup()
                   coordinates := Vis2.obj.Area.ScreenshotRectangle()
                   pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
@@ -297,7 +297,7 @@ class Vis2 {
 
                      if (Vis2.obj.textPreview)
                         Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style1_back, Vis2.obj.style1_text)
-                  } 
+                  }
                   else {
                      Gdip_DisposeImage(pBitmap)
                   }
@@ -319,7 +319,7 @@ class Vis2 {
                if (key ~= "^Vis2.core.ux.process.selectImage") {
                   Vis2.obj.Area.ChangeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
                   if (!Vis.obj.textPreview)
-                     Vis2.core.ux.process.textPreview()
+                     Vis2.core.ux.process.textPreview("bypass")
                }
 
                if (Vis2.obj.unlock.MaxIndex() == 2) {
@@ -2190,6 +2190,7 @@ class Vis2 {
       }
 
       Gdip_isBitmapEqual(pBitmap1, pBitmap2, width:="", height:="") {
+         ; Check if pointers are identical.
          if (pBitmap1 == pBitmap2)
             return true
 
@@ -2199,18 +2200,13 @@ class Vis2 {
          E1 := Gdip_LockBits(pBitmap1, 0, 0, width, height, Stride1, Scan01, BitmapData1)
          E2 := Gdip_LockBits(pBitmap2, 0, 0, width, height, Stride2, Scan02, BitmapData2)
 
-         loop % width * height {
-            x := numget(scan01+0, 4*(A_Index-1), "uint")
-            y := numget(scan02+0, 4*(A_Index-1), "uint")
-            if (x != y) {
-               stop := true
-               break
-            }
-         }
+         ; RtlCompareMemory preforms an unsafe comparison stopping at the first different byte.
+         length := width * height * 4  ; ARGB = 4 bytes
+         bytes := DllCall("RtlCompareMemory", "ptr", Scan01+0, "ptr", Scan02+0, "uint", length)
 
          Gdip_UnlockBits(pBitmap1, BitmapData1)
          Gdip_UnlockBits(pBitmap2, BitmapData2)
-         return (stop) ? false : true
+         return (bytes == length) ? true : false
       }
 
       RPath_Absolute(AbsolutPath, RelativePath, s="\") {
