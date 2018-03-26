@@ -3,7 +3,7 @@
 
 ### Super Quick Start
 
-Run demo.ahk
+Run demo.ahk. My personal suggestion is to bind OCR() to a mouse button instead of #c. 
 
 ### Quick Start
 1. [Download Vis2.](https://github.com/iseahound/Vis2/archive/master.zip)
