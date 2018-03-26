@@ -2320,7 +2320,9 @@ class Vis2 {
 
       ; toFile() - Saves the image as a temporary file.
       toFile(image, outputFile:="", cropArray:=""){
-         Vis2.Graphics.Startup()
+         global pToken
+         if (!pToken)
+            Vis2.Graphics.Startup()
          ; Check if image is an array of 4 numbers
          if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$") {
             pBitmap := Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
@@ -2395,7 +2397,8 @@ class Vis2 {
             ObjRelease(pStream)
             Gdip_DisposeImage(pBitmap)
          }
-         Vis2.Graphics.Shutdown()
+         if (!pToken)
+            Vis2.Graphics.Shutdown()
          return outputFile
       }
    }
