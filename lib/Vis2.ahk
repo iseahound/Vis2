@@ -1,7 +1,7 @@
 ﻿; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2018-03-26
+; Recent:    2018-03-29
 
 #include <Gdip_All>
 
@@ -45,13 +45,13 @@ class Vis2 {
          obj := IsObject(obj) ? obj : {}
          obj.callback := "returnText"
          if (Vis2.core.ux.start(obj) == "") {
-            while !(ExitCode := Vis2.obj.ExitCode)
+            while !(EXITCODE := Vis2.obj.EXITCODE)
                Sleep 1
             text := Vis2.obj.database
             Vis2.obj.callbackConfirmed := true
             text.base.google := ObjBindMethod(Vis2.Text, "google")
             text.base.clipboard := ObjBindMethod(Vis2.Text, "clipboard")
-            return (ExitCode > 0) ? text : ""
+            return (EXITCODE > 0) ? text : ""
          }
       }
 
@@ -74,11 +74,11 @@ class Vis2 {
             Hotkey, Escape, % void, On
 
             Vis2.obj := IsObject(obj) ? obj : {}
-            Vis2.obj.ExitCode := 0 ; 0 = in progress, -1 = escape, 1 = success
+            Vis2.obj.EXITCODE := 0 ; 0 = in progress, -1 = escape, 1 = success
             Vis2.obj.selectMode := "Quick"
-            Vis2.obj.Area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
-            Vis2.obj.Image := new Vis2.Graphics.Image("Vis2_Kitsune")
-            Vis2.obj.Subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
+            Vis2.obj.area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
+            Vis2.obj.image := new Vis2.Graphics.Image("Vis2_Kitsune")
+            Vis2.obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
 
             Vis2.obj.style1_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"DD000000", "radius":8}
             Vis2.obj.style1_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"}
@@ -98,7 +98,7 @@ class Vis2 {
          static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
 
             if (GetKeyState("Escape", "P")) {
-               Vis2.obj.ExitCode := -1
+               Vis2.obj.EXITCODE := -1
                SetTimer, % escape, -9
                return
             }
@@ -122,7 +122,7 @@ class Vis2 {
             static selectImage := ObjBindMethod(Vis2.core.ux.process, "selectImage")
 
                if (GetKeyState("Escape", "P")) {
-                  Vis2.obj.ExitCode := -1
+                  Vis2.obj.EXITCODE := -1
                   return Vis2.core.ux.process.finale(A_ThisFunc)
                }
 
@@ -183,7 +183,7 @@ class Vis2 {
             selectImageAdvanced(){
             static void := ObjBindMethod({}, {})
 
-               if ((Vis2.obj.area.width() < -25 || Vis2.obj.area.height() < -25) && !Vis2.obj.note_03)
+               if ((Vis2.obj.area.width() < -25 || Vis2.obj.area.height() < -25) && !Vis2.obj.note_02)
                   Vis2.obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 67%, p1.35%, c: FCF9AF, r8", "c000000 s2.23%")
 
                Vis2.obj.key.LButton := GetKeyState("LButton", "P") ? 1 : 0
@@ -257,51 +257,58 @@ class Vis2 {
             static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
 
                if (!Vis2.obj.unlock.1 || bypass) {
-                  Vis2.Graphics.Startup()
-                  coordinates := Vis2.obj.Area.ScreenshotRectangle()
-                  pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
-                  if !(coordinates == Vis2.obj.coordinates && Vis2.stdlib.Gdip_isBitmapEqual(pBitmap, Vis2.obj.Bitmap)) {
-                     Gdip_DisposeImage(Vis2.obj.Bitmap)
-                     Vis2.obj.coordinates := coordinates
-                     Vis2.obj.Bitmap := pBitmap
+                  if (coordinates := Vis2.obj.Area.ScreenshotRectangle()) {
+                     Vis2.Graphics.Startup()
+                     pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
+                     if !(coordinates == Vis2.obj.coordinates && Vis2.stdlib.Gdip_isBitmapEqual(pBitmap, Vis2.obj.Bitmap)) {
+                        Gdip_DisposeImage(Vis2.obj.Bitmap)
+                        Vis2.obj.coordinates := coordinates
+                        Vis2.obj.Bitmap := pBitmap
 
-                     ; Process screenshot.
-                     if (Vis2.obj.provider.file)
-                        Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.provider.file, Vis2.obj.provider.jpegQuality)
-                     if (Vis2.obj.provider.base64)
-                        Vis2.obj.provider.base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, Vis2.obj.provider.base64)
-                     Vis2.obj.provider.preprocess()
-                     if (Vis2.obj.Image.isVisible() == true)
-                        Vis2.obj.Image.Render(Vis2.obj.provider.fileProcessedImage, 0.5)
-                     Vis2.obj.provider.convert_fast()
-                     Vis2.obj.database := Vis2.obj.provider.read()
-
-                     ; Retrieve three lines of text.
-                     dialogue := ""
-                     i := 1
-                     Loop, Parse, % Vis2.obj.database, `r`n
-                     {
-                        data := RegExReplace(A_LoopField, "^\s*(.*?)\s*$", "$1")
-                        if (data != "") {
-                           dialogue .= (dialogue) ? ("`n" . data) : data
-                           i++
+                        ; Process screenshot.
+                        try {
+                           if (Vis2.obj.provider.file != "")
+                              Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.provider.file, Vis2.obj.provider.jpegQuality)
+                           if (Vis2.obj.provider.base64 != "")
+                              Vis2.obj.provider.base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, Vis2.obj.provider.base64)
+                           Vis2.obj.provider.preprocess()
+                           if (Vis2.obj.Image.isVisible() == true)
+                              Vis2.obj.Image.Render(Vis2.obj.provider.fileProcessedImage, 0.5)
+                           Vis2.obj.provider.convert_fast()
+                           Vis2.obj.database := Vis2.obj.provider.read()
                         }
-                     } until (i > 3)
+                        catch e {
+                           MsgBox, 16,, % "Exception thrown!`n`nwhat: " e.what "`nfile: " e.file
+                              . "`nline: " e.line "`nmessage: " e.message "`nextra: " e.extra "`nc" coordinates
+                        }
 
-                     if (dialogue != "") {
-                        Vis2.obj.firstDialogue := true
-                        Vis2.obj.dialogue := dialogue
+                        ; Retrieve three lines of text.
+                        dialogue := ""
+                        i := 1
+                        Loop, Parse, % Vis2.obj.database, `r`n
+                        {
+                           data := RegExReplace(A_LoopField, "^\s*(.*?)\s*$", "$1")
+                           if (data != "") {
+                              dialogue .= (dialogue) ? ("`n" . data) : data
+                              i++
+                           }
+                        } until (i > 3)
+
+                        if (dialogue != "") {
+                           Vis2.obj.firstDialogue := true
+                           Vis2.obj.dialogue := dialogue
+                        }
+                        else
+                           Vis2.obj.dialogue := (Vis2.obj.firstDialogue == true) ? "ERROR: No Text Data Found" : "Searching for text..."
+
+                        if (Vis2.obj.textPreview)
+                           Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style1_back, Vis2.obj.style1_text)
                      }
-                     else
-                        Vis2.obj.dialogue := (Vis2.obj.firstDialogue == true) ? "ERROR: No Text Data Found" : "Searching for text..."
-
-                     if (Vis2.obj.textPreview)
-                        Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style1_back, Vis2.obj.style1_text)
+                     else {
+                        Gdip_DisposeImage(pBitmap)
+                     }
+                     Vis2.Graphics.Shutdown()
                   }
-                  else {
-                     Gdip_DisposeImage(pBitmap)
-                  }
-                  Vis2.Graphics.Shutdown()
                }
 
                if (Vis2.obj.unlock.1)
@@ -318,21 +325,21 @@ class Vis2 {
 
                if (key ~= "^Vis2.core.ux.process.selectImage") {
                   Vis2.obj.Area.ChangeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
-                  if (!Vis.obj.textPreview)
+                  if (!Vis2.obj.textPreview)
                      Vis2.core.ux.process.textPreview("bypass")
                }
 
                if (Vis2.obj.unlock.MaxIndex() == 2) {
-                  if (Vis2.obj.database != "" && Vis2.obj.ExitCode == 0) {
+                  if (Vis2.obj.database != "" && Vis2.obj.EXITCODE == 0) {
                      if (Vis2.obj.noCopy == "") {
                         clipboard := Vis2.obj.database
                         Vis2.obj.Subtitle.Hide()
                         Vis2.Graphics.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style4_back, Vis2.obj.style4_text)
                         Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: 2500, x: center, y: 75%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial")
                      }
-                     Vis2.obj.ExitCode := 1
+                     Vis2.obj.EXITCODE := 1
                   }
-                  Vis2.obj.ExitCode := (Vis2.obj.ExitCode == 0) ? -1 : Vis2.obj.ExitCode
+                  Vis2.obj.EXITCODE := (Vis2.obj.EXITCODE == 0) ? -1 : Vis2.obj.EXITCODE
                   SetTimer, % escape, -9
                }
                return
@@ -447,7 +454,7 @@ class Vis2 {
       class Area{
 
          ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight,
-         action := [], x := [0], y := [0], w := [1], h := [1], a := ["top left"], q := ["bottom right"]
+         action := ["base"], x := [0], y := [0], w := [1], h := [1], a := ["top left"], q := ["bottom right"]
 
          __New(name := "", color := "0x7FDDDDDD") {
             this.name := name := (name == "") ? Vis2.Graphics.Name() "_Graphics_Area" : name "_Graphics_Area"
@@ -605,8 +612,9 @@ class Vis2 {
             }
          }
 
-         Debug(){
-            Tooltip % A_ThisFunc "`t" v . "`n" v-1 ": " this.action[v-1]
+         Debug(function){
+            v := (v) ? v : this.action.MaxIndex()
+            Tooltip % function "`t" v . "`n" v-1 ": " this.action[v-1]
                . "`n" this.x[v-2] ", " this.y[v-2] ", " this.w[v-2] ", " this.h[v-2]
                . "`n" this.x[v-1] ", " this.y[v-1] ", " this.w[v-1] ", " this.h[v-1]
                . "`n" this.x[v] ", " this.y[v] ", " this.w[v] ", " this.h[v]
@@ -649,6 +657,7 @@ class Vis2 {
                this.x[v] := x_mouse
                this.y[v] := y_mouse
 
+               this.Propagate(v)
                this.Redraw(x_mouse, y_mouse, 1, 1) ;stabilize x/y corrdinates in window spy.
             }
          }
@@ -856,7 +865,8 @@ class Vis2 {
          }
 
          ScreenshotRectangle(){
-            return this.x[this.x.MaxIndex()] "|" this.y[this.y.MaxIndex()] "|" this.w[this.w.MaxIndex()] "|" this.h[this.h.MaxIndex()]
+            x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
+            return (w > 0 && h > 0) ? (x "|" y "|" w "|" h) : ""
          }
 
          x1(){
@@ -1945,25 +1955,30 @@ class Vis2 {
          static tessdata_best := A_ScriptDir "\bin\tesseract\tessdata_best"
          static tessdata_fast := A_ScriptDir "\bin\tesseract\tessdata_fast"
 
-         uuid := Vis2.stdlib.CreateUUID()
-         file := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
-         fileProcessedImage := A_Temp "\Vis2_preprocess" this.uuid ".tif"
-         fileConvert := A_Temp "\Vis2_text" this.uuid
-         fileConvertedText := A_Temp "\Vis2_text" this.uuid ".txt"
-
          __New(language:=""){
             this.language := language
+            this.uuid := Vis2.stdlib.CreateUUID()
+            this.file := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
+            this.fileProcessedImage := A_Temp "\Vis2_preprocess" this.uuid ".tif"
+            this.fileConvertedText := A_Temp "\Vis2_text" this.uuid ".txt"
          }
 
          OCR(image, language:="", options:=""){
             this.language := language
-            imgFile := Vis2.stdlib.toFile(image, this.file, options)
-            this.preprocess(imgFile, this.fileProcessedImage)
-            this.convert_best(this.fileProcessedImage, this.fileConvert)
-            text := this.read()
-            this.cleanup()
-            text.base.google := ObjBindMethod(Vis2.Text, "google")
-            text.base.clipboard := ObjBindMethod(Vis2.Text, "clipboard")
+            try {
+               screenshot := Vis2.stdlib.toFile(image, this.file, options)
+               this.preprocess(screenshot, this.fileProcessedImage)
+               this.convert_best(this.fileProcessedImage, this.fileConvertedText)
+               text := this.read(this.fileConvertedText)
+            } catch e {
+               MsgBox, 16,, % "Exception thrown!`n`nwhat: " e.what "`nfile: " e.file
+                  . "`nline: " e.line "`nmessage: " e.message "`nextra: " e.extra
+            }
+            finally {
+               this.cleanup()
+               text.base.google := ObjBindMethod(Vis2.Text, "google")
+               text.base.clipboard := ObjBindMethod(Vis2.Text, "clipboard")
+            }
             return text
          }
 
@@ -1974,12 +1989,21 @@ class Vis2 {
          }
 
          convert_best(in:="", out:="", fast:=0){
-            _cmd .= this.tesseract " --tessdata-dir"
-            _cmd .= (fast)     ? " " this.tessdata_fast : " " this.tessdata_best
-            _cmd .= (in)       ? " " in                 : " " this.fileProcessedImage
-            _cmd .= (out)      ? " " out                : " " this.fileConvert
+            in := (in) ? in : this.fileProcessedImage
+            out := (out) ? out : this.fileConvertedText
+            fast := (fast) ? this.tessdata_fast : this.tessdata_best
+
+            if !(FileExist(in))
+               throw Exception("Input image for conversion not found.",, in)
+
+            _cmd .= this.tesseract " --tessdata-dir " fast " " in " " SubStr(out, 1, -4)
             _cmd .= (this.language) ? " -l " this.language : ""
             RunWait % ComSpec " /C " _cmd,, Hide
+
+            if !(FileExist(out))
+               throw Exception("Tesseract failed.")
+
+            return out
          }
 
          convert_fast(in:="", out:=""){
@@ -1992,16 +2016,27 @@ class Vis2 {
             static performScaleArg := 1
             static scaleFactor := 3.5
 
-            _cmd .= this.leptonica
-            _cmd .= (in)       ? " " in                 : " " this.file
-            _cmd .= (out)      ? " " out                : " " this.fileProcessedImage
+            in := (in != "") ? in : this.file
+            out := (out != "") ? out : this.fileProcessedImage
+
+            if !(FileExist(in))
+               throw Exception("Input image for preprocessing not found.",, in)
+
+            _cmd .= this.leptonica " " in " " out
             _cmd .= " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
             RunWait % ComSpec " /C " _cmd,, Hide
+
+            if !(FileExist(out))
+               throw Exception("Preprocessing failed.")
+
+            return out
          }
 
          read(in:="", lines:=""){
             in := (in) ? in : this.fileConvertedText
-            database := FileOpen(in, "r`n", "UTF-8")
+
+            if !(database := FileOpen(in, "r`n", "UTF-8"))
+               throw Exception("Text file could not be found or opened.")
 
             if (lines == "") {
                text := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1")
@@ -2024,13 +2059,6 @@ class Vis2 {
 
          readlines(lines){
             return this.read(, lines)
-         }
-
-         tesseractLanguage(){
-            Loop, Files, % Vis2.Tesseract.tessdata "\*.traineddata"
-            {
-               Vis2.Graphics.Subtitle.Render("Language: " RegExReplace(A_LoopFileName, "^(.*?)\.traineddata$", "$1"))
-            }
          }
       }
    }
@@ -2059,7 +2087,7 @@ class Vis2 {
       }
 
       isURL(url){
-         regex .= "((https?|ftp)\:\/\/)?" ; SCHEME
+         regex .= "((https?|ftp)\:\/\/)" ; SCHEME
          regex .= "([a-z0-9+!*(),;?&=\$_.-]+(\:[a-z0-9+!*(),;?&=\$_.-]+)?@)?" ; User and Pass
          regex .= "([a-z0-9-.]*)\.([a-z]{2,3})" ; Host or IP
          regex .= "(\:[0-9]{2,5})?" ; Port
@@ -2376,12 +2404,6 @@ class Vis2 {
             Gdip_SaveBitmapToFile(pBitmap, outputFile)
             Gdip_DisposeImage(pBitmap)
          }
-         ; Check if image is raw binary data
-         else if Vis2.stdlib.isBinaryImageFormat(image) {
-            ; Not working at the moment.
-            ; Would require the length of the binary data to be included.
-            ; Then use the code below.
-         }
          ; Check if image is a base64 string
          else if (image ~= "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$") {
             nSize := Vis2.stdlib.b64Decode(image, bin)
@@ -2398,6 +2420,10 @@ class Vis2 {
             ObjRelease(pStream)
             Gdip_DisposeImage(pBitmap)
          }
+
+         if !(FileExist(outputFile))
+            throw Exception("Could not find source image.")
+
          Vis2.Graphics.Shutdown()
          return outputFile
       }
