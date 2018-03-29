@@ -1948,7 +1948,7 @@ class Vis2 {
          }
       }
 
-      class Tesseract extends Vis2.functor {
+      class Tesseract {
 
          static leptonica := A_ScriptDir "\bin\leptonica_util\leptonica_util.exe"
          static tesseract := A_ScriptDir "\bin\tesseract\tesseract.exe"
@@ -1996,12 +1996,15 @@ class Vis2 {
             if !(FileExist(in))
                throw Exception("Input image for conversion not found.",, in)
 
+            if !(FileExist(this.tesseract))
+               throw Exception("Tesseract not found",, this.tesseract)
+
             _cmd .= this.tesseract " --tessdata-dir " fast " " in " " SubStr(out, 1, -4)
             _cmd .= (this.language) ? " -l " this.language : ""
             RunWait % ComSpec " /C " _cmd,, Hide
 
             if !(FileExist(out))
-               throw Exception("Tesseract failed.")
+               throw Exception("Tesseract failed.",, _cmd)
 
             return out
          }
@@ -2022,12 +2025,15 @@ class Vis2 {
             if !(FileExist(in))
                throw Exception("Input image for preprocessing not found.",, in)
 
+            if !(FileExist(this.leptonica))
+               throw Exception("Leptonica not found",, this.leptonica)
+
             _cmd .= this.leptonica " " in " " out
             _cmd .= " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
             RunWait % ComSpec " /C " _cmd,, Hide
 
             if !(FileExist(out))
-               throw Exception("Preprocessing failed.")
+               throw Exception("Preprocessing failed.",, _cmd)
 
             return out
          }
@@ -2036,7 +2042,7 @@ class Vis2 {
             in := (in) ? in : this.fileConvertedText
 
             if !(database := FileOpen(in, "r`n", "UTF-8"))
-               throw Exception("Text file could not be found or opened.")
+               throw Exception("Text file could not be found or opened.",, in)
 
             if (lines == "") {
                text := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1")
