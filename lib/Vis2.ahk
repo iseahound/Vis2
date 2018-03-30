@@ -1,7 +1,7 @@
 ﻿; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2018-03-29
+; Recent:    2018-03-30
 
 #include <Gdip_All>
 
@@ -1999,9 +1999,11 @@ class Vis2 {
             if !(FileExist(this.tesseract))
                throw Exception("Tesseract not found",, this.tesseract)
 
-            _cmd .= this.tesseract " --tessdata-dir " fast " " in " " SubStr(out, 1, -4)
-            _cmd .= (this.language) ? " -l " this.language : ""
-            RunWait % ComSpec " /C " _cmd,, Hide
+            static q := Chr(0x22)
+            _cmd .= q this.tesseract q " --tessdata-dir " q fast q " " q in q " " q SubStr(out, 1, -4) q
+            _cmd .= (this.language) ? " -l " q this.language q : ""
+            _cmd := ComSpec " /C " q _cmd q
+            RunWait % _cmd,, Hide
 
             if !(FileExist(out))
                throw Exception("Tesseract failed.",, _cmd)
@@ -2028,9 +2030,11 @@ class Vis2 {
             if !(FileExist(this.leptonica))
                throw Exception("Leptonica not found",, this.leptonica)
 
-            _cmd .= this.leptonica " " in " " out
+            static q := Chr(0x22)
+            _cmd .= q this.leptonica q " " q in q " " q out q
             _cmd .= " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
-            RunWait % ComSpec " /C " _cmd,, Hide
+            _cmd := ComSpec " /C " q _cmd q
+            RunWait, % _cmd,, Hide
 
             if !(FileExist(out))
                throw Exception("Preprocessing failed.",, _cmd)
