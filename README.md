@@ -3,7 +3,7 @@
 
 ### Super Quick Start
 
-Run demo.ahk. My personal suggestion is to bind OCR() to a mouse button instead of #c. 
+Run demo.ahk.
 
 ### Quick Start
 1. [Download Vis2.](https://github.com/iseahound/Vis2/archive/master.zip)
@@ -17,7 +17,7 @@ Run demo.ahk. My personal suggestion is to bind OCR() to a mouse button instead 
 3. Run the new AHK script. You should see a MsgBox with OCR Text. Press ```Enter``` to exit. Visit the image link to confirm the OCR is working correctly. 
 
 ### How to use
-When you see the popup "Optical Character Recognition Tool", click and drag. If you press the right mouse button while holding down LButton you can reposition the rectangle. 
+When you see the popup "Optical Character Recognition Tool", click and drag. If you press the right mouse button while holding down LButton you can reposition the rectangle. My personal suggestion is to bind OCR() to a mouse button instead of #c. 
 
 ### Using Additional Languages
 Go to https://github.com/tesseract-ocr/tessdata_best and place your desired languages in bin/tessdata_best. 
