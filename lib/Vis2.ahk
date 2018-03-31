@@ -1,7 +1,7 @@
 ﻿; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2018-03-30
+; Recent:    2018-03-31
 
 #include <Gdip_All>
 
@@ -537,7 +537,7 @@ class Vis2 {
             Gdip_GraphicsClear(this.G)
             Gdip_FillRectangle(this.G, this.pBrush, x, y, w, h)
             if (this.coordinates)
-               Vis2.Graphics.Subtitle.Draw("x: " this.x1() " │ y: " this.y1() " │ w: " this.width() " │ h: " this.height()
+               Vis2.Graphics.Subtitle.Draw("x: " x " │ y: " y " │ w: " w " │ h: " h
                   , {"a":"top_right", "x":"right", "y":"top", "color":"Black"}, {"font":"Lucida Sans Typewriter", "size":"1.67%"}, this.G)
             UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
             Critical Off
