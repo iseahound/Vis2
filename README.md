@@ -16,6 +16,9 @@ Run demo.ahk. My personal suggestion is to bind OCR() to a mouse button instead 
     
 3. Run the new AHK script. You should see a MsgBox with OCR Text. Press ```Enter``` to exit. Visit the image link to confirm the OCR is working correctly. 
 
+### How to use
+When you see the popup "Optical Character Recognition Tool", click and drag. If you press the right mouse button while holding down LButton you can reposition the rectangle. 
+
 ### Using Additional Languages
 Go to https://github.com/tesseract-ocr/tessdata_best and place your desired languages in bin/tessdata_best. 
 Go to https://github.com/tesseract-ocr/tessdata_fast and place your desired languages in bin/tessdata_fast. 
