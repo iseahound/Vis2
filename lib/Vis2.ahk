@@ -258,7 +258,9 @@ class Vis2 {
 
                if (!Vis2.obj.unlock.1 || bypass) {
                   if (coordinates := Vis2.obj.Area.ScreenshotRectangle()) {
+                     (overlap := Vis2.core.ux.overlap()) ? Vis2.obj.subtitle.hide() : ""
                      pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
+                     (overlap) ? Vis2.obj.subtitle.show() : ""
                      if !(coordinates == Vis2.obj.coordinates && Vis2.stdlib.Gdip_isBitmapEqual(pBitmap, Vis2.obj.pBitmap)) {
                         Gdip_DisposeImage(Vis2.obj.pBitmap)
                         Vis2.obj.coordinates := coordinates
@@ -300,7 +302,7 @@ class Vis2 {
                         else
                            Vis2.obj.dialogue := (Vis2.obj.firstDialogue == true) ? "ERROR: No Text Data Found" : "Searching for text..."
 
-                        if (Vis2.obj.textPreview)
+                        if !(bypass)
                            Vis2.obj.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style1_back, Vis2.obj.style1_text)
                      }
                      else {
@@ -323,7 +325,7 @@ class Vis2 {
 
                if (key ~= "^Vis2.core.ux.process.selectImage") {
                   Vis2.obj.Area.ChangeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
-                  if (!Vis2.obj.textPreview)
+                  if (!Vis2.obj.textPreview || Vis2.obj.area.screenshotRectangle != Vis2.obj.coordinates)
                      Vis2.core.ux.process.textPreview("bypass")
                }
 
