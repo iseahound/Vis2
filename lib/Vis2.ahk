@@ -1,23 +1,29 @@
 ﻿; Script:    Vis2.ahk
 ; Author:    iseahound
 ; Date:      2017-08-19
-; Recent:    2018-03-31
+; Recent:    2018-04-04
 
 #include <Gdip_All>
 
-
-; OCR() - Convert pictures of text into text.
-OCR(image:="", language:="", options:=""){
-   return Vis2.OCR(image, language, options)
-}
 
 ; ImageIdentify() - Label and identify objects in images.
 ImageIdentify(image:="", search:="", options:=""){
    return Vis2.ImageIdentify(image, search, options)
 }
 
+; OCR() - Convert pictures of text into text.
+OCR(image:="", language:="", options:=""){
+   return Vis2.OCR(image, language, options)
+}
 
 class Vis2 {
+
+   class ImageIdentify extends Vis2.functor {
+      call(self, image:="", search:="", options:=""){
+         return (image != "") ? (new Vis2.provider.GoogleCloudVision()).ImageIdentify(image, search, options)
+            : Vis2.core.returnText({"provider":(new Vis2.provider.GoogleCloudVision(search)), "tooltip":"Image Identification Tool", "textPreview":false})
+      }
+   }
 
    class OCR extends Vis2.functor {
       call(self, image:="", language:="", options:=""){
@@ -28,12 +34,6 @@ class Vis2 {
       google(){
          return (image != "") ? (new Vis2.provider.Tesseract()).OCR(image, language, options).google()
             : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract(language)), "tooltip":"Any selected text will be Googled.", "textPreview":true, "noCopy":true}).google()
-      }
-   }
-
-   class ImageIdentify extends Vis2.functor {
-      call(self, image:="", search:="", options:=""){
-         return (image != "") ? Vis2.wrapper.ImageIdentify(image) : Vis2.core.start()
       }
    }
 
@@ -82,7 +82,7 @@ class Vis2 {
 
             Vis2.obj.style1_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"DD000000", "radius":8}
             Vis2.obj.style1_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"}
-            Vis2.obj.style2_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"C088EAB6", "radius":8}
+            Vis2.obj.style2_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"FF88EAB6", "radius":8}
             Vis2.obj.style2_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"Black"}
             Vis2.obj.style4_back := {"time":2500, "x":"center", "y":"83%", "padding":"1.35%", "color":"Black", "radius":8}
             Vis2.obj.style4_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"}
@@ -220,7 +220,7 @@ class Vis2 {
 
                ; Space Hotkeys
                if (Vis2.obj.action.Control_Space = 1){
-                  Vis2.obj.image.render(Vis2.obj.provider.fileProcessedImage, 0.5)
+                  Vis2.obj.image.render(Vis2.obj.provider.getPreprocessImage(), 0.5)
                   Vis2.obj.image.toggleVisible()
                } else if (Vis2.obj.action.Alt_Space = 1){
                   Vis2.obj.area.toggleCoordinates()
@@ -270,16 +270,16 @@ class Vis2 {
                            if (Vis2.obj.provider.file != "")
                               Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.provider.file, Vis2.obj.provider.jpegQuality)
                            if (Vis2.obj.provider.base64 != "")
-                              Vis2.obj.provider.base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, Vis2.obj.provider.base64)
+                              Vis2.obj.provider.base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, Vis2.obj.provider.ext, Vis2.obj.provider.jpegQuality)
                            Vis2.obj.provider.preprocess()
-                           if (Vis2.obj.Image.isVisible() == true)
-                              Vis2.obj.Image.Render(Vis2.obj.provider.fileProcessedImage, 0.5)
-                           Vis2.obj.provider.convert_fast()
-                           Vis2.obj.database := Vis2.obj.provider.read()
+                           if (Vis2.obj.image.isVisible() == true)
+                              Vis2.obj.image.render(Vis2.obj.provider.getPreprocessImage(), 0.5)
+                           Vis2.obj.provider.convert()
+                           Vis2.obj.database := Vis2.obj.provider.getText()
                         }
                         catch e {
                            MsgBox, 16,, % "Exception thrown!`n`nwhat: " e.what "`nfile: " e.file
-                              . "`nline: " e.line "`nmessage: " e.message "`nextra: " e.extra "`nc" coordinates
+                              . "`nline: " e.line "`nmessage: " e.message "`nextra: " e.extra "`ncoordinates: " coordinates
                         }
 
                         ; Retrieve three lines of text.
@@ -367,7 +367,6 @@ class Vis2 {
             Vis2.obj.Subtitle.Destroy()
             Vis2.obj.note_01.Hide() ; Let them time out instead of Destroy()
             Vis2.obj.note_02.Destroy()
-            Vis2.obj.note_03.Hide()
             Vis2.obj := "" ; Goodbye all, you were loved :c
 
             ; Fixes a bug where AHK does not detect key releases if there is an admin-level window beneath.
@@ -412,6 +411,44 @@ class Vis2 {
             ;Tooltip % a "`t" b "`n`n" p1 "`t" r1 "`n" p2 "`t" r2 "`n`n" q1 "`t" s1 "`n" q2 "`t" s2
             return (a && b)
          }
+
+         suspend(){
+            static void := ObjBindMethod({}, {})
+            Hotkey, LButton, % void, Off
+            Hotkey, ^LButton, % void, Off
+            Hotkey, !LButton, % void, Off
+            Hotkey, +LButton, % void, Off
+            Hotkey, RButton, % void, Off
+            Hotkey, Escape, % void, Off
+            Hotkey, Space, % void, Off
+            Hotkey, ^Space, % void, Off
+            Hotkey, !Space, % void, Off
+            Hotkey, +Space, % void, Off
+            DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor
+            Vis2.obj.area.hide()
+            return
+         }
+
+         resume(){
+            Hotkey, LButton, % void, On
+            Hotkey, ^LButton, % void, On
+            Hotkey, !LButton, % void, On
+            Hotkey, +LButton, % void, On
+            Hotkey, RButton, % void, On
+            Hotkey, Escape, % void, On
+
+            if (Vis2.obj.selectMode == "Quick")
+               Vis2.stdlib.setSystemCursor(32515) ; IDC_Cross := 32515
+
+            if (Vis2.obj.selectMode == "Advanced") {
+               Hotkey, Space, % void, On
+               Hotkey, ^Space, % void, On
+               Hotkey, !Space, % void, On
+               Hotkey, +Space, % void, On
+            }
+            Vis2.obj.area.show()
+            return
+         }
       }
    }
 
@@ -421,6 +458,7 @@ class Vis2 {
       ; When casting to Call(), use a new instance of the "function object"
       ; so as to avoid directly storing the properties(used across sub-methods)
       ; into the "function object" itself.
+      ; Thanks to coco for this code. Modified by iseahound.
          if IsObject(method)
             return (new this).Call(method, arg, args*)
          else if (method == "")
@@ -1868,6 +1906,11 @@ class Vis2 {
 
       class GoogleCloudVision {
 
+         static ext := "jpg"
+         static jpegQuality := "75"
+
+         base64 := true
+
          ; Cloud Platform Console Help - Setting up API keys
          ; Step 1: https://support.google.com/cloud/answer/6158862?hl=en
          ; Step 2: https://cloud.google.com/vision/docs/before-you-begin
@@ -1881,23 +1924,28 @@ class Vis2 {
          ; FOR SAFETY REASONS, DO NOT PASTE YOUR API KEY HERE.
          ; Instead, keep your api_key in a separate file, "Vis2_API.txt"
 
-         getCredentials(){
-            if (Vis2.GoogleCloudVision.api_key ~= "^X{39}$") {
+         getCredentials(error:=""){
+            if (error != "") {
+               (Vis2.obj) ? Vis2.core.ux.suspend() : ""
+               InputBox, api_key, Vis2.GoogleCloudVision.ImageIdentify, Enter your api_key for GoogleCloudVision.
+               (Vis2.obj) ? Vis2.core.ux.resume() : ""
+               FileAppend, GoogleCloudVision=%api_key%, Vis2_API.txt
+               return api_key
+            }
+
+            if (this.api_key ~= "^X{39}$") {
                if FileExist("Vis2_API.txt") {
                   file := FileOpen("Vis2_API.txt", "r")
                   keys := file.Read()
                   api_key := ((___ := RegExReplace(keys, "s)^.*?GoogleCloudVision(?:\s*)=(?:\s*)([A-Za-z0-9\-]+).*$", "$1")) != keys) ? ___ : ""
                   file.close()
 
-                  if (api_key)
+                  if (api_key != "")
                      return api_key
                }
-               InputBox, api_key, Vis2.GoogleCloudVision.ImageIdentify, Enter your api_key for GoogleCloudVision.
-               FileAppend, GoogleCloudVision=%api_key%, Vis2_API.txt
-               return api_key
             }
             else
-               return Vis2.GoogleCloudVision.api_key
+               return this.api_key
          }
 
          ; https://cloud.google.com/vision/docs/supported-files
@@ -1946,6 +1994,45 @@ class Vis2 {
             Vis2.Graphics.Subtitle.Render(sentence2)
 
          }
+
+         convert(in:=""){
+            in := (in) ? in : this.base64
+            req := {}
+            req.requests := {}
+            req.requests[1] := {"image":{}, "features":{}}
+            req.requests[1].image.content := in
+            req.requests[1].features[1] := {"type":"LABEL_DETECTION"}
+            body := JSON.Dump(req)
+
+            whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+            whr.Open("POST", "https://cxl-services.appspot.com/proxy?url=https%3A%2F%2Fvision.googleapis.com%2Fv1%2Fimages%3Aannotate", true)
+            whr.SetRequestHeader("Accept", "*/*")
+            whr.SetRequestHeader("Origin", "https://cloud.google.com")
+            whr.SetRequestHeader("Content-Type", "text/plain;charset=UTF-8")
+            whr.SetRequestHeader("Referer", "https://cloud.google.com/vision/")
+            whr.SetRequestHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36")
+
+            whr.Send(body)
+            whr.WaitForResponse()
+
+            try reply := JSON.Load(whr.ResponseText)
+            catch
+               this.getCredentials(whr.ResponseText)
+            i := 1
+            while (i <= reply.responses[1].labelAnnotations.length()) {
+               sentence  .= (i == 1) ? "" : ", "
+               sentence2 .= (i == 1) ? "" : ", "
+               sentence  .= reply.responses[1].labelAnnotations[i].description
+               sentence2 .= reply.responses[1].labelAnnotations[i].description " (" Format("{:i}",  100*reply.responses[1].labelAnnotations[i].score) "%)"
+               i++
+            }
+
+            this.text := sentence2
+         }
+
+         getText(){
+            return this.text
+         }
       }
 
       class Tesseract {
@@ -1955,12 +2042,23 @@ class Vis2 {
          static tessdata_best := A_ScriptDir "\bin\tesseract\tessdata_best"
          static tessdata_fast := A_ScriptDir "\bin\tesseract\tessdata_fast"
 
+         uuid := Vis2.stdlib.CreateUUID()
+         file := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
+         fileProcessedImage := A_Temp "\Vis2_preprocess" this.uuid ".tif"
+         fileConvertedText := A_Temp "\Vis2_text" this.uuid ".txt"
+
+         ; public OCR()
+         ; public preprocess()
+         ; public convert()
+         ; public cleanup()
+         ; public getPreprocessImage()
+         ; public getText()
+         ; private convert_best()
+         ; private convert_fast()
+         ; private getTextLines()
+
          __New(language:=""){
             this.language := language
-            this.uuid := Vis2.stdlib.CreateUUID()
-            this.file := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
-            this.fileProcessedImage := A_Temp "\Vis2_preprocess" this.uuid ".tif"
-            this.fileConvertedText := A_Temp "\Vis2_text" this.uuid ".txt"
          }
 
          OCR(image, language:="", options:=""){
@@ -1988,7 +2086,7 @@ class Vis2 {
             FileDelete, % this.fileConvertedText
          }
 
-         convert_best(in:="", out:="", fast:=0){
+         convert(in:="", out:="", fast:=1){
             in := (in) ? in : this.fileProcessedImage
             out := (out) ? out : this.fileConvertedText
             fast := (fast) ? this.tessdata_fast : this.tessdata_best
@@ -2011,8 +2109,45 @@ class Vis2 {
             return out
          }
 
+         convert_best(in:="", out:=""){
+            return this.convert(in, out, 1)
+         }
+
          convert_fast(in:="", out:=""){
-            return this.convert_best(in, out, 1)
+            return this.convert(in, out, 1)
+         }
+
+         getPreprocessImage(){
+            return this.fileProcessedImage
+         }
+
+         getText(in:="", lines:=""){
+            in := (in) ? in : this.fileConvertedText
+
+            if !(database := FileOpen(in, "r`n", "UTF-8"))
+               throw Exception("Text file could not be found or opened.",, in)
+
+            if (lines == "") {
+               text := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1")
+               text := RegExReplace(text, "(?<!\r)\n", "`r`n")
+            } else {
+               while (lines > 0) {
+                  data := database.ReadLine()
+                  data := RegExReplace(data, "^\s*(.*?)\s*$", "$1")
+                  if (data != "") {
+                     text .= (text) ? ("`n" . data) : data
+                     lines--
+                  }
+                  if (!database || database.AtEOF)
+                     break
+               }
+            }
+            database.Close()
+            return text
+         }
+
+         getTextLines(lines){
+            return this.read(, lines)
          }
 
          preprocess(in:="", out:=""){
@@ -2040,35 +2175,6 @@ class Vis2 {
                throw Exception("Preprocessing failed.",, _cmd)
 
             return out
-         }
-
-         read(in:="", lines:=""){
-            in := (in) ? in : this.fileConvertedText
-
-            if !(database := FileOpen(in, "r`n", "UTF-8"))
-               throw Exception("Text file could not be found or opened.",, in)
-
-            if (lines == "") {
-               text := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1")
-               text := RegExReplace(text, "(?<!\r)\n", "`r`n")
-            } else {
-               while (lines > 0) {
-                  data := database.ReadLine()
-                  data := RegExReplace(data, "^\s*(.*?)\s*$", "$1")
-                  if (data != "") {
-                     text .= (text) ? ("`n" . data) : data
-                     lines--
-                  }
-                  if (!database || database.AtEOF)
-                     break
-               }
-            }
-            database.Close()
-            return text
-         }
-
-         readlines(lines){
-            return this.read(, lines)
          }
       }
    }
