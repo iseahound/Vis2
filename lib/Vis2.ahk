@@ -325,11 +325,13 @@ class Vis2 {
 
                if (key ~= "^Vis2.core.ux.process.selectImage") {
                   Vis2.obj.Area.ChangeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
-                  if (!Vis2.obj.textPreview || Vis2.obj.area.screenshotRectangle != Vis2.obj.coordinates)
+                  if (!Vis2.obj.textPreview)
                      Vis2.core.ux.process.textPreview("bypass")
                }
 
                if (Vis2.obj.unlock.MaxIndex() == 2) {
+                  if (Vis2.obj.area.screenshotRectangle() != Vis2.obj.coordinates)
+                     Vis2.core.ux.process.textPreview("bypass")
                   if (Vis2.obj.database != "" && Vis2.obj.EXITCODE == 0) {
                      if (Vis2.obj.noCopy != true) {
                         clipboard := Vis2.obj.database
