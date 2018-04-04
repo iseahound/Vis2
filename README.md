@@ -1,4 +1,4 @@
-# Vis2 - OCR()
+# Vis2 - OCR(), ImageIdentify()
 ##### Automation using Computer Vision. Convert images on screen, image files, or an image URL to text. 
 
 ### Super Quick Start
@@ -37,6 +37,7 @@ While using ```#c:: OCR()``` you can press ```Ctrl```, ```Alt```, or ```Shift```
 
 ## Documentation
 ### Input Data Types
+The same rules apply for ImageIdentify()
 #### ```OCR()``` - Launches an interactive GUI. 
 Example: Pressing ```Ctrl``` + ```Win``` + ```c``` will allow the user to manually select an area on screen to OCR. 
 
