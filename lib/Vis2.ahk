@@ -1995,7 +1995,7 @@ class Vis2 {
          ; Compression to 640 x 480 - LABEL_DETECTION
 
          ImageIdentify(image, search:="", options:=""){
-            base64 := Vis2.stdlib.toBase64(image, this.ext, this.jpegQuality)
+            base64 := Vis2.stdlib.toBase64(image, "png", this.jpegQuality, options)
             reply := this.convert(base64)
             return this.getText()
          }
@@ -2335,10 +2335,10 @@ class Vis2 {
       	return pBitmap
       }
 
-      Gdip_CropBitmap(ByRef pBitmap, c){
+      Gdip_CropBitmap(ByRef pBitmap, c, preserveOriginal:=false){
          w := Gdip_GetImageWidth(pBitmap), h := Gdip_GetImageHeight(pBitmap)
          pBitmap2 := Gdip_CloneBitmapArea(pBitmap, c.1, c.2, (c.1 + c.3 > w) ? w - c.1 : c.3 , (c.2 + c.4 > h) ? h - c.2 : c.4)
-         Gdip_DisposeImage(pBitmap)
+         (preserveOriginal) ? "" : Gdip_DisposeImage(pBitmap)
          pBitmap := pBitmap2
       }
 
@@ -2403,21 +2403,28 @@ class Vis2 {
       ; Strings: File, URL, Window Title (ahk_class...) OR hwnd (hex)
       ; Numbers: GDI Bitmap, GDI HBitmap
       ; Rawfile: Binary, base64
-      toBase64(image){
+      toBase64(image, extension:="png", quality:="", crop:="", crop2:=""){
          Vis2.Graphics.Startup()
 
          ; Check if image is an array of 4 numbers
          if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$") {
             pBitmap := Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
-            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, "png")
+            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, extension, quality)
             Gdip_DisposeImage(pBitmap)
          }
          ; Check if image points to a valid file
          else if FileExist(image) {
-            file := FileOpen(image, "r")
-            file.RawRead(data, file.length)
-            base64 := Vis2.stdlib.b64Encode(data, file.length)
-            file.Close()
+            if !(crop) {
+               file := FileOpen(image, "r")
+               file.RawRead(data, file.length)
+               base64 := Vis2.stdlib.b64Encode(data, file.length)
+               file.Close()
+            } else {
+               pBitmap := Gdip_CreateBitmapFromFile(image)
+               (crop) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop) : ""
+               base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, extension, quality)
+               Gdip_DisposeImage(pBitmap)
+            }
          }
          ; Check if image points to a valid URL
          else if Vis2.stdlib.isURL(image) {
@@ -2426,45 +2433,52 @@ class Vis2 {
             req.Send()
 
             pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
-            DllCall("ole32\GetHGlobalFromStream", "ptr",pStream, "uint*",hData)
-            pData := DllCall("GlobalLock", "ptr",hData, "uptr")
-            nSize := DllCall("GlobalSize", "uint",pData)
+            if !(crop) {
+               DllCall("ole32\GetHGlobalFromStream", "ptr",pStream, "uint*",hData)
+               pData := DllCall("GlobalLock", "ptr",hData, "uptr")
+               nSize := DllCall("GlobalSize", "uint",pData)
 
-            VarSetCapacity(Bin, nSize, 0)
-            DllCall("RtlMoveMemory", "ptr",&Bin , "ptr",pData , "uint",nSize)
-            DllCall("GlobalUnlock", "ptr",hData)
-            DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
-            DllCall("GlobalFree", "ptr",hData)
-            ObjRelease(pStream)
+               VarSetCapacity(Bin, nSize, 0)
+               DllCall("RtlMoveMemory", "ptr",&Bin , "ptr",pData , "uint",nSize)
+               DllCall("GlobalUnlock", "ptr",hData)
+               DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
+               DllCall("GlobalFree", "ptr",hData)
+               ObjRelease(pStream)
 
-            DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",0, "uint*",base64Length)
-            VarSetCapacity(base64, base64Length*2, 0)
-            DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",&base64, "uint*",base64Length)
-            Bin := ""
-            VarSetCapacity(Bin, 0)
-            VarSetCapacity(base64, -1)
+               DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",0, "uint*",base64Length)
+               VarSetCapacity(base64, base64Length*2, 0)
+               DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",&base64, "uint*",base64Length)
+               Bin := ""
+               VarSetCapacity(Bin, 0)
+               VarSetCapacity(base64, -1)
+            } else {
+               DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+               ObjRelease(pStream)
+               (crop) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop) : ""
+               base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, extension, quality)
+               Gdip_DisposeImage(pBitmap)
+            }
          }
          ; Check if image matches a window title OR is a valid handle to a window
          else if (DllCall("IsWindow", "ptr",image) || (hwnd := WinExist(image))) {
             hwnd := (DllCall("IsWindow", "ptr",image)) ? image : hwnd
             pBitmap := Vis2.stdlib.Gdip_BitmapFromClientHWND(hwnd)
-            Gdip_SaveBitmapToFile(pBitmap, "ttt.png")
-            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, "png")
+            (crop) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop) : ""
+            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, extension, quality)
             Gdip_DisposeImage(pBitmap)
          }
          ; Check if image is a valid GDI Bitmap
          else if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image)) {
-            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(image, "png")
+            (crop) ? Vis2.stdlib.Gdip_CropBitmap(image, crop, true) : ""
+            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(image, extension, quality)
+            (crop) ? Gdip_DisposeImage(image) : ""
          }
          ; Check if image is a valid handle to a GDI Bitmap
          else if (DllCall("GetObjectType", "ptr",image) == 7) {
             pBitmap := Gdip_CreateBitmapFromHBITMAP(image)
-            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, "png")
+            (crop) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop) : ""
+            base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, extension, quality)
             Gdip_DisposeImage(pBitmap)
-         }
-         ; Check if image is raw binary data
-         else if Vis2.stdlib.isBinaryImageFormat(image) {
-            base64 := Vis2.stdlib.b64Encode(image)
          }
          ; Check if image is a base64 string
          else if (image ~= "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$") {
@@ -2475,7 +2489,7 @@ class Vis2 {
       }
 
       ; toFile() - Saves the image as a temporary file.
-      toFile(image, outputFile:="", cropArray:=""){
+      toFile(image, outputFile:="", crop:=""){
          Vis2.Graphics.Startup()
          ; Check if image is an array of 4 numbers
          if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$") {
@@ -2487,9 +2501,9 @@ class Vis2 {
          else if FileExist(image) {
             Loop, Files, % image
             {
-               if (A_LoopFileExt != "bmp" || IsObject(cropArray)) {
+               if (A_LoopFileExt != "bmp" || IsObject(crop)) {
                   pBitmap := Gdip_CreateBitmapFromFile(A_LoopFileLongPath)
-                  (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
+                  (crop) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop) : ""
                   Gdip_SaveBitmapToFile(pBitmap, outputFile)
                   Gdip_DisposeImage(pBitmap)
                }
@@ -2504,7 +2518,7 @@ class Vis2 {
 
             pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
             DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
-            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
+            (crop) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop) : ""
             Gdip_SaveBitmapToFile(pBitmap, outputFile, 92)
             ObjRelease(pStream)
             Gdip_DisposeImage(pBitmap)
@@ -2513,19 +2527,19 @@ class Vis2 {
          else if (DllCall("IsWindow", "ptr",image) || (hwnd := WinExist(image))) {
             hwnd := (DllCall("IsWindow", "ptr",image)) ? image : hwnd
             pBitmap := Vis2.stdlib.Gdip_BitmapFromClientHWND(hwnd)
-            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
+            (crop) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop) : ""
             Gdip_SaveBitmapToFile(pBitmap, outputFile)
             Gdip_DisposeImage(pBitmap)
          }
          ; Check if image is a valid GDI Bitmap
          else if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image)) {
-            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(image, cropArray) : ""
+            (crop) ? Vis2.stdlib.Gdip_CropBitmap(image, crop, true) : ""
             Gdip_SaveBitmapToFile(image, outputFile)
          }
          ; Check if image is a valid handle to a GDI Bitmap
          else if (DllCall("GetObjectType", "ptr",image) == 7) {
             pBitmap := Gdip_CreateBitmapFromHBITMAP(image)
-            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
+            (crop) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop) : ""
             Gdip_SaveBitmapToFile(pBitmap, outputFile)
             Gdip_DisposeImage(pBitmap)
          }
@@ -2538,7 +2552,7 @@ class Vis2 {
             DllCall("GlobalUnlock", "ptr",hData)
             DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",1, "uptr*",pStream)
             DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
-            (cropArray) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, cropArray) : ""
+            (crop) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop) : ""
             Gdip_SaveBitmapToFile(pBitmap, outputFile, 92)
             DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
             DllCall("GlobalFree", "ptr",hData)
