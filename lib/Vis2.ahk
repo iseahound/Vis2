@@ -85,8 +85,6 @@ class Vis2 {
             Vis2.obj.style1_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"}
             Vis2.obj.style2_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"FF88EAB6", "radius":8}
             Vis2.obj.style2_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"Black"}
-            Vis2.obj.style4_back := {"time":2500, "x":"center", "y":"83%", "padding":"1.35%", "color":"Black", "radius":8}
-            Vis2.obj.style4_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"}
             Vis2.obj.subtitle.render(Vis2.obj.tooltip, Vis2.obj.style1_back, Vis2.obj.style1_text)
 
             return Vis2.core.ux.waitForUserInput()
@@ -332,15 +330,18 @@ class Vis2 {
                   if (Vis2.obj.database != "" && Vis2.obj.EXITCODE == 0) {
                      if (Vis2.obj.noCopy != true) {
                         clipboard := Vis2.obj.database
+                        t := 2500
                         if (Vis2.obj.splashImage == true) {
+                           t := 5000
                            w := Gdip_GetImageWidth(Vis2.obj.pBitmap)
                            h := Gdip_GetImageHeight(Vis2.obj.pBitmap)
-                           Vis2.Graphics.Subtitle.Render("", {"time":2500, "x":((A_ScreenWidth-w)/2)-10, "y":((A_ScreenHeight-h)/2)-10, "w":w+20, "h":h+20, "color":"Black"})
-                           Vis2.Graphics.Image.Render(Vis2.obj.pBitmap, 1, 2500).Border()
+                           Vis2.Graphics.Subtitle.Render("", {"time":t, "x":((A_ScreenWidth-w)/2)-10, "y":((A_ScreenHeight-h)/2)-10, "w":w+20, "h":h+20, "color":"Black"})
+                           Vis2.Graphics.Image.Render(Vis2.obj.pBitmap, 1, t).Border()
                         }
                         Vis2.obj.Subtitle.Hide()
-                        Vis2.Graphics.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style4_back, Vis2.obj.style4_text)
-                        Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: 2500, x: center, y: 75%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial")
+                        Vis2.Graphics.Subtitle.Render(Vis2.obj.dialogue
+                           , {"time":t, "x":"center", "y":"83%", "padding":"1.35%", "color":"Black", "radius":8}, {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"})
+                        Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: " t ", x: center, y: 75%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial")
                      }
                      Vis2.obj.EXITCODE := 1
                   }
