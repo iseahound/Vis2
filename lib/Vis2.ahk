@@ -2040,7 +2040,10 @@ class Vis2 {
             body := JSON.Dump(req)
 
             whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-            whr.Open("POST", "https://cxl-services.appspot.com/proxy?url=https%3A%2F%2Fvision.googleapis.com%2Fv1%2Fimages%3Aannotate", true)
+            if (api_key := this.getCredentials())
+               whr.Open("POST", "https://vision.googleapis.com/v1/images:annotate?key=" api_key, true)
+            else
+               whr.Open("POST", "https://cxl-services.appspot.com/proxy?url=https%3A%2F%2Fvision.googleapis.com%2Fv1%2Fimages%3Aannotate", true)
             whr.SetRequestHeader("Accept", "*/*")
             whr.SetRequestHeader("Origin", "https://cloud.google.com")
             whr.SetRequestHeader("Content-Type", "text/plain;charset=UTF-8")
