@@ -29,7 +29,7 @@ class Vis2 {
    class OCR extends Vis2.functor {
       call(self, image:="", language:="", options:=""){
          return (image != "") ? (new Vis2.provider.Tesseract()).OCR(image, language, options)
-            : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract(language)), "tooltip":"Optical Character Recognition Tool", "textPreview":true, "splashImage":true})
+            : Vis2.core.returnText({"provider":(new Vis2.provider.Tesseract(language)), "tooltip":"Optical Character Recognition Tool", "textPreview":true})
       }
 
       google(){
@@ -2106,7 +2106,7 @@ class Vis2 {
                screenshot := Vis2.stdlib.toFile(image, this.file, options)
                this.preprocess(screenshot, this.fileProcessedImage)
                this.convert_best(this.fileProcessedImage, this.fileConvertedText)
-               text := this.getText(this.fileConvertedText)
+               text := this.read(this.fileConvertedText)
             } catch e {
                MsgBox, 16,, % "Exception thrown!`n`nwhat: " e.what "`nfile: " e.file
                   . "`nline: " e.line "`nmessage: " e.message "`nextra: " e.extra
@@ -2149,7 +2149,7 @@ class Vis2 {
          }
 
          convert_best(in:="", out:=""){
-            return this.convert(in, out, 0)
+            return this.convert(in, out, 1)
          }
 
          convert_fast(in:="", out:=""){
