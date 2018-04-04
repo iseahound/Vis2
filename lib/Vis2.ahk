@@ -1992,43 +1992,10 @@ class Vis2 {
          ; Maximum Size per Request - 8 MB
          ; Compression to 640 x 480 - LABEL_DETECTION
 
-         ImageIdentify(image){
-
-            img64 := Vis2.stdlib.toBase64(image)
-
-            req := {}
-            req.requests := {}
-            req.requests[1] := {"image":{}, "features":{}}
-            req.requests[1].image.content := img64
-            req.requests[1].features[1] := {"type":"LABEL_DETECTION"}
-            body := JSON.Dump(req)
-
-            VarSetCapacity(file, 0)
-            VarSetCapacity(img64, 0)
-            VarSetCapacity(req, 0)
-
-            whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-            whr.open("POST", "https://vision.googleapis.com/v1/images:annotate?key=" Vis2.GoogleCloudVision.getCredentials())
-            whr.send(body)
-
-            MsgBox % whr.ResponseText
-
-            reply := JSON.Load(whr.ResponseText)
-            i := 1
-            while (i <= reply.responses[1].labelAnnotations.length()) {
-               sentence  .= (i == 1) ? "" : ", "
-               sentence2 .= (i == 1) ? "" : ", "
-               sentence  .= reply.responses[1].labelAnnotations[i].description
-               sentence2 .= reply.responses[1].labelAnnotations[i].description " (" Format("{:i}",  100*reply.responses[1].labelAnnotations[i].score) "%)"
-               i++
-            }
-            VarSetCapacity(body, 0)
-            VarSetCapacity(whr, 0)
-            VarSetCapacity(reply, 0)
-
-
-            Vis2.Graphics.Subtitle.Render(sentence2)
-
+         ImageIdentify(image, search:="", options:=""){
+            base64 := Vis2.stdlib.toBase64(image, this.ext, this.jpegQuality)
+            reply := this.convert(base64)
+            return this.getText()
          }
 
          convert(in:=""){
@@ -2067,6 +2034,7 @@ class Vis2 {
             }
 
             this.text := sentence2
+            return reply
          }
 
          getText(){
@@ -2106,7 +2074,7 @@ class Vis2 {
                screenshot := Vis2.stdlib.toFile(image, this.file, options)
                this.preprocess(screenshot, this.fileProcessedImage)
                this.convert_best(this.fileProcessedImage, this.fileConvertedText)
-               text := this.read(this.fileConvertedText)
+               text := this.getText(this.fileConvertedText)
             } catch e {
                MsgBox, 16,, % "Exception thrown!`n`nwhat: " e.what "`nfile: " e.file
                   . "`nline: " e.line "`nmessage: " e.message "`nextra: " e.extra
@@ -2149,7 +2117,7 @@ class Vis2 {
          }
 
          convert_best(in:="", out:=""){
-            return this.convert(in, out, 1)
+            return this.convert(in, out, 0)
          }
 
          convert_fast(in:="", out:=""){
