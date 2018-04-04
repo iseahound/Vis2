@@ -4,6 +4,7 @@
 ; Recent:    2018-04-04
 
 #include <Gdip_All>
+#include <JSON>
 
 
 ; ImageIdentify() - Label and identify objects in images.
