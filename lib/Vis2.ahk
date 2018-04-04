@@ -21,7 +21,7 @@ class Vis2 {
    class ImageIdentify extends Vis2.functor {
       call(self, image:="", search:="", options:=""){
          return (image != "") ? (new Vis2.provider.GoogleCloudVision()).ImageIdentify(image, search, options)
-            : Vis2.core.returnText({"provider":(new Vis2.provider.GoogleCloudVision(search)), "tooltip":"Image Identification Tool", "textPreview":false})
+            : Vis2.core.returnText({"provider":(new Vis2.provider.GoogleCloudVision(search)), "tooltip":"Image Identification Tool", "splashImage":true})
       }
    }
 
@@ -65,6 +65,7 @@ class Vis2 {
             if (Vis2.obj != "")
                return "Already in use."
 
+            Vis2.Graphics.Startup()
             Vis2.stdlib.setSystemCursor(32515) ; IDC_Cross := 32515
             Hotkey, LButton, % void, On
             Hotkey, ^LButton, % void, On
@@ -77,7 +78,7 @@ class Vis2 {
             Vis2.obj.EXITCODE := 0 ; 0 = in progress, -1 = escape, 1 = success
             Vis2.obj.selectMode := "Quick"
             Vis2.obj.area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
-            Vis2.obj.image := new Vis2.Graphics.Image("Vis2_Kitsune")
+            Vis2.obj.image := new Vis2.Graphics.Image("Vis2_Kitsune").Hide()
             Vis2.obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
 
             Vis2.obj.style1_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"DD000000", "radius":8}
@@ -258,12 +259,11 @@ class Vis2 {
 
                if (!Vis2.obj.unlock.1 || bypass) {
                   if (coordinates := Vis2.obj.Area.ScreenshotRectangle()) {
-                     Vis2.Graphics.Startup()
                      pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
-                     if !(coordinates == Vis2.obj.coordinates && Vis2.stdlib.Gdip_isBitmapEqual(pBitmap, Vis2.obj.Bitmap)) {
-                        Gdip_DisposeImage(Vis2.obj.Bitmap)
+                     if !(coordinates == Vis2.obj.coordinates && Vis2.stdlib.Gdip_isBitmapEqual(pBitmap, Vis2.obj.pBitmap)) {
+                        Gdip_DisposeImage(Vis2.obj.pBitmap)
                         Vis2.obj.coordinates := coordinates
-                        Vis2.obj.Bitmap := pBitmap
+                        Vis2.obj.pBitmap := pBitmap
 
                         ; Process screenshot.
                         try {
@@ -307,7 +307,6 @@ class Vis2 {
                      else {
                         Gdip_DisposeImage(pBitmap)
                      }
-                     Vis2.Graphics.Shutdown()
                   }
                }
 
@@ -331,8 +330,14 @@ class Vis2 {
 
                if (Vis2.obj.unlock.MaxIndex() == 2) {
                   if (Vis2.obj.database != "" && Vis2.obj.EXITCODE == 0) {
-                     if (Vis2.obj.noCopy == "") {
+                     if (Vis2.obj.noCopy != true) {
                         clipboard := Vis2.obj.database
+                        if (Vis2.obj.splashImage == true) {
+                           w := Gdip_GetImageWidth(Vis2.obj.pBitmap)
+                           h := Gdip_GetImageHeight(Vis2.obj.pBitmap)
+                           Vis2.Graphics.Subtitle.Render("", {"time":2500, "x":((A_ScreenWidth-w)/2)-10, "y":((A_ScreenHeight-h)/2)-10, "w":w+20, "h":h+20, "color":"Black"})
+                           Vis2.Graphics.Image.Render(Vis2.obj.pBitmap, 1, 2500).Border()
+                        }
                         Vis2.obj.Subtitle.Hide()
                         Vis2.Graphics.Subtitle.Render(Vis2.obj.dialogue, Vis2.obj.style4_back, Vis2.obj.style4_text)
                         Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: 2500, x: center, y: 75%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial")
@@ -358,19 +363,18 @@ class Vis2 {
             }
 
             ; Delete temporary image and text files.
-            Vis2.Graphics.Startup()
-            Gdip_DisposeImage(Vis2.obj.Bitmap)
-            Vis2.Graphics.Shutdown()
+            Gdip_DisposeImage(Vis2.obj.pBitmap)
             Vis2.obj.provider.cleanup()
-            Vis2.obj.Area.Destroy()
-            Vis2.obj.Image.Destroy()
-            Vis2.obj.Subtitle.Destroy()
-            Vis2.obj.note_01.Hide() ; Let them time out instead of Destroy()
-            Vis2.obj.note_02.Destroy()
+            Vis2.obj.area.destroy()
+            Vis2.obj.image.destroy()
+            Vis2.obj.subtitle.destroy()
+            Vis2.obj.note_01.hide() ; Let them time out instead of Destroy()
+            Vis2.obj.note_02.destroy()
             Vis2.obj := "" ; Goodbye all, you were loved :c
+            Vis2.Graphics.Shutdown()
 
             ; Fixes a bug where AHK does not detect key releases if there is an admin-level window beneath.
-            if WinActive("ahk_id" Vis2.obj.Area.hWnd) {
+            if WinActive("ahk_id" Vis2.obj.area.hwnd) {
                KeyWait Control
                KeyWait Alt
                KeyWait Shift
@@ -395,15 +399,15 @@ class Vis2 {
          }
 
          overlap() {
-            p1 := Vis2.obj.Area.x1()
-            p2 := Vis2.obj.Area.x2()
-            r1 := Vis2.obj.Area.y1()
-            r2 := Vis2.obj.Area.y2()
+            p1 := Vis2.obj.area.x1()
+            p2 := Vis2.obj.area.x2()
+            r1 := Vis2.obj.area.y1()
+            r2 := Vis2.obj.area.y2()
 
-            q1 := Vis2.obj.Subtitle.x1()
-            q2 := Vis2.obj.Subtitle.x2()
-            s1 := Vis2.obj.Subtitle.y1()
-            s2 := Vis2.obj.Subtitle.y2()
+            q1 := Vis2.obj.subtitle.x1()
+            q2 := Vis2.obj.subtitle.x2()
+            s1 := Vis2.obj.subtitle.y1()
+            s2 := Vis2.obj.subtitle.y2()
 
             a := (p1 < q1 && q1 < p2) || (p1 < q2 && q2 < p2) || (q1 < p1 && p1 < q2) || (q1 < p2 && p2 < q2)
             b := (r1 < s1 && s1 < r2) || (r1 < s2 && s2 < r2) || (s1 < r1 && r1 < s2) || (s1 < r2 && r2 < s2)
@@ -1020,8 +1024,8 @@ class Vis2 {
 
             Vis2.Graphics.Startup()
             Gui, %name%: New, +LastFound +AlwaysOnTop -Caption -DPIScale +E0x80000 +ToolWindow +hwndSecretName, % this.name
-            Gui, %name%: Show, Hide
             this.hwnd := SecretName
+            DllCall("ShowWindow", "ptr",this.hwnd, "int",8)
             this.hbm := CreateDIBSection(A_ScreenWidth, A_ScreenHeight)
             this.hdc := CreateCompatibleDC()
             this.obm := SelectObject(this.hdc, this.hbm)
@@ -1034,7 +1038,9 @@ class Vis2 {
          }
 
          Border() {
-            Gui, % this.name ":+Border"
+            Gui, % this.name ": +Border"
+            UpdateLayeredWindow(this.hwnd, this.hdc, (A_ScreenWidth-this.w)/2, (A_ScreenHeight-this.h)/2, this.w, this.h)
+            return this
          }
 
          Destroy() {
@@ -1043,14 +1049,17 @@ class Vis2 {
             DeleteDC(this.hdc)
             Gdip_DeleteGraphics(this.G)
             Gui, % this.name ":Destroy"
+            return this
          }
 
          Hide() {
             Gui, % this.name ":Show", Hide
+            return this
          }
 
          Show() {
             Gui, % this.name ":Show", NoActivate
+            return this
          }
 
          ToggleVisible() {
@@ -1058,21 +1067,42 @@ class Vis2 {
                Gui, % this.name ":Show", Hide
             else
                Gui, % this.name ":Show", NoActivate
+            return this
          }
 
          isVisible() {
             return DllCall("IsWindowVisible", "UInt", this.hwnd)
          }
 
-         Render(file, scale := 1) {
-            Critical On
-            pBitmap := Gdip_CreateBitmapFromFile(file)
-            Width := Gdip_GetImageWidth(pBitmap), Height := Gdip_GetImageHeight(pBitmap)
-            this.DetectScreenResolutionChange(Width, Height)
-            Gdip_DrawImage(this.G, pBitmap, 0, 0, Floor(Width*scale), Floor(Height*scale), 0, 0, Width, Height)
-            UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, Floor(Width*scale), Floor(Height*scale))
-            Gdip_DisposeImage(pBitmap)
-            Critical Off
+         Render(file, scale := 1, time := 0) {
+            if (this.hwnd){
+               this.scale := scale
+               if (time) {
+                  self_destruct := ObjBindMethod(this, "Destroy")
+                  SetTimer, % self_destruct, % -1 * time
+               }
+               Critical On
+               if FileExist(file)
+                  f := pBitmap := Gdip_CreateBitmapFromFile(file)
+               else pBitmap := file
+               Width := Gdip_GetImageWidth(pBitmap), Height := Gdip_GetImageHeight(pBitmap)
+               this.DetectScreenResolutionChange(Width, Height)
+               Gdip_DrawImage(this.G, pBitmap, 0, 0, Floor(Width*scale), Floor(Height*scale), 0, 0, Width, Height)
+               UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, Floor(Width*scale), Floor(Height*scale))
+               this.w := Floor(Width*scale)
+               this.h := Floor(Height*scale)
+               if f
+                  Gdip_DisposeImage(pBitmap)
+               Critical Off
+               return this
+            }
+            else {
+               parent := ((___ := RegExReplace(A_ThisFunc, "^(.*)\..*\..*$", "$1")) != A_ThisFunc) ? ___ : ""
+               Loop, Parse, parent, .
+                  parent := (A_Index=1) ? %A_LoopField% : parent[A_LoopField]
+               _image := (parent) ? new parent.image() : new image()
+               return _image.Render(file, scale, time)
+            }
          }
 
          DetectScreenResolutionChange(w:="", h:=""){
@@ -1095,7 +1125,7 @@ class Vis2 {
 
       class Subtitle{
 
-         past := {}, ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
+         layers := {}, ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
 
          __New(name := ""){
             parent := ((___ := RegExReplace(A_ThisFunc, "^(.*)\..*\..*$", "$1")) != A_ThisFunc) ? ___ : ""
@@ -1173,25 +1203,29 @@ class Vis2 {
             }
          }
 
-         Draw(text := "", obj1 := "", obj2 := "", pGraphics := "") {
+         Draw(text := "", style1 := "", style2 := "", pGraphics := "") {
             if (pGraphics == "") {
                pGraphics := this.G
                if (this.rendered == true) {
                   this.rendered := false
-                  this.past := {}
-                  this.x := this.y := this.2x := this.2y := ""
+                  this.layers := {}
+                  this.x := this.y := this.xx := this.yy := ""
                   Gdip_GraphicsClear(this.G)
                }
-               this.past.push([text, obj1, obj2])
+               this.layers.push([text, style1, style2])
             }
+
+            ; Remember styles so that they can be loaded next time.
+            style1 := (style1) ? this.style1 := style1 : this.style1
+            style2 := (style2) ? this.style2 := style2 : this.style2
 
             static q1 := "i)^.*?(?<!-|:|:\s)\b(?![^\(]*\))"
             static q2 := "(:\s?)?\(?(?<value>(?<=\()[\s\-\da-z\.#%]+(?=\))|[\-\da-z\.#%]+).*$"
 
-            time := (obj1.t) ? obj1.t : (obj1.time) ? obj1.time
-                  : (!IsObject(obj1) && (___ := RegExReplace(obj1, q1 "(t(ime)?)" q2, "${value}")) != obj1) ? ___
-                  : (obj2.t) ? obj2.t : (obj2.time) ? obj2.time
-                  : (!IsObject(obj2) && (___ := RegExReplace(obj2, q1 "(t(ime)?)" q2, "${value}")) != obj2) ? ___
+            time := (style1.t) ? style1.t : (style1.time) ? style1.time
+                  : (!IsObject(style1) && (___ := RegExReplace(style1, q1 "(t(ime)?)" q2, "${value}")) != style1) ? ___
+                  : (style2.t) ? style2.t : (style2.time) ? style2.time
+                  : (!IsObject(style2) && (___ := RegExReplace(style2, q1 "(t(ime)?)" q2, "${value}")) != style2) ? ___
                   : 0
 
             if (time) {
@@ -1205,68 +1239,68 @@ class Vis2 {
             static percentage := "^(\-?\d+(?:\.\d*)?)%$"
             static positive := "^\d+(\.\d*)?$"
 
-            if IsObject(obj1){
-               _a  := (obj1.a != "")  ? obj1.a  : obj1.anchor
-               _x  := (obj1.x != "")  ? obj1.x  : obj1.left
-               _y  := (obj1.y != "")  ? obj1.y  : obj1.top
-               _w  := (obj1.w != "")  ? obj1.w  : obj1.width
-               _h  := (obj1.h != "")  ? obj1.h  : obj1.height
-               _r  := (obj1.r != "")  ? obj1.r  : obj1.radius
-               _c  := (obj1.c != "")  ? obj1.c  : obj1.color
-               _m  := (obj1.m != "")  ? obj1.m  : obj1.margin
-               _p  := (obj1.p != "")  ? obj1.p  : obj1.padding
-               _q  := (obj1.q != "")  ? obj1.q  : (obj1.quality) ? obj1.quality : obj1.SmoothingMode
+            if IsObject(style1){
+               _a  := (style1.a != "")  ? style1.a  : style1.anchor
+               _x  := (style1.x != "")  ? style1.x  : style1.left
+               _y  := (style1.y != "")  ? style1.y  : style1.top
+               _w  := (style1.w != "")  ? style1.w  : style1.width
+               _h  := (style1.h != "")  ? style1.h  : style1.height
+               _r  := (style1.r != "")  ? style1.r  : style1.radius
+               _c  := (style1.c != "")  ? style1.c  : style1.color
+               _m  := (style1.m != "")  ? style1.m  : style1.margin
+               _p  := (style1.p != "")  ? style1.p  : style1.padding
+               _q  := (style1.q != "")  ? style1.q  : (style1.quality) ? style1.quality : style1.SmoothingMode
             } else {
-               _a  := ((___ := RegExReplace(obj1, q1    "(a(nchor)?)"            q2, "${value}")) != obj1) ? ___ : ""
-               _x  := ((___ := RegExReplace(obj1, q1    "(x|left)"               q2, "${value}")) != obj1) ? ___ : ""
-               _y  := ((___ := RegExReplace(obj1, q1    "(y|top)"                q2, "${value}")) != obj1) ? ___ : ""
-               _w  := ((___ := RegExReplace(obj1, q1    "(w(idth)?)"             q2, "${value}")) != obj1) ? ___ : ""
-               _h  := ((___ := RegExReplace(obj1, q1    "(h(eight)?)"            q2, "${value}")) != obj1) ? ___ : ""
-               _r  := ((___ := RegExReplace(obj1, q1    "(r(adius)?)"            q2, "${value}")) != obj1) ? ___ : ""
-               _c  := ((___ := RegExReplace(obj1, q1    "(c(olor)?)"             q2, "${value}")) != obj1) ? ___ : ""
-               _m  := ((___ := RegExReplace(obj1, q1    "(m(argin)?)"            q2, "${value}")) != obj1) ? ___ : ""
-               _p  := ((___ := RegExReplace(obj1, q1    "(p(adding)?)"           q2, "${value}")) != obj1) ? ___ : ""
-               _q  := ((___ := RegExReplace(obj1, q1    "(q(uality)?)"           q2, "${value}")) != obj1) ? ___ : ""
+               _a  := ((___ := RegExReplace(style1, q1    "(a(nchor)?)"            q2, "${value}")) != style1) ? ___ : ""
+               _x  := ((___ := RegExReplace(style1, q1    "(x|left)"               q2, "${value}")) != style1) ? ___ : ""
+               _y  := ((___ := RegExReplace(style1, q1    "(y|top)"                q2, "${value}")) != style1) ? ___ : ""
+               _w  := ((___ := RegExReplace(style1, q1    "(w(idth)?)"             q2, "${value}")) != style1) ? ___ : ""
+               _h  := ((___ := RegExReplace(style1, q1    "(h(eight)?)"            q2, "${value}")) != style1) ? ___ : ""
+               _r  := ((___ := RegExReplace(style1, q1    "(r(adius)?)"            q2, "${value}")) != style1) ? ___ : ""
+               _c  := ((___ := RegExReplace(style1, q1    "(c(olor)?)"             q2, "${value}")) != style1) ? ___ : ""
+               _m  := ((___ := RegExReplace(style1, q1    "(m(argin)?)"            q2, "${value}")) != style1) ? ___ : ""
+               _p  := ((___ := RegExReplace(style1, q1    "(p(adding)?)"           q2, "${value}")) != style1) ? ___ : ""
+               _q  := ((___ := RegExReplace(style1, q1    "(q(uality)?)"           q2, "${value}")) != style1) ? ___ : ""
             }
 
-            if IsObject(obj2){
-               a  := (obj2.a != "")  ? obj2.a  : obj2.anchor
-               x  := (obj2.x != "")  ? obj2.x  : obj2.left
-               y  := (obj2.y != "")  ? obj2.y  : obj2.top
-               w  := (obj2.w != "")  ? obj2.w  : obj2.width
-               h  := (obj2.h != "")  ? obj2.h  : obj2.height
-               m  := (obj2.m != "")  ? obj2.m  : obj2.margin
-               f  := (obj2.f != "")  ? obj2.f  : obj2.font
-               s  := (obj2.s != "")  ? obj2.s  : obj2.size
-               c  := (obj2.c != "")  ? obj2.c  : obj2.color
-               b  := (obj2.b != "")  ? obj2.b  : obj2.bold
-               i  := (obj2.i != "")  ? obj2.i  : obj2.italic
-               u  := (obj2.u != "")  ? obj2.u  : obj2.underline
-               j  := (obj2.j != "")  ? obj2.j  : obj2.justify
-               n  := (obj2.n != "")  ? obj2.n  : obj2.noWrap
-               z  := (obj2.z != "")  ? obj2.z  : obj2.condensed
-               d  := (obj2.d != "")  ? obj2.d  : obj2.dropShadow
-               o  := (obj2.o != "")  ? obj2.o  : obj2.outline
-               q  := (obj2.q != "")  ? obj2.q  : (obj2.quality) ? obj2.quality : obj2.TextRenderingHint
+            if IsObject(style2){
+               a  := (style2.a != "")  ? style2.a  : style2.anchor
+               x  := (style2.x != "")  ? style2.x  : style2.left
+               y  := (style2.y != "")  ? style2.y  : style2.top
+               w  := (style2.w != "")  ? style2.w  : style2.width
+               h  := (style2.h != "")  ? style2.h  : style2.height
+               m  := (style2.m != "")  ? style2.m  : style2.margin
+               f  := (style2.f != "")  ? style2.f  : style2.font
+               s  := (style2.s != "")  ? style2.s  : style2.size
+               c  := (style2.c != "")  ? style2.c  : style2.color
+               b  := (style2.b != "")  ? style2.b  : style2.bold
+               i  := (style2.i != "")  ? style2.i  : style2.italic
+               u  := (style2.u != "")  ? style2.u  : style2.underline
+               j  := (style2.j != "")  ? style2.j  : style2.justify
+               n  := (style2.n != "")  ? style2.n  : style2.noWrap
+               z  := (style2.z != "")  ? style2.z  : style2.condensed
+               d  := (style2.d != "")  ? style2.d  : style2.dropShadow
+               o  := (style2.o != "")  ? style2.o  : style2.outline
+               q  := (style2.q != "")  ? style2.q  : (style2.quality) ? style2.quality : style2.TextRenderingHint
             } else {
-               a  := ((___ := RegExReplace(obj2, q1    "(a(nchor)?)"            q2, "${value}")) != obj2) ? ___ : ""
-               x  := ((___ := RegExReplace(obj2, q1    "(x|left)"               q2, "${value}")) != obj2) ? ___ : ""
-               y  := ((___ := RegExReplace(obj2, q1    "(y|top)"                q2, "${value}")) != obj2) ? ___ : ""
-               w  := ((___ := RegExReplace(obj2, q1    "(w(idth)?)"             q2, "${value}")) != obj2) ? ___ : ""
-               h  := ((___ := RegExReplace(obj2, q1    "(h(eight)?)"            q2, "${value}")) != obj2) ? ___ : ""
-               m  := ((___ := RegExReplace(obj2, q1    "(m(argin)?)"            q2, "${value}")) != obj2) ? ___ : ""
-               f  := ((___ := RegExReplace(obj2, q1    "(f(ont)?)"              q2, "${value}")) != obj2) ? ___ : ""
-               s  := ((___ := RegExReplace(obj2, q1    "(s(ize)?)"              q2, "${value}")) != obj2) ? ___ : ""
-               c  := ((___ := RegExReplace(obj2, q1    "(c(olor)?)"             q2, "${value}")) != obj2) ? ___ : ""
-               b  := ((___ := RegExReplace(obj2, q1    "(b(old)?)"              q2, "${value}")) != obj2) ? ___ : ""
-               i  := ((___ := RegExReplace(obj2, q1    "(i(talic)?)"            q2, "${value}")) != obj2) ? ___ : ""
-               u  := ((___ := RegExReplace(obj2, q1    "(u(nderline)?)"         q2, "${value}")) != obj2) ? ___ : ""
-               j  := ((___ := RegExReplace(obj2, q1    "(j(ustify)?)"           q2, "${value}")) != obj2) ? ___ : ""
-               n  := ((___ := RegExReplace(obj2, q1    "(n(oWrap)?)"            q2, "${value}")) != obj2) ? ___ : ""
-               z  := ((___ := RegExReplace(obj2, q1    "(z|condensed?)"         q2, "${value}")) != obj2) ? ___ : ""
-               d  := ((___ := RegExReplace(obj2, q1    "(d(ropShadow)?)"        q2, "${value}")) != obj2) ? ___ : ""
-               o  := ((___ := RegExReplace(obj2, q1    "(o(utline)?)"           q2, "${value}")) != obj2) ? ___ : ""
-               q  := ((___ := RegExReplace(obj2, q1    "(q(uality)?)"           q2, "${value}")) != obj2) ? ___ : ""
+               a  := ((___ := RegExReplace(style2, q1    "(a(nchor)?)"            q2, "${value}")) != style2) ? ___ : ""
+               x  := ((___ := RegExReplace(style2, q1    "(x|left)"               q2, "${value}")) != style2) ? ___ : ""
+               y  := ((___ := RegExReplace(style2, q1    "(y|top)"                q2, "${value}")) != style2) ? ___ : ""
+               w  := ((___ := RegExReplace(style2, q1    "(w(idth)?)"             q2, "${value}")) != style2) ? ___ : ""
+               h  := ((___ := RegExReplace(style2, q1    "(h(eight)?)"            q2, "${value}")) != style2) ? ___ : ""
+               m  := ((___ := RegExReplace(style2, q1    "(m(argin)?)"            q2, "${value}")) != style2) ? ___ : ""
+               f  := ((___ := RegExReplace(style2, q1    "(f(ont)?)"              q2, "${value}")) != style2) ? ___ : ""
+               s  := ((___ := RegExReplace(style2, q1    "(s(ize)?)"              q2, "${value}")) != style2) ? ___ : ""
+               c  := ((___ := RegExReplace(style2, q1    "(c(olor)?)"             q2, "${value}")) != style2) ? ___ : ""
+               b  := ((___ := RegExReplace(style2, q1    "(b(old)?)"              q2, "${value}")) != style2) ? ___ : ""
+               i  := ((___ := RegExReplace(style2, q1    "(i(talic)?)"            q2, "${value}")) != style2) ? ___ : ""
+               u  := ((___ := RegExReplace(style2, q1    "(u(nderline)?)"         q2, "${value}")) != style2) ? ___ : ""
+               j  := ((___ := RegExReplace(style2, q1    "(j(ustify)?)"           q2, "${value}")) != style2) ? ___ : ""
+               n  := ((___ := RegExReplace(style2, q1    "(n(oWrap)?)"            q2, "${value}")) != style2) ? ___ : ""
+               z  := ((___ := RegExReplace(style2, q1    "(z|condensed?)"         q2, "${value}")) != style2) ? ___ : ""
+               d  := ((___ := RegExReplace(style2, q1    "(d(ropShadow)?)"        q2, "${value}")) != style2) ? ___ : ""
+               o  := ((___ := RegExReplace(style2, q1    "(o(utline)?)"           q2, "${value}")) != style2) ? ___ : ""
+               q  := ((___ := RegExReplace(style2, q1    "(q(uality)?)"           q2, "${value}")) != style2) ? ___ : ""
             }
 
             ; Step 1 - Simulate string width and height, setting only the variables we need to determine it.
@@ -1521,16 +1555,16 @@ class Vis2 {
 
             this.x  := (this.x  = "" || _x < this.x) ? _x : this.x
             this.y  := (this.y  = "" || _y < this.y) ? _y : this.y
-            this.2x := (this.2x = "" || _x + _w > this.2x) ? _x + _w : this.2x
-            this.2y := (this.2y = "" || _y + _h > this.2y) ? _y + _h : this.2y
+            this.xx := (this.xx = "" || _x + _w > this.xx) ? _x + _w : this.xx
+            this.yy := (this.yy = "" || _y + _h > this.yy) ? _y + _h : this.yy
             return
          }
 
-         Render(text := "", obj1 := "", obj2 := "", update := 1){
+         Render(text := "", style1 := "", style2 := "", update := 1){
             if (this.hWnd){
                Critical On
                this.DetectScreenResolutionChange()
-               this.Draw(text, obj1, obj2)
+               this.Draw(text, style1, style2)
                if (update)
                   UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, A_ScreenWidth, A_ScreenHeight)
                this.rendered := true
@@ -1542,15 +1576,15 @@ class Vis2 {
                Loop, Parse, parent, .
                   parent := (A_Index=1) ? %A_LoopField% : parent[A_LoopField]
                _subtitle := (parent) ? new parent.Subtitle() : new Subtitle()
-               return _subtitle.Render(text, obj1, obj2, update)
+               return _subtitle.Render(text, style1, style2, update)
             }
          }
 
          Bitmap(x:=0, y:=0, w:=0, h:=0){
             pBitmap := Gdip_CreateBitmap(A_ScreenWidth, A_ScreenHeight)
             pGraphics := Gdip_GraphicsFromImage(pBitmap)
-            loop % this.past.MaxIndex()
-               this.Draw(this.past[A_Index].1, this.past[A_Index].2, this.past[A_Index].3, pGraphics)
+            loop % this.layers.MaxIndex()
+               this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
             Gdip_DeleteGraphics(pGraphics)
 
             if (x || y || w || h) {
@@ -1565,7 +1599,7 @@ class Vis2 {
          Save(filename := "", quality := 92, fullscreen := 0){
             filename := (filename ~= "i)\.(bmp|dib|rle|jpg|jpeg|jpe|jfif|gif|tif|tiff|png)$") ? filename
                       : (filename != "") ? filename ".png" : this.name ".png"
-            pBitmap := (fullscreen) ? this.Bitmap() : this.Bitmap(this.x, this.y, this.2x - this.x, this.2y - this.y)
+            pBitmap := (fullscreen) ? this.Bitmap() : this.Bitmap(this.x, this.y, this.xx - this.x, this.yy - this.y)
             Gdip_SaveBitmapToFile(pBitmap, filename, quality)
             Gdip_DisposeImage(pBitmap)
          }
@@ -1578,15 +1612,15 @@ class Vis2 {
             ; hBitmap converts alpha channel to specified alpha color.
             ; Add 1 pixel because Anti-Alias (SmoothingMode = 4)
             ; Should it be crop 1 pixel instead?
-            pBitmap := this.Bitmap(this.x, this.y, this.2x - this.x, this.2y - this.y)
+            pBitmap := this.Bitmap(this.x, this.y, this.xx - this.x, this.yy - this.y)
             hBitmap := Gdip_CreateHBITMAPFromBitmap(pBitmap, alpha)
             Gdip_DisposeImage(pBitmap)
             return hBitmap
          }
 
-         RenderToHBitmap(text := "", obj1 := "", obj2 := ""){
+         RenderToHBitmap(text := "", style1 := "", style2 := ""){
             if (this.hWnd){
-               this.Render(text, obj1, obj2, 0)
+               this.Render(text, style1, style2, 0)
                return this.hBitmap()
             }
             else {
@@ -1594,13 +1628,13 @@ class Vis2 {
                Loop, Parse, parent, .
                   parent := (A_Index=1) ? %A_LoopField% : parent[A_LoopField]
                _subtitle := (parent) ? new parent.Subtitle() : new Subtitle()
-               _subtitle.Render(text, obj1, obj2, 0)
+               _subtitle.Render(text, style1, style2, 0)
                return _subtitle.hBitmap() ; Does not return a subtitle object.
             }
          }
 
          hIcon(){
-            pBitmap := this.Bitmap(this.x, this.y, this.2x - this.x, this.2y - this.y)
+            pBitmap := this.Bitmap(this.x, this.y, this.xx - this.x, this.yy - this.y)
             hIcon := Gdip_CreateHICONFromBitmap(pBitmap)
             Gdip_DisposeImage(pBitmap)
             return hIcon
@@ -1885,19 +1919,19 @@ class Vis2 {
          }
 
          x2(){
-            return this.2x
+            return this.xx
          }
 
          y2(){
-            return this.2y
+            return this.yy
          }
 
          width(){
-            return this.2x - this.x
+            return this.xx - this.x
          }
 
          height(){
-            return this.2y - this.y
+            return this.yy - this.y
          }
       }
    }
