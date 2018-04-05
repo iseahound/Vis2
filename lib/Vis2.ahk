@@ -2312,7 +2312,7 @@ class Vis2 {
          DllCall("GlobalUnlock", "ptr",hData)
          DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
          DllCall("GlobalFree", "ptr",hData)
-         ObjRelease(pStream)
+         ;ObjRelease(pStream)
 
          DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",0, "uint*",base64Length)
          VarSetCapacity(base64, base64Length*2, 0)
@@ -2445,7 +2445,7 @@ class Vis2 {
                DllCall("GlobalUnlock", "ptr",hData)
                DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
                DllCall("GlobalFree", "ptr",hData)
-               ObjRelease(pStream)
+               ;ObjRelease(pStream)
 
                DllCall("Crypt32.dll\CryptBinaryToString", "ptr",&Bin, "uint",nSize, "uint",0x01, "ptr",0, "uint*",base64Length)
                VarSetCapacity(base64, base64Length*2, 0)
@@ -2455,7 +2455,7 @@ class Vis2 {
                VarSetCapacity(base64, -1)
             } else {
                DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
-               ObjRelease(pStream)
+               ;ObjRelease(pStream)
                (crop) ? Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop) : ""
                base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, extension, quality)
                Gdip_DisposeImage(pBitmap)
