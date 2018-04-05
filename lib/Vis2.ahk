@@ -83,9 +83,9 @@ class Vis2 {
             Vis2.obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
 
             Vis2.obj.style1_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"DD000000", "radius":8}
-            Vis2.obj.style1_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"}
+            Vis2.obj.style1_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"White"}
             Vis2.obj.style2_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"FF88EAB6", "radius":8}
-            Vis2.obj.style2_text := {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"Black"}
+            Vis2.obj.style2_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"Black"}
             Vis2.obj.subtitle.render(Vis2.obj.tooltip, Vis2.obj.style1_back, Vis2.obj.style1_text)
 
             return Vis2.core.ux.waitForUserInput()
@@ -345,7 +345,7 @@ class Vis2 {
                         }
                         Vis2.obj.Subtitle.Hide()
                         Vis2.Graphics.Subtitle.Render(Vis2.obj.dialogue
-                           , {"time":t, "x":"center", "y":"83%", "padding":"1.35%", "color":"Black", "radius":8}, {"z":1, "q":4, "size":"2.23%", "font":"Arial", "justify":"left", "color":"White"})
+                           , {"time":t, "x":"center", "y":"83%", "padding":"1.35%", "color":"Black", "radius":8}, {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"White"})
                         Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: " t ", x: center, y: 75%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial")
                      }
                      Vis2.obj.EXITCODE := 1
@@ -1195,9 +1195,11 @@ class Vis2 {
             return this
          }
 
-         DetectScreenResolutionChange(){
-            if (this.ScreenWidth != A_ScreenWidth || this.ScreenHeight != A_ScreenHeight) {
-               this.ScreenWidth := A_ScreenWidth, this.ScreenHeight := A_ScreenHeight
+         DetectScreenResolutionChange(w:="", h:=""){
+            w := (w) ? w : A_ScreenWidth
+            h := (h) ? h : A_ScreenHeight
+            if (this.ScreenWidth != w || this.ScreenHeight != h) {
+               this.ScreenWidth := w, this.ScreenHeight := h
                SelectObject(this.hdc, this.obm)
                DeleteObject(this.hbm)
                DeleteDC(this.hdc)
@@ -1339,10 +1341,10 @@ class Vis2 {
              p := this.margin( p)
 
             ; Bonus - Condense Text using a Condensed Font if simulated text width exceeds screen width.
-            if (z) {
+            if (___ := Gdip_FontFamilyCreate(z)) {
                ExtraMargin := (_m.2 + _m.4 + _p.2 + _p.4)
                if (ReturnRC[3] + ExtraMargin > A_ScreenWidth){
-                  hFamily := (___ := Gdip_FontFamilyCreate(z)) ? ___ : Gdip_FontFamilyCreate("Arial Narrow")
+                  hFamily := Gdip_FontFamilyCreate(z)
                   hFont := Gdip_FontCreate(hFamily, s, style)
                   ReturnRC := Gdip_MeasureString(pGraphics, Text, hFont, hFormat, RC)
                   ReturnRC := StrSplit(ReturnRC, "|")
