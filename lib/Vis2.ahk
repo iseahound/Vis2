@@ -37,8 +37,6 @@ OCR(image:="", option:="", crop:=""){
 }
 
 
-
-
 class Vis2 {
 
    class Describe extends Vis2.functor {
@@ -408,10 +406,7 @@ class Vis2 {
                      t := 2500
                      if (Vis2.obj.splashImage == true) {
                         t := 5000
-                        w := Gdip_GetImageWidth(Vis2.obj.pBitmap)
-                        h := Gdip_GetImageHeight(Vis2.obj.pBitmap)
-                        Vis2.Graphics.Subtitle.Render("", {"time":t, "x":((A_ScreenWidth-w)/2)-10, "y":((A_ScreenHeight-h)/2)-10, "w":w+20, "h":h+20, "color":"Black"})
-                        Vis2.Graphics.Image.Render(Vis2.obj.pBitmap, 1, t).Border()
+                        Vis2.Graphics.Image.Render(Vis2.obj.provider.imageData, "time:5000 x:center y:center margin:0.926vmin", Vis2.obj.data.FullData)
                      }
                      Vis2.obj.Subtitle.Hide()
                      if (Vis2.obj.splashImage = "csv"){
@@ -1251,15 +1246,14 @@ class Vis2 {
          ; If a provider implements this, it should return file/base64/binary.
          ; The provider should also implement a bypass if there is no crop array,
          ; and the input and output types are the same.
-         Render(image, style := "") {
+         Render(image, style := "", polygons := "") {
             if !(this.hwnd) {
                _image := (this.outer) ? new this.outer.Image() : new Image()
-               return _image.Render(image, style)
+               return _image.Render(image, style, polygons)
             } else {
                Critical On
                if !(type := this.DontVerifyImageType(image))
-                  if !(type := this.ImageType(image))
-                     throw Exception("Ensure that the reference to an image is valid.")
+                  type := this.ImageType(image)
                if (type != "pBitmap")
                   pBitmap := this.toBitmap(type, image)
                ; Changing the size of the device independent bitmap prevents Gdip_DrawImage from failing
@@ -1269,7 +1263,7 @@ class Vis2 {
                ;width := ((___ := Gdip_GetImageWidth(pBitmap)) > this.ScreenWidth) ? ___ : this.ScreenWidth
                ;height := ((___ := Gdip_GetImageHeight(pBitmap)) > this.ScreenHeight) ? ___ : this.ScreenHeight
                this.DetectScreenResolutionChange()
-               this.Draw(pBitmap, style)
+               this.Draw(pBitmap, style, polygons)
                if (type != "pBitmap")
                    Gdip_DisposeImage(pBitmap)
                UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
@@ -1282,7 +1276,7 @@ class Vis2 {
             }
          }
 
-         Draw(pBitmap, style := "", pGraphics := "") {
+         Draw(pBitmap, style := "", polygons := "", pGraphics := "") {
             if (pGraphics == "")
                pGraphics := this.G
 
@@ -1391,6 +1385,10 @@ class Vis2 {
             x  -= (mod(a-1,3) == 0) ? 0 : (mod(a-1,3) == 1) ? w/2 : (mod(a-1,3) == 2) ? w : 0
             y  -= (((a-1)//3) == 0) ? 0 : (((a-1)//3) == 1) ? h/2 : (((a-1)//3) == 2) ? h : 0
 
+            ; Prevent half-pixel rendering and keep image sharp.
+            x := Floor(x)
+            y := Floor(y)
+
             m := this.margin_and_padding(m)
 
             ; Calculate border using margin.
@@ -1413,6 +1411,28 @@ class Vis2 {
 
             Gdip_DrawImage(pGraphics, pBitmap, x, y, w, h, 0, 0, width, height)
 
+            ; POINTF
+            Gdip_SetSmoothingMode(pGraphics, 4)  ; None = 3, AntiAlias = 4
+            pPen := Gdip_CreatePen(0xFFFF0000, 1)
+
+            ;MsgBox % polygons[1].polygon
+            for i, polygon in polygons {
+               DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
+               VarSetCapacity(pointf, 8*polygons[i].polygon.maxIndex(), 0)
+               for j, point in polygons[i].polygon {
+                  NumPut(point.x + x, pointf, 8*(A_Index-1) + 0, "float")
+                  NumPut(point.y + y, pointf, 8*(A_Index-1) + 4, "float")
+               }
+               DllCall("gdiplus\GdipAddPathPolygon", "ptr",pPath, "ptr",&pointf, "uint",polygons[i].polygon.maxIndex())
+               DllCall("gdiplus\GdipDrawPath", "ptr",pGraphics, "ptr",pPen, "ptr",pPath) ; DRAWING!
+            }
+
+            ;DllCall("gdiplus\GdipSetPenLineJoin", "ptr",pPenGlow, "uint",2)
+            ;DllCall("gdiplus\GdipSetPenWidth", "ptr",pPen, "float",o.1 + 2*A_Index)
+            Gdip_DeletePen(pPen)
+
+
+
             return (pGraphics == "") ? this : ""
          }
 
@@ -1424,7 +1444,7 @@ class Vis2 {
 
             if ObjGetCapacity([c], 1) {
                c  := (c ~= "^#") ? SubStr(c, 2) : c
-               c  := ((___ := this.colorMap(c)) != "") ? ___ : c
+               c  := ((___ := this.outer.Subtitle.colorMap(c)) != "") ? ___ : c ; BORROW
                c  := (c ~= colorRGB) ? "0xFF" RegExReplace(c, colorRGB, "$1") : (c ~= hex8) ? "0x" c : (c ~= hex6) ? "0xFF" c : c
                c  := (c ~= colorARGB) ? c : default
             }
@@ -1482,8 +1502,7 @@ class Vis2 {
          Preprocess(image, crop := "") {
             ; Attempt to extract the type of the input image.
             if !(type := this.DontVerifyImageType(image))
-               if !(type := this.ImageType(image))
-                  throw Exception("Ensure that the reference to an image is valid.")
+               type := this.ImageType(image)
             ; If the input type and output type match, return the input image.
             ; MODIFY - "pBitmap" to your destination type.
             if (type = "pBitmap" && !this.isScreenshot(crop))
@@ -1564,7 +1583,7 @@ class Vis2 {
             if (DllCall("GetObjectType", "ptr", image) == 7)
                return "hBitmap"
             ; Check if image is a base64 string.
-            if (image ~= "^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$")
+            if (image ~= "^(?:[A-Za-z0-9+/]{4})*?(?:[A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$")
                return "base64"
 
             throw Exception("Image type could not be identified.")
@@ -1601,19 +1620,30 @@ class Vis2 {
 
             if (type = "base64"){
                DllCall("crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A"), "ptr",&image, "uint",0, "uint",1, "ptr",0, "uint*",nSize, "ptr",0, "ptr",0)
-               VarSetCapacity(bin, nSize, 0 )
+               VarSetCapacity(bin, nSize, 0)
                DllCall("crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A"), "ptr",&image, "uint",0, "uint",1, "ptr",&bin, "uint*",nSize, "ptr",0, "ptr",0)
                hData := DllCall("GlobalAlloc", "uint",0x2, "ptr",nSize)
                pData := DllCall("GlobalLock", "ptr",hData)
                DllCall("RtlMoveMemory", "ptr",pData, "ptr",&bin, "ptr",nSize)
-               DllCall("GlobalUnlock", "ptr",hData)
-               DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",1, "uptr*",pStream)
+               DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",0, "uptr*",pStream)
                DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
-               DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
-               DllCall("GlobalFree", "ptr",hData)
+               pBitmap2 := Gdip_CloneBitmapArea(pBitmap, 0, 0, Gdip_GetImageWidth(pBitmap), Gdip_GetImageHeight(pBitmap))
+               Gdip_DisposeImage(pBitmap)
                ObjRelease(pStream)
-               return pBitmap
+               DllCall("GlobalUnlock", "ptr",hData)
+               DllCall("GlobalFree", "ptr",hData) ; Will delete the original bitmap if not cloned.
+               return pBitmap2
             }
+         }
+
+         b64Decode( b64str, ByRef outBuf ) {
+            static CryptStringToBinary := "crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A")
+
+            DllCall( CryptStringToBinary, "ptr", &b64str, "UInt", 0, "Uint", 1, "Ptr", 0, "UInt*", outLen, "ptr", 0, "ptr", 0 )
+            VarSetCapacity( outBuf, outLen, 0 )
+            DllCall( CryptStringToBinary, "ptr", &b64str, "UInt", 0, "Uint", 1, "Ptr", &outBuf, "UInt*", outLen, "ptr", 0, "ptr", 0 )
+
+            return outLen
          }
 
          Gdip_BitmapFromClientHWND(hwnd) {
@@ -1781,182 +1811,6 @@ class Vis2 {
             return this.h
          }
       } ; End of Image class.
-
-      class Polygon {
-
-         ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
-
-         __New(title := "") {
-            global pToken
-            if !(this.outer.Startup())
-               if !(pToken)
-                  if !(this.pToken := Gdip_Startup())
-                     throw Exception("Gdiplus failed to start. Please ensure you have gdiplus on your system.")
-
-            Gui, New, +LastFound +AlwaysOnTop -Caption -DPIScale +E0x80000 +ToolWindow +hwndhwnd
-            this.hwnd := hwnd
-            this.title := (title != "") ? title : "Polygon_" this.hwnd
-            DllCall("ShowWindow", "ptr",this.hwnd, "int",8)
-            DllCall("SetWindowText", "ptr",this.hwnd, "str",this.title)
-            this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
-            this.hdc := CreateCompatibleDC()
-            this.obm := SelectObject(this.hdc, this.hbm)
-            this.G := Gdip_GraphicsFromHDC(this.hdc)
-            return this
-         }
-
-         __Delete() {
-            global pToken
-            if (this.outer.pToken)
-               return this.outer.Shutdown()
-            if (pToken)
-               return
-            if (this.pToken)
-               return Gdip_Shutdown(this.pToken)
-         }
-
-         FreeMemory() {
-            SelectObject(this.hdc, this.obm)
-            DeleteObject(this.hbm)
-            DeleteDC(this.hdc)
-            Gdip_DeleteGraphics(this.G)
-            return this
-         }
-
-         Destroy() {
-            this.FreeMemory()
-            DllCall("DestroyWindow", "ptr",this.hwnd)
-            return this
-         }
-
-         Hide() {
-            DllCall("ShowWindow", "ptr",this.hwnd, "int",0)
-            return this
-         }
-
-         Show(i := 8) {
-            DllCall("ShowWindow", "ptr",this.hwnd, "int",i)
-            return this
-         }
-
-         ToggleVisible() {
-            return (this.isVisible()) ? this.Hide() : this.Show()
-         }
-
-         isVisible() {
-            return DllCall("IsWindowVisible", "ptr",this.hwnd)
-         }
-
-         AlwaysOnTop() {
-            WinSet, AlwaysOnTop, Toggle, % "ahk_id" this.hwnd
-            return this
-         }
-
-         ClickThrough() {
-            _dhw := A_DetectHiddenWindows
-            DetectHiddenWindows On
-            WinGet, ExStyle, ExStyle, % "ahk_id" this.hwnd
-            if (ExStyle & 0x20)
-               WinSet, ExStyle, -0x20, % "ahk_id" this.hwnd
-            else
-               WinSet, ExStyle, +0x20, % "ahk_id" this.hwnd
-            DetectHiddenWindows %_dhw%
-            return this
-         }
-
-         DetectScreenResolutionChange(w:="", h:="") {
-            w := (w) ? w : A_ScreenWidth
-            h := (h) ? h : A_ScreenHeight
-            if (this.ScreenWidth != w || this.ScreenHeight != h) {
-               this.ScreenWidth := w, this.ScreenHeight := h
-               SelectObject(this.hdc, this.obm)
-               DeleteObject(this.hbm)
-               DeleteDC(this.hdc)
-               Gdip_DeleteGraphics(this.G)
-               this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
-               this.hdc := CreateCompatibleDC()
-               this.obm := SelectObject(this.hdc, this.hbm)
-               this.G := Gdip_GraphicsFromHDC(this.hdc)
-            }
-         }
-
-         Render(points, style := "") {
-            if !(this.hwnd) {
-               _polygon := (this.outer) ? new this.outer.Polygon() : new Polygon()
-               return _polygon.Render(points, style)
-            } else {
-               Critical On
-               this.DetectScreenResolutionChange()
-
-               UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-               Critical Off
-               if (this.time) {
-                  self_destruct := ObjBindMethod(this, "Destroy")
-                  SetTimer, % self_destruct, % -1 * this.time
-               }
-               return this
-            }
-         }
-
-         Draw(points, style := ""){
-            VarSetCapacity(pointf, 8*points.maxIndex(), 0)
-            for i, point in points {
-               NumPut(point.x, pointf, 8*A_Index + 0, "float")
-               NumPut(point.y, pointf, 8*A_Index + 4, "float")
-            }
-
-            ;GdipAddPathLine
-            ;GdipAddPathPolygon
-            ;GdipGetPathWorldBounds
-            DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
-            DllCall("gdiplus\GdipAddPathPolygon", "ptr",pPath, "ptr",pointf, "uint", points.maxIndex())
-
-            /*
-
-            typedef struct tagPOINTF {
-              FLOAT x;
-              FLOAT y;
-            } POINTF, *LPPOINTF;
-            */
-         }
-
-         outer[]
-         {
-            get {
-               ; Determine if there is a parent class. this.__class will retrive the
-               ; current instance's class name. Array notation [] will dereference.
-               ; Returns void if this function is not nested in at least 2 classes.
-               if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
-                  Loop, Parse, _class, .
-                     outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
-               return outer
-            }
-         }
-
-         x1() {
-            return this.x
-         }
-
-         y1() {
-            return this.y
-         }
-
-         x2() {
-            return this.x + this.w
-         }
-
-         y2() {
-            return this.y + this.h
-         }
-
-         width() {
-            return this.w
-         }
-
-         height() {
-            return this.h
-         }
-      } ; End of Polygon class.
 
       class Subtitle {
 
@@ -3182,7 +3036,6 @@ class Vis2 {
          ; Vis2.provider.Google.ImageIdentify()
          class ImageIdentify extends Vis2.functor {
             static extension := "jpg", compression := "75"
-            base64 := true
 
             call(self, image:="", option:="", crop:=""){
                instance := new this
@@ -3192,25 +3045,25 @@ class Vis2 {
                   return instance.convert(instance.preprocess(image, crop), option)
             }
 
-            preprocess(image, crop := ""){
-               Vis2.Graphics.Startup()
-               if !(type := Vis2.preprocess.DontVerifyImageType(image))
-                  if !(type := Vis2.preprocess.ImageType(image))
-                     throw Exception("Ensure that the reference to an image is valid.")
-               if (type = "base64" && !Vis2.stdlib.isScreenshot(crop))
+            preprocess(image, crop := "") {
+               process := new Vis2.Graphics.Image()
+               if !(type := process.DontVerifyImageType(image))
+                  type := process.ImageType(image)
+               if (type = "base64" && !process.isScreenshot(crop))
                   return image
-               pBitmap := Vis2.preprocess.toBitmap(type, image)
-               if Vis2.stdlib.isScreenshot(crop){
-                  pBitmap2 := Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop)
+               pBitmap := process.toBitmap(type, image)
+               if process.isScreenshot(crop){
+                  pBitmap2 := process.Gdip_CropBitmap(pBitmap, crop)
                   if (type != "pBitmap")
                      Gdip_DisposeImage(pBitmap)
                   pBitmap := pBitmap2
                }
-               this.base64 := Vis2.stdlib.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
-               if (type != "pBitmap" || Vis2.stdlib.isScreenshot(crop))
+               this.imageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
+               if (type != "pBitmap" || process.isScreenshot(crop))
                   Gdip_DisposeImage(pBitmap)
-               Vis2.Graphics.Shutdown()
-               return this.base64
+               process.Destroy()
+               process := ""
+               return this.imageData
             }
 
             convert(base64, option := ""){
@@ -3239,7 +3092,6 @@ class Vis2 {
          ; Vis2.provider.Google.TextRecognize()
          class TextRecognize extends Vis2.functor {
             static extension := "png"
-            base64 := true
 
             call(self, image:="", option:="", crop:=""){
                instance := new this
@@ -3249,25 +3101,25 @@ class Vis2 {
                   return instance.convert(instance.preprocess(image, crop), option)
             }
 
-            preprocess(image, crop := ""){
-               Vis2.Graphics.Startup()
-               if !(type := Vis2.preprocess.DontVerifyImageType(image))
-                  if !(type := Vis2.preprocess.ImageType(image))
-                     throw Exception("Ensure that the reference to an image is valid.")
-               if (type = "base64" && !Vis2.stdlib.isScreenshot(crop))
+            preprocess(image, crop := "") {
+               process := new Vis2.Graphics.Image()
+               if !(type := process.DontVerifyImageType(image))
+                  type := process.ImageType(image)
+               if (type = "base64" && !process.isScreenshot(crop))
                   return image
-               pBitmap := Vis2.preprocess.toBitmap(type, image)
-               if Vis2.stdlib.isScreenshot(crop){
-                  pBitmap2 := Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop)
+               pBitmap := process.toBitmap(type, image)
+               if process.isScreenshot(crop){
+                  pBitmap2 := process.Gdip_CropBitmap(pBitmap, crop)
                   if (type != "pBitmap")
                      Gdip_DisposeImage(pBitmap)
                   pBitmap := pBitmap2
                }
-               this.base64 := Vis2.stdlib.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
-               if (type != "pBitmap" || Vis2.stdlib.isScreenshot(crop))
+               this.imageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
+               if (type != "pBitmap" || process.isScreenshot(crop))
                   Gdip_DisposeImage(pBitmap)
-               Vis2.Graphics.Shutdown()
-               return this.base64
+               process.Destroy()
+               process := ""
+               return this.imageData
             }
 
             convert(base64, option := ""){
@@ -3333,7 +3185,6 @@ class Vis2 {
          ; Vis2.provider.IBM.ExplicitContent()
          class ExplicitContent extends Vis2.functor {
             static extension := "jpg", compression := "75"
-            base64 := true
 
             call(self, image:="", option:="", crop:=""){
                instance := new this
@@ -3394,7 +3245,6 @@ class Vis2 {
          ; Vis2.provider.IBM.FindFaces()
          class FindFaces extends Vis2.functor {
             static extension := "jpg", compression := "75"
-            base64 := true
 
             call(self, image:="", option:="", crop:=""){
                instance := new this
@@ -3482,35 +3332,34 @@ class Vis2 {
          ; Vis2.provider.IBM.ImageIdentify()
          class ImageIdentify extends Vis2.functor {
             static extension := "jpg", compression := "75"
-            base64 := true
 
             call(self, image:="", option:="", crop:=""){
                instance := new this
                if (image == "")
-                  return Vis2.core.returnData({"provider":instance, "option":option, "tooltip":"IBM: Image Identification Tool", "splashImage":"csv"})
+                  return Vis2.core.returnData({"provider":instance, "option":option, "tooltip":"IBM: Image Identification Tool", "splashImage":true})
                else
                   return instance.convert(instance.preprocess(image, crop), option)
             }
 
-            preprocess(image, crop := ""){
-               Vis2.Graphics.Startup()
-               if !(type := Vis2.preprocess.DontVerifyImageType(image))
-                  if !(type := Vis2.preprocess.ImageType(image))
-                     throw Exception("Ensure that the reference to an image is valid.")
-               if (type = "base64" && !Vis2.stdlib.isScreenshot(crop))
+            preprocess(image, crop := "") {
+               process := new Vis2.Graphics.Image()
+               if !(type := process.DontVerifyImageType(image))
+                  type := process.ImageType(image)
+               if (type = "base64" && !process.isScreenshot(crop))
                   return image
-               pBitmap := Vis2.preprocess.toBitmap(type, image)
-               if Vis2.stdlib.isScreenshot(crop){
-                  pBitmap2 := Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop)
+               pBitmap := process.toBitmap(type, image)
+               if process.isScreenshot(crop){
+                  pBitmap2 := process.Gdip_CropBitmap(pBitmap, crop)
                   if (type != "pBitmap")
                      Gdip_DisposeImage(pBitmap)
                   pBitmap := pBitmap2
                }
-               this.base64 := Vis2.stdlib.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
-               if (type != "pBitmap" || Vis2.stdlib.isScreenshot(crop))
+               this.imageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
+               if (type != "pBitmap" || process.isScreenshot(crop))
                   Gdip_DisposeImage(pBitmap)
-               Vis2.Graphics.Shutdown()
-               return this.base64
+               process.Destroy()
+               process := ""
+               return this.imageData
             }
 
             convert(base64, option := ""){
@@ -3543,7 +3392,6 @@ class Vis2 {
          ; Vis2.provider.IBM.TextRecognize()
          class TextRecognize extends Vis2.functor {
             static extension := "png"
-            base64 := true
 
             call(self, image:="", option:="", crop:=""){
                instance := new this
@@ -3858,7 +3706,6 @@ class Vis2 {
 
          class ImageIdentify extends Vis2.functor {
             static extension := "jpg", compression := "75"
-            base64 := true
 
             call(self, image, option:="", crop:=""){
                return this.convert(this.preprocess(image, crop), option)
