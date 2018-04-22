@@ -425,7 +425,7 @@ class Vis2 {
                         p.Render("uigugugiugig;iug`nhfyfjyfjyfjyfyjfjyfjyfjyfjyfjyfjyfj", "c:Black x:Center y:Top w:20vw h:100vh", "a:right c:White f:Arial size:2.23vmin j:right", p.G)
                      }
                      else
-                        Vis2.Graphics.Subtitle.Render(Vis2.obj.data.maxLines(3), "time:" t " x:center y:83% padding:1.35% c:Black radius:8", "size:2.23% f:Arial z:(Arial Narrow) j:left c:White")
+                        Vis2.Graphics.Subtitle.Render(Vis2.obj.data.maxLines(3), "time:" t " x:center y:83% padding:1.35% c:Black radius:8", "size:2.23% f:(Arial) z:(Arial Narrow) j:left c:White")
                      Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: " t ", x: center, y: 75%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial")
                   }
                   Vis2.obj.EXITCODE := 1  ; Success.
@@ -1256,12 +1256,6 @@ class Vis2 {
                   type := this.ImageType(image)
                if (type != "pBitmap")
                   pBitmap := this.toBitmap(type, image)
-               ; Changing the size of the device independent bitmap prevents Gdip_DrawImage from failing
-               ; when the source bitmap is larger than the destination bitmap, despite Gdip_DrawImage being
-               ; able to draw partially on screen such that half the image is cut off. In other words,
-               ; the destination size should be able to contain the source size.
-               ;width := ((___ := Gdip_GetImageWidth(pBitmap)) > this.ScreenWidth) ? ___ : this.ScreenWidth
-               ;height := ((___ := Gdip_GetImageHeight(pBitmap)) > this.ScreenHeight) ? ___ : this.ScreenHeight
                this.DetectScreenResolutionChange()
                this.Draw(pBitmap, style, polygons)
                if (type != "pBitmap")
@@ -1735,7 +1729,7 @@ class Vis2 {
             DllCall("Crypt32.dll\CryptBinaryToStringA", "ptr",&Bin, "uint",nSize, "uint",0x40000001, "ptr",&base64, "uint*",base64Length)
             VarSetCapacity(Bin, 0)
 
-            return strget(&base64, base64Length, "CP0")
+            return StrGet(&base64, base64Length, "CP0")
          }
 
          isBitmapEqual(pBitmap1, pBitmap2, width:="", height:="") {
@@ -2501,7 +2495,7 @@ class Vis2 {
             if (text != "" && o.void) {
                CreateRectF(RC, x, y, w, h)
                pBrushText := Gdip_BrushCreateSolid(c)
-               Gdip_DrawString(pGraphics, text, hFont, hFormat, pBrushText, RC) ; DRAWING!
+               Gdip_DrawString(pGraphics, A_IsUnicode ? text : wtext, hFont, hFormat, pBrushText, RC) ; DRAWING!
                Gdip_DeleteBrush(pBrushText)
             }
 
@@ -3023,9 +3017,19 @@ class Vis2 {
 
             whr.Send(JSON.Dump(req))
             whr.WaitForResponse()
-            try reply := JSON.Load(whr.ResponseText)
+            ado          := ComObjCreate("adodb.stream")
+            ado.Type     := 1
+            ado.Mode     := 3
+            ado.Open()
+            ado.Write(whr.ResponseBody)
+            ado.Position := 0
+            ado.Type     := 2
+            ado.Charset  := "UTF-8"
+            best := ado.ReadText()
+            ado.Close()
+            try reply := JSON.Load(best)
             catch
-               this.getCredentials(whr.ResponseText)
+               this.getCredentials(best)
             return reply
          }
 
