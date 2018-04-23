@@ -136,14 +136,18 @@ class Vis2 {
             Vis2.obj.style2_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"Black"}
             Vis2.obj.subtitle.render(Vis2.obj.tooltip, Vis2.obj.style1_back, Vis2.obj.style1_text)
 
+            Vis2.obj.timer := {}
+            Vis2.obj.timer.selectImage := ObjBindMethod(Vis2.core.ux.process, "selectImage")
+            Vis2.obj.timer.textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
+
             return Vis2.core.ux.waitForUserInput()
          }
 
          waitForUserInput(){
          static escape := ObjBindMethod(Vis2.core.ux, "escape")
          static waitForUserInput := ObjBindMethod(Vis2.core.ux, "waitForUserInput")
-         static selectImage := ObjBindMethod(Vis2.core.ux.process, "selectImage")
-         static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
+         selectImage := Vis2.obj.timer.selectImage
+         textPreview := Vis2.obj.timer.TextPreview
 
             if (GetKeyState("Escape", "P")) {
                Vis2.obj.EXITCODE := -1
@@ -151,10 +155,10 @@ class Vis2 {
                return
             }
             else if (GetKeyState("LButton", "P")) {
-               SetTimer, % selectImage, -10
+               SetTimer, % selectImage, 10
                if (Vis2.obj.textPreview) {
                   Vis2.obj.subtitle.render("Searching for data...", Vis2.obj.style1_back, Vis2.obj.style1_text)
-                  SetTimer, % textPreview, -25
+                  SetTimer, % textPreview, 500
                }
                else
                   Vis2.obj.subtitle.render("Waiting for user selection...", Vis2.obj.style2_back, Vis2.obj.style2_text)
@@ -169,10 +173,11 @@ class Vis2 {
          class process {
 
             selectImage(){
-            static selectImage := ObjBindMethod(Vis2.core.ux.process, "selectImage")
+            selectImage := Vis2.obj.timer.selectImage
 
                if (GetKeyState("Escape", "P")) {
                   Vis2.obj.EXITCODE := -1
+                  SetTimer, % selectImage, Off
                   return Vis2.core.ux.process.treasureChest(A_ThisFunc)
                }
 
@@ -182,13 +187,12 @@ class Vis2 {
                   Vis2.core.ux.process.selectImageAdvanced()
 
                Vis2.core.ux.display()
-
-               if !(Vis2.obj.unlock.1 ~= "^Vis2.core.ux.process.selectImage" || Vis2.obj.unlock.2 ~= "^Vis2.core.ux.process.selectImage")
-                  SetTimer, % selectImage, -10
                return
             }
 
             selectImageQuick(){
+            selectImage := Vis2.obj.timer.selectImage
+
                if (GetKeyState("LButton", "P")) {
                   if (GetKeyState("Control", "P") || GetKeyState("Alt", "P") || GetKeyState("Shift", "P"))
                      Vis2.core.ux.process.selectImageTransition()
@@ -200,8 +204,10 @@ class Vis2 {
                   else
                      Vis2.obj.area.draw()
                }
-               else
-                  Vis2.core.ux.process.treasureChest(A_ThisFunc)
+               else {
+                  SetTimer, % selectImage, Off
+                  return Vis2.core.ux.process.treasureChest(A_ThisFunc)
+               }
                ; Do not return.
             }
 
@@ -222,6 +228,7 @@ class Vis2 {
 
             selectImageAdvanced(){
             static void := ObjBindMethod({}, {})
+            selectImage := Vis2.obj.timer.selectImage
 
                if ((Vis2.obj.area.width() < -25 || Vis2.obj.area.height() < -25) && !Vis2.obj.note_02)
                   Vis2.obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 67%, p1.35%, c: FCF9AF, r8", "c000000 s2.23%")
@@ -266,8 +273,10 @@ class Vis2 {
                   Vis2.obj.area.toggleCoordinates()
                } else if (Vis2.obj.action.Shift_Space = 1){
 
-               } else if (Vis2.obj.action.Space = 1)
-                  Vis2.core.ux.process.treasureChest(A_ThisFunc) ; Exit function.
+               } else if (Vis2.obj.action.Space = 1) {
+                  SetTimer, % selectImage, Off
+                  return Vis2.core.ux.process.treasureChest(A_ThisFunc) ; Exit function.
+               }
 
                ; Mouse Hotkeys
                if (Vis2.obj.action.Control_LButton)
@@ -294,7 +303,7 @@ class Vis2 {
             }
 
             textPreview(bypass:=""){
-            static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
+            textPreview := Vis2.obj.timer.TextPreview
 
                ; The bypass parameter is normally used when textPreview (preview text on bottom) is off.
                if (bypass || Vis2.obj.textPreview) {
@@ -336,10 +345,10 @@ class Vis2 {
                   }
                }
 
-               if (Vis2.obj.unlock.1 && !Vis2.obj.unlock.2)
+               if (Vis2.obj.unlock.1 && !Vis2.obj.unlock.2) {
+                  SetTimer, % textPreview, Off
                   return Vis2.core.ux.process.treasureChest(A_ThisFunc)
-               else
-                  SetTimer, % textPreview, -100
+               }
                return
             }
 
@@ -1274,13 +1283,15 @@ class Vis2 {
             if (pGraphics == "")
                pGraphics := this.G
 
+            style := !IsObject(style) ? RegExReplace(style, "\s", " ") : style
+
             if (style == "")
                style := this.style
             else
                this.style := style
 
-            static q1 := "i)^.*?(?<!-|:|:\s)\b(?![^\(]*\))"
-            static q2 := "(:\s*)?\(?(?<value>(?<=\()[:\s\-\da-z\.#%]+(?=\))|[\-\da-z\.#%]+).*$"
+            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
+            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
 
             this.time := (style.time) ? style.time : (style.t) ? style.t
                : (!IsObject(style) && (___ := RegExReplace(style, q1 "(t(ime)?)" q2, "${value}")) != style) ? ___
@@ -1447,8 +1458,8 @@ class Vis2 {
 
          margin_and_padding(m, default := 0) {
             static valid := "^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-            static q1 := "i)^.*?(?<!-|:|:\s)\b(?![^\(]*\))"
-            static q2 := "(:\s*)?\(?(?<value>(?<=\()[:\s\-\da-z\.#%]+(?=\))|[\-\da-z\.#%]+).*$"
+            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
+            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
 
             if IsObject(m) {
                m.1 := (m.top    != "") ? m.top    : m.t
@@ -2051,15 +2062,19 @@ class Vis2 {
                pGraphics := this.G
             }
 
+            ; Remove excess whitespace. This is required for proper RegEx detection.
+            style1 := !IsObject(style1) ? RegExReplace(style1, "\s", " ") : style1
+            style2 := !IsObject(style2) ? RegExReplace(style2, "\s", " ") : style2
+
             ; Load saved styles if and only if both styles are blank.
             if (style1 == "" && style2 == "")
                style1 := this.style1, style2 := this.style2
             else
                this.style1 := style1, this.style2 := style2 ; Remember styles so that they can be loaded next time.
 
-            ; I was autistic when I wrote this fking RegEx. It is a work of art.
-            static q1 := "i)^.*?(?<!-|:|:\s)\b(?![^\(]*\))"
-            static q2 := "(:\s*)?\(?(?<value>(?<=\()[:\s\-\da-z\.#%]+(?=\))|[\-\da-z\.#%]+).*$"
+            ; RegEx help? https://regex101.com/r/xLzZzO/2
+            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
+            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
 
             ; Extract the time variable and save it for later when we Render() everything.
             this.time := (style1.time) ? style1.time : (style1.t) ? style1.t
@@ -2524,8 +2539,8 @@ class Vis2 {
 
          dropShadow(d, x_simulated, y_simulated, font_size) {
             static valid := "^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-            static q1 := "i)^.*?(?<!-|:|:\s)\b(?![^\(]*\))"
-            static q2 := "(:\s*)?\(?(?<value>(?<=\()[:\s\-\da-z\.#%]+(?=\))|[\-\da-z\.#%]+).*$"
+            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
+            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
 
             if IsObject(d) {
                d.1 := (d.1) ? d.1 : (d.horizontal != "") ? d.horizontal : d.h
@@ -2570,8 +2585,8 @@ class Vis2 {
 
          outline(o, font_size, font_color) {
             static valid_positive := "^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-            static q1 := "i)^.*?(?<!-|:|:\s)\b(?![^\(]*\))"
-            static q2 := "(:\s*)?\(?(?<value>(?<=\()[:\s\-\da-z\.#%]+(?=\))|[\-\da-z\.#%]+).*$"
+            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
+            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
 
             if IsObject(o) {
                o.1 := (o.1) ? o.1 : (o.stroke != "") ? o.stroke : o.s
@@ -2609,8 +2624,8 @@ class Vis2 {
 
          margin_and_padding(m, default := 0) {
             static valid := "^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-            static q1 := "i)^.*?(?<!-|:|:\s)\b(?![^\(]*\))"
-            static q2 := "(:\s*)?\(?(?<value>(?<=\()[:\s\-\da-z\.#%]+(?=\))|[\-\da-z\.#%]+).*$"
+            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
+            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
 
             if IsObject(m) {
                m.1 := (m.top    != "") ? m.top    : m.t
@@ -3602,7 +3617,7 @@ class Vis2 {
          class TextRecognize extends Vis2.functor {
             uuid := Vis2.stdlib.CreateUUID()
             temp := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
-            file := A_Temp "\Vis2_preprocess" this.uuid ".tif"
+            imageData := A_Temp "\Vis2_preprocess" this.uuid ".tif"
             temp2 := A_Temp "\Vis2_text" this.uuid ".txt"
 
             call(self, image:="", option:="", crop:=""){
@@ -3614,23 +3629,23 @@ class Vis2 {
             }
 
             preprocess(image, crop := ""){
-               Vis2.Graphics.Startup()
-               if !(type := Vis2.preprocess.DontVerifyImageType(image))
-                  if !(type := Vis2.preprocess.ImageType(image))
-                     throw Exception("Ensure that the reference to an image is valid.")
-               if (type = "file" && !Vis2.stdlib.isScreenshot(crop)) ;POSSIBLY BITMAP ONLY?
+               process := new Vis2.Graphics.Image()
+               if !(type := process.DontVerifyImageType(image))
+                  type := process.ImageType(image)
+               if (type = "file" && !process.isScreenshot(crop)) ;POSSIBLY BITMAP ONLY?
                   return image
-               pBitmap := Vis2.preprocess.toBitmap(type, image)
-               if Vis2.stdlib.isScreenshot(crop){
-                  pBitmap2 := Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop)
+               pBitmap := process.toBitmap(type, image)
+               if process.isScreenshot(crop){
+                  pBitmap2 := process.Gdip_CropBitmap(pBitmap, crop)
                   if (type != "pBitmap")
                      Gdip_DisposeImage(pBitmap)
                   pBitmap := pBitmap2
                }
                Gdip_SaveBitmapToFile(pBitmap, this.temp, this.compression)
-               if (type != "pBitmap" || Vis2.stdlib.isScreenshot(crop))
+               if (type != "pBitmap" || process.isScreenshot(crop))
                   Gdip_DisposeImage(pBitmap)
-               Vis2.Graphics.Shutdown()
+               process.Destroy()
+               process := ""
 
                static ocrPreProcessing := 1
                static negateArg := 2
@@ -3641,16 +3656,16 @@ class Vis2 {
                   throw Exception("Leptonica not found.",, this.outer.leptonica)
 
                static q := Chr(0x22)
-               _cmd .= q this.outer.leptonica q " " q this.temp q " " q this.file q
+               _cmd .= q this.outer.leptonica q " " q this.temp q " " q this.imageData q
                _cmd .= " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
                _cmd := ComSpec " /C " q _cmd q
                RunWait, % _cmd,, Hide
 
-               if !(FileExist(this.file))
+               if !(FileExist(this.imageData))
                   throw Exception("Preprocessing failed.",, _cmd)
 
                FileDelete, % this.temp
-               return this.file
+               return this.imageData
             }
 
             convert(file, option := "", speed := 0){
@@ -3674,7 +3689,6 @@ class Vis2 {
                data := RegExReplace(data, "(?<!\r)\n", "`r`n")
                database.Close()
 
-               FileDelete, % this.file
                FileDelete, % this.temp2
 
                data.base.FullData := obj
