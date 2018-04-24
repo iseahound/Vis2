@@ -3065,9 +3065,6 @@ class Vis2 {
                      Gdip_DisposeImage(pBitmap)
                   pBitmap := pBitmap2
                }
-               while (Gdip_GetImageWidth(pBitmap) > 1280 && Gdip_GetImageHeight(pBitmap) > 720) {
-                  break
-               }
                this.imageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
                if (type != "pBitmap" || process.isScreenshot(crop))
                   Gdip_DisposeImage(pBitmap)
@@ -3676,15 +3673,16 @@ class Vis2 {
 
                if !(database := FileOpen(this.temp3, "r`n", "UTF-8"))
                   throw Exception("Tesseract did not output a file.",, this.temp3)
-               data := RegExReplace(database.Read(), "^\s*(.*?)\s*+$", "$1")
-               data := RegExReplace(data, "(?<!\r)\n", "`r`n")
+               tsv := RegExReplace(database.Read(), "^\s*(.*?)\s*+$", "$1")
                database.Close()
 
                OnExit(ObjBindMethod(this, "Exit")) ; Deletes temp2 on exit.
                FileDelete, % this.temp3
 
-               obj := {}
-               Loop, Parse, data, `n
+               obj := {}, block := {"paragraphs":[]}, paragraph := {"lines":[]}, line := {"words":[]}, word := {}
+
+               line_num := block_num := par_num := word_num := 0
+               Loop, Parse, tsv, `n
                {
                   if (A_Index = 1)
                      continue ; Skip headers
@@ -3693,14 +3691,193 @@ class Vis2 {
                   ; 7 = left, 8 = top, 9 = width, 10 = height, 11 = confidence, 12 = text
                   field := StrSplit(A_LoopField, "`t")
 
-                  if (obj[obj.maxIndex()] != field[3]) {
-                     obj.block.push(field[3])
-                     block.paragraph .push({"level":field[1], "block":field[3]
-                        , "paragraph":field[4], "line":field[5], "word":field[6]
-                        , "x":field[7], "y":field[8], "w":field[9], "h":field[10]
-                        , "confidence":field[10], "text":field[12]})
+                  rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
+
+                  if (word_num != field[6]) {
+                     if (word_num != 0) {
+                        line.words.push(word)
+                        line.text .= word.text . ((field[6] > 1) ? " " : "")
+                        line.confidence := (line.confidence == "") ? word.confidence : (1/word_num)*word.confidence + ((word_num - 1)/word_num)*line.confidence
+                     }
+                     word_num := field[6]
+                     word := {}
+                     word.word_number := field[6]
+                     word.text := field[12]
+                     word.confidence := field[11]
+                     word.rectangle := rectangle
+                  }
+
+                  if (line_num != field[5]) {
+                     if (line_num != 0) {
+                        paragraph.lines.push(line)
+                        paragraph.text .= line.text . ((field[5] > 1) ? "`r`n" : "")
+                        paragraph.confidence := (paragraph.confidence == "") ? line.confidence : (1/line_num)*line.confidence + ((line_num - 1)/line_num)*paragraph.confidence
+                     }
+                     line_num := field[5]
+                     line := {"words":[]}
+                     line.line_number := field[5]
+                     line.rectangle := rectangle
+                  }
+
+                  if (par_num != field[4]) {
+                     if (par_num != 0) {
+                        block.paragraphs.push(paragraph)
+                        block.text .= paragraph.text . ((field[4] > 1) ? "`r`n" : "")
+                        block.confidence := (block.confidence == "") ? paragraph.confidence : (1/par_num)*paragraph.confidence + ((par_num - 1)/par_num)*block.confidence
+                     }
+                     par_num := field[4]
+                     paragraph := {"lines":[]}
+                     paragraph.paragraph_number := field[4]
+                     paragraph.rectangle := rectangle
+                  }
+                  if (block_num != field[3]) {
+                     if (block_num != 0) {
+                        text .= block.text
+                        confidence := (confidence == "") ? block.confidence : (1/block_num)*block.confidence + ((block_num - 1)/block_num)*confidence
+                        obj.push(block)
+                     }
+                     block_num := field[3]
+                     block := {"paragraphs":[]}
+                     block.block_number := field[3]
+                     block.rectangle := rectangle
                   }
                }
+
+               line.words.push(word)
+               line.text .= ((field[6] > 1) ? " " : "") . word.text
+               line.confidence := (line.confidence == "") ? word.confidence : (1/word_num)*word.confidence + ((word_num - 1)/word_num)*line.confidence
+               paragraph.lines.push(line)
+               paragraph.text .= ((field[5] > 1) ? "`r`n" : "") . line.text
+               paragraph.confidence := (paragraph.confidence == "") ? line.confidence : (1/line_num)*line.confidence + ((line_num - 1)/line_num)*paragraph.confidence
+               block.paragraphs.push(paragraph)
+               block.text .= paragraph.text
+               block.confidence := (block.confidence == "") ? paragraph.confidence : (1/par_num)*paragraph.confidence + ((par_num - 1)/par_num)*block.confidence
+               text .= block.text
+               confidence := (confidence == "") ? block.confidence : (1/block_num)*block.confidence + ((block_num - 1)/block_num)*confidence
+               obj.push(block)
+
+
+                  /*
+                  if (block_num != field[3]) {
+                     block_num := field[3]
+                     if (field[3] > 0) {
+                        block := {"paragraphs":[]}
+                     }
+                  }
+                  if (field[3] > 0 && par_num != field[4]) {
+                     par_num := field[4]
+                     if (field[4] > 0) {
+                        paragraph := {"lines":[]}
+                     }
+                  }
+                  if (field[3] > 0 && field[4] > 0 && line_num != field[5]) {
+                     line_num := field[5]
+                     if (field[5] > 0) {
+                        line := {"words":[]}
+                        _blocks := true
+                     }
+                  }
+                  if (field[3] > 0 && field[4] > 0 && field[5] > 0 && word_num != field[6]) {
+                     word_num := field[6]
+                     if (field[6] > 0) {
+                        word := {}
+                        word.word_num := field[6]
+                        word.text := field[12]
+                        word.confidence := field[11]
+                        word.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
+                        line.words.push(word)
+                        line.text .= ((field[6] > 1) ? " " : "") . word.text
+                        line.confidence := (line.confidence == "") ? word.confidence : (1/word_num)*word.confidence + ((word_num - 1)/word_num)*line.confidence
+                        _lines := true
+                        _paragraphs := true
+                     }
+                  }
+                  if (field[3] > 0 && field[4] > 0 && field[5] > 0 && field[6] == 0)
+                     line.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
+                  if (_lines == true) {
+                     line.line_num := field[5]
+                     paragraph.text .= ((field[5] > 1) ? "`r`n" : "") . line.text
+                     paragraph.confidence := (paragraph.confidence == "") ? line.confidence : (1/line_num)*line.confidence + ((line_num - 1)/line_num)*paragraph.confidence
+                     paragraph.lines.push(line)
+                     _lines := false
+                  }
+                  if (field[3] > 0 && field[4] > 0 && field[5] == 0 && field[6] == 0)
+                     paragraph.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
+                  if (_paragraphs == true) {
+                     paragraph.par_num := field[4]
+                     block.text .= paragraph.text . "xd"
+                     block.confidence := (block.confidence == "") ? paragraph.confidence : (1/par_num)*paragraph.confidence + ((par_num - 1)/par_num)*block.confidence
+                     block.paragraphs.push(paragraph)
+                     _paragraphs == false
+                  }
+                  if (field[3] > 0 && field[4] == 0 && field[5] == 0 && field[6] == 0)
+                     block.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
+                  if (_blocks == true) {
+                     block.block_num := field[3]
+                     text .= block.text . "lol"
+                     obj.push(block)
+                     _blocks == false
+                  }
+                  */
+
+
+                  /*
+                  ; words
+                  if (field[3] > 0 && field[4] > 0 && field[5] > 0 && word_num != field[6]) {
+                     word_num := field[6]
+                     if (field[6] == 0) {
+                        line.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
+                     } else {
+                        word := {}
+                        word.text := field[12]
+                        word.confidence := field[11]
+                        word.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
+                        line.text .= word.text . " "
+                        line.confidence := (line.confidence == "") ? word.confidence : (1/word_num)*word.confidence + ((word_num - 1)/word_num)*line.confidence
+                        line.words.push(word)
+                     }
+                  }
+
+                  ; lines
+                  if (field[3] > 0 && field[4] > 0 && line_num != field[5]) {
+                     line_num := field[5]
+                     if (field[5] == 0) {
+                        paragraph.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
+                     } else {
+                        paragraph.text .= line.text . "`r`n"
+                        paragraph.confidence := (paragraph.confidence == "") ? line.confidence : (1/line_num)*line.confidence + ((line_num - 1)/line_num)*paragraph.confidence
+                        paragraph.lines.push(line)
+                        line := {"words":[]}
+                     }
+                  }
+
+                  ; paragraphs
+                  if (field[3] > 0 && par_num != field[4]) {
+                     par_num := field[4]
+                     if (field[4] == 0) {
+                        block.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
+                     } else {
+                        block.text .= paragraph.text . "xd"
+                        block.confidence := (block.confidence == "") ? paragraph.confidence : (1/par_num)*paragraph.confidence + ((par_num - 1)/par_num)*block.confidence
+                        block.paragraphs.push(paragraph)
+                        paragraph := {"lines":[]}
+                     }
+                  }
+
+                  ; blocks
+                  if (block_num != field[3]) {
+                     block_num := field[3]
+                     if (field[3] == 0) {
+                        block.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
+                     } else {
+                        obj.text .= block.text . "lol"
+                        obj.confidence := (obj.confidence == "") ? block.confidence : (1/block_num)*block.confidence + ((block_num - 1)/block_num)*obj.confidence
+                        obj.blocks.push(block)
+                        block := {"paragraphs":[]}
+                     }
+                  }
+               }
+               */
                /*
                if (field[7] < obj[block].x)
                   obj[block].x := field[7]
@@ -3716,6 +3893,7 @@ class Vis2 {
                }
                */
 
+               data := text
                data.base.FullData := obj
                for reference, function in Vis2.Text {
                   if IsFunc(function)
