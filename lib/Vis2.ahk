@@ -127,7 +127,7 @@ class Vis2 {
             Vis2.obj.EXITCODE := 0 ; -2 = blank data; -1 = escape; 0 = in progress; 1 = success
             Vis2.obj.selectMode := "Quick"
             Vis2.obj.area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
-            Vis2.obj.image := new Vis2.Graphics.Image("Vis2_Kitsune").Hide()
+            Vis2.obj.picture := new Vis2.Graphics.Picture("Vis2_Kitsune").Hide()
             Vis2.obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
 
             Vis2.obj.style1_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"DD000000", "radius":8}
@@ -267,8 +267,8 @@ class Vis2 {
 
                ; Space Hotkeys
                if (Vis2.obj.action.Control_Space = 1){
-                  Vis2.obj.image.render(Vis2.obj.preprocess, 0.5)
-                  Vis2.obj.image.toggleVisible()
+                  Vis2.obj.picture.render(Vis2.obj.preprocess, 0.5)
+                  Vis2.obj.picture.toggleVisible()
                } else if (Vis2.obj.action.Alt_Space = 1){
                   Vis2.obj.area.toggleCoordinates()
                } else if (Vis2.obj.action.Shift_Space = 1){
@@ -315,12 +315,12 @@ class Vis2 {
                      (overlap) ? Vis2.obj.subtitle.show() : ""
 
                      ; If any x,y,w,h coordinates are different, or the image has changed (like video), proceed.
-                     if (bypass || coordinates != Vis2.obj.coordinates || !Vis2.obj.Image.isBitmapEqual(pBitmap, Vis2.obj.pBitmap)) {
+                     if (bypass || coordinates != Vis2.obj.coordinates || !Vis2.obj.picture.isBitmapEqual(pBitmap, Vis2.obj.pBitmap)) {
 
                         try {
                            Vis2.obj.preprocess := Vis2.obj.provider.preprocess({"pBitmap":pBitmap}) ; Declare type as pBitmap
-                           if (Vis2.obj.image.isVisible() == true)
-                              Vis2.obj.image.render(Vis2.obj.preprocess, 0.5)
+                           if (Vis2.obj.picture.isVisible() == true)
+                              Vis2.obj.picture.render(Vis2.obj.preprocess, 0.5)
                            Vis2.obj.data := Vis2.obj.provider.convert(Vis2.obj.preprocess, Vis2.obj.option, 100)
                         }
                         catch e {
@@ -415,7 +415,7 @@ class Vis2 {
                      t := 2500
                      if (Vis2.obj.splashImage == true) {
                         t := 5000
-                        Vis2.Graphics.Image.Render(Vis2.obj.provider.imageData, "time:5000 x:center y:center margin:0.926vmin", Vis2.obj.data.FullData)
+                        Vis2.Graphics.Picture.Render(Vis2.obj.provider.imageData, "time:5000 x:center y:center margin:0.926vmin", Vis2.obj.data.FullData)
                      }
                      Vis2.obj.Subtitle.Hide()
                      if (Vis2.obj.splashImage = "csv"){
@@ -469,7 +469,7 @@ class Vis2 {
 
             Gdip_DisposeImage(Vis2.obj.pBitmap)
             Vis2.obj.area.destroy()
-            Vis2.obj.image.destroy()
+            Vis2.obj.picture.destroy()
             Vis2.obj.subtitle.destroy()
             Vis2.obj.note_01.hide() ; Let them time out instead of Destroy()
             Vis2.obj.note_02.destroy()
@@ -1143,7 +1143,7 @@ class Vis2 {
          }
       } ; End of CustomFont class.
 
-      class Image {
+      class Picture {
 
          ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
 
@@ -1156,7 +1156,7 @@ class Vis2 {
 
             Gui, New, +LastFound +AlwaysOnTop -Caption -DPIScale +E0x80000 +ToolWindow +hwndhwnd
             this.hwnd := hwnd
-            this.title := (title != "") ? title : "Image_" this.hwnd
+            this.title := (title != "") ? title : "Picture_" this.hwnd
             DllCall("ShowWindow", "ptr",this.hwnd, "int",8)
             DllCall("SetWindowText", "ptr",this.hwnd, "str",this.title)
             this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
@@ -1247,8 +1247,6 @@ class Vis2 {
          ; Numbers: hwnd, GDI Bitmap, GDI HBitmap
          ; Rawfile: Binary
 
-         ; ALL FUNCTIONS REQUIRE Vis2.Graphics.Startup()
-
          ; Vis2.preprocess(image, crop) - This is a template function.
          ; Each provider should implement their own preprocess function based off
          ; this template. Accepts all 8 input types, returns a cropped pBitmap.
@@ -1257,8 +1255,8 @@ class Vis2 {
          ; and the input and output types are the same.
          Render(image, style := "", polygons := "") {
             if !(this.hwnd) {
-               _image := (this.outer) ? new this.outer.Image() : new Image()
-               return _image.Render(image, style, polygons)
+               _picture := (this.outer) ? new this.outer.Picture() : new Picture()
+               return _picture.Render(image, style, polygons)
             } else {
                Critical On
                if !(type := this.DontVerifyImageType(image))
@@ -1283,7 +1281,7 @@ class Vis2 {
             if (pGraphics == "")
                pGraphics := this.G
 
-            style := !IsObject(style) ? RegExReplace(style, "\s", " ") : style
+            style := !IsObject(style) ? RegExReplace(style, "\s+", " ") : style
 
             if (style == "")
                style := this.style
@@ -1639,16 +1637,6 @@ class Vis2 {
                DllCall("GlobalFree", "ptr",hData) ; Will delete the original bitmap if not cloned.
                return pBitmap2
             }
-         }
-
-         b64Decode( b64str, ByRef outBuf ) {
-            static CryptStringToBinary := "crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A")
-
-            DllCall( CryptStringToBinary, "ptr", &b64str, "UInt", 0, "Uint", 1, "Ptr", 0, "UInt*", outLen, "ptr", 0, "ptr", 0 )
-            VarSetCapacity( outBuf, outLen, 0 )
-            DllCall( CryptStringToBinary, "ptr", &b64str, "UInt", 0, "Uint", 1, "Ptr", &outBuf, "UInt*", outLen, "ptr", 0, "ptr", 0 )
-
-            return outLen
          }
 
          Gdip_BitmapFromClientHWND(hwnd) {
@@ -2063,8 +2051,8 @@ class Vis2 {
             }
 
             ; Remove excess whitespace. This is required for proper RegEx detection.
-            style1 := !IsObject(style1) ? RegExReplace(style1, "\s", " ") : style1
-            style2 := !IsObject(style2) ? RegExReplace(style2, "\s", " ") : style2
+            style1 := !IsObject(style1) ? RegExReplace(style1, "\s+", " ") : style1
+            style2 := !IsObject(style2) ? RegExReplace(style2, "\s+", " ") : style2
 
             ; Load saved styles if and only if both styles are blank.
             if (style1 == "" && style2 == "")
@@ -2821,7 +2809,7 @@ class Vis2 {
             ,  color["WhiteSmoke"]            := "0xFFF5F5F5"
                color["Yellow"]                := "0xFFFFFF00"
             ,  color["YellowGreen"]           := "0xFF9ACD32"
-             map := color
+            map := color
             }
 
             return map[c]
@@ -3065,7 +3053,7 @@ class Vis2 {
             }
 
             preprocess(image, crop := "") {
-               process := new Vis2.Graphics.Image()
+               process := new Vis2.Graphics.Picture()
                if !(type := process.DontVerifyImageType(image))
                   type := process.ImageType(image)
                if (type = "base64" && !process.isScreenshot(crop))
@@ -3076,6 +3064,9 @@ class Vis2 {
                   if (type != "pBitmap")
                      Gdip_DisposeImage(pBitmap)
                   pBitmap := pBitmap2
+               }
+               while (Gdip_GetImageWidth(pBitmap) > 1280 && Gdip_GetImageHeight(pBitmap) > 720) {
+                  break
                }
                this.imageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
                if (type != "pBitmap" || process.isScreenshot(crop))
@@ -3096,7 +3087,7 @@ class Vis2 {
                obj := Vis2.stdlib.QuickSort(obj)
                for k, v in obj {
                   sentence  .= ((A_Index == 1) ? "" : ", ") . v.category
-                  sentence2 .= ((A_Index == 1) ? "" : ", ") . v.category " " Format("{:#.3f}", v.score)
+                  sentence2 .= ((A_Index == 1) ? "" : "`r`n") . v.category ", " Format("{:#.3f}", v.score)
                }
                data := sentence2
                data.base.FullData := obj
@@ -3121,7 +3112,7 @@ class Vis2 {
             }
 
             preprocess(image, crop := "") {
-               process := new Vis2.Graphics.Image()
+               process := new Vis2.Graphics.Picture()
                if !(type := process.DontVerifyImageType(image))
                   type := process.ImageType(image)
                if (type = "base64" && !process.isScreenshot(crop))
@@ -3361,7 +3352,7 @@ class Vis2 {
             }
 
             preprocess(image, crop := "") {
-               process := new Vis2.Graphics.Image()
+               process := new Vis2.Graphics.Picture()
                if !(type := process.DontVerifyImageType(image))
                   type := process.ImageType(image)
                if (type = "base64" && !process.isScreenshot(crop))
@@ -3606,19 +3597,18 @@ class Vis2 {
       }
 
       class Tesseract {
-         static local := true
 
-         static leptonica := A_ScriptDir "\bin\leptonica_util\leptonica_util.exe"
-         static tesseract := A_ScriptDir "\bin\tesseract\tesseract.exe"
-         static tessdata_best := A_ScriptDir "\bin\tesseract\tessdata_best"
-         static tessdata_fast := A_ScriptDir "\bin\tesseract\tessdata_fast"
+         static leptonica := A_ScriptDir "\provider\leptonica_util\leptonica_util.exe"
+         static tesseract := A_ScriptDir "\provider\tesseract\tesseract.exe"
+         static tessdata_best := A_ScriptDir "\provider\tesseract\tessdata_best"
+         static tessdata_fast := A_ScriptDir "\provider\tesseract\tessdata_fast"
 
          ; Vis2.provider.Tesseract.TextRecognize()
          class TextRecognize extends Vis2.functor {
             uuid := Vis2.stdlib.CreateUUID()
-            temp := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
-            imageData := A_Temp "\Vis2_preprocess" this.uuid ".tif"
-            temp2 := A_Temp "\Vis2_text" this.uuid ".txt"
+            temp1 := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
+            temp2 := A_Temp "\Vis2_preprocess" this.uuid ".tif"
+            temp3 := A_Temp "\Vis2_text" this.uuid ".tsv"
 
             call(self, image:="", option:="", crop:=""){
                instance := new this
@@ -3629,7 +3619,7 @@ class Vis2 {
             }
 
             preprocess(image, crop := ""){
-               process := new Vis2.Graphics.Image()
+               process := new Vis2.Graphics.Picture()
                if !(type := process.DontVerifyImageType(image))
                   type := process.ImageType(image)
                if (type = "file" && !process.isScreenshot(crop)) ;POSSIBLY BITMAP ONLY?
@@ -3639,9 +3629,9 @@ class Vis2 {
                   pBitmap2 := process.Gdip_CropBitmap(pBitmap, crop)
                   if (type != "pBitmap")
                      Gdip_DisposeImage(pBitmap)
-                  pBitmap := pBitmap2
+                  pBitmap := pBitmap2s
                }
-               Gdip_SaveBitmapToFile(pBitmap, this.temp, this.compression)
+               Gdip_SaveBitmapToFile(pBitmap, this.temp1, this.compression)
                if (type != "pBitmap" || process.isScreenshot(crop))
                   Gdip_DisposeImage(pBitmap)
                process.Destroy()
@@ -3656,16 +3646,16 @@ class Vis2 {
                   throw Exception("Leptonica not found.",, this.outer.leptonica)
 
                static q := Chr(0x22)
-               _cmd .= q this.outer.leptonica q " " q this.temp q " " q this.imageData q
+               _cmd .= q this.outer.leptonica q " " q this.temp1 q " " q this.temp2 q
                _cmd .= " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
                _cmd := ComSpec " /C " q _cmd q
                RunWait, % _cmd,, Hide
 
-               if !(FileExist(this.imageData))
+               if !(FileExist(this.temp2))
                   throw Exception("Preprocessing failed.",, _cmd)
 
-               FileDelete, % this.temp
-               return this.imageData
+               FileDelete, % this.temp1
+               return this.imageData := this.temp2
             }
 
             convert(file, option := "", speed := 0){
@@ -3677,19 +3667,54 @@ class Vis2 {
 
                static q := Chr(0x22)
                _cmd .= q this.outer.tesseract q " --tessdata-dir " q ((speed) ? this.outer.tessdata_fast : this.outer.tessdata_best) q
-               _cmd .= " " q file q " " q SubStr(this.temp2, 1, -4) q
+               _cmd .= " " q file q " " q SubStr(this.temp3, 1, -4) q
                _cmd .= (option) ? " -l " q option q : ""
+               _cmd .= " -c tessedit_create_tsv=1 -c tessedit_pageseg_mode=1"
                _cmd := ComSpec " /C " q _cmd q
                ;_cmd := "powershell -NoProfile -command "  q  "& " _cmd q
                RunWait % _cmd,, Hide
 
-               if !(database := FileOpen(this.temp2, "r`n", "UTF-8"))
-                  throw Exception("Text file could not be found or opened.",, this.temp2)
-               data := RegExReplace(database.Read(), "^\s*(.*?)\s*$", "$1")
+               if !(database := FileOpen(this.temp3, "r`n", "UTF-8"))
+                  throw Exception("Tesseract did not output a file.",, this.temp3)
+               data := RegExReplace(database.Read(), "^\s*(.*?)\s*+$", "$1")
                data := RegExReplace(data, "(?<!\r)\n", "`r`n")
                database.Close()
 
-               FileDelete, % this.temp2
+               OnExit(ObjBindMethod(this, "Exit")) ; Deletes temp2 on exit.
+               FileDelete, % this.temp3
+
+               obj := {}
+               Loop, Parse, data, `n
+               {
+                  if (A_Index = 1)
+                     continue ; Skip headers
+
+                  ; 1 = level, 2 = page_num, 3 = block_num, 4 = par_num, 5 = line_num, 6 = word_num
+                  ; 7 = left, 8 = top, 9 = width, 10 = height, 11 = confidence, 12 = text
+                  field := StrSplit(A_LoopField, "`t")
+
+                  if (obj[obj.maxIndex()] != field[3]) {
+                     obj.block.push(field[3])
+                     block.paragraph .push({"level":field[1], "block":field[3]
+                        , "paragraph":field[4], "line":field[5], "word":field[6]
+                        , "x":field[7], "y":field[8], "w":field[9], "h":field[10]
+                        , "confidence":field[10], "text":field[12]})
+                  }
+               }
+               /*
+               if (field[7] < obj[block].x)
+                  obj[block].x := field[7]
+               if (field[8] < obj[block].y)
+                  obj[block].y := field[8]
+               if (field[9] > obj[block].w)
+                  obj[block].w := field[9]
+               if (field[10] > obj[block].h)
+                  obj[block].h := field[10]
+
+               Loop % obj.MaxIndex() {
+                  MsgBox % "number A_Index x:" obj[A_Index].x " y:" obj[A_Index].y " w:" obj[A_Index].w " h:" obj[A_Index].h
+               }
+               */
 
                data.base.FullData := obj
                for reference, function in Vis2.Text {
@@ -3697,6 +3722,10 @@ class Vis2 {
                      data.base[reference] := ObjBindMethod(Vis2.Text, reference)
                } ; All of the functions in Vis2.Text can now be called as such: data.google()
                return data
+            }
+
+            exit(){
+               FileDelete , % this.temp2 ; imageData
             }
          }
       }
