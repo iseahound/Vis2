@@ -311,7 +311,9 @@ class Vis2 {
                   if (coordinates := Vis2.obj.Area.ScreenshotRectangle()) {
                      ; Sometimes a user will make the subtitle blink from top to bottom. If so, hide subtitle temporarily.
                      (overlap := Vis2.core.ux.overlap()) ? Vis2.obj.subtitle.hide() : ""
+                     ;Vis2.obj.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
                      pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
+                     ;Vis2.obj.area.changeColor(0x7FDDDDDD) ; Lighten Area object, but do not hide or delete it until key up.
                      (overlap) ? Vis2.obj.subtitle.show() : ""
 
                      ; If any x,y,w,h coordinates are different, or the image has changed (like video), proceed.
@@ -358,7 +360,7 @@ class Vis2 {
 
                ; SelectImage returns. If TextPreview was not started, start it now or escape depending on the exit code.
                if (key ~= "^Vis2.core.ux.process.selectImage") {
-                  Vis2.obj.Area.ChangeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
+                  Vis2.obj.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
                   if (!Vis2.obj.textPreview){
                      if (Vis2.obj.EXITCODE == -1)
                         return Vis2.core.ux.escape()
@@ -415,7 +417,7 @@ class Vis2 {
                      t := 2500
                      if (Vis2.obj.splashImage == true) {
                         t := 5000
-                        Vis2.Graphics.Picture.Render(Vis2.obj.provider.imageData, "time:5000 x:center y:center margin:0.926vmin", Vis2.obj.data.FullData)
+                        Vis2.Graphics.Picture.Render(Vis2.obj.provider.imageData, "time:5000 x:center y:center margin:0.926vmin size:auto", Vis2.obj.data.FullData)
                      }
                      Vis2.obj.Subtitle.Hide()
                      if (Vis2.obj.splashImage = "csv"){
@@ -681,6 +683,55 @@ class Vis2 {
                this.G := Gdip_GraphicsFromHDC(this.hdc)
                Gdip_SetSmoothingMode(this.G, 4)
             }
+         }
+
+         Render(polygon, style := "", polygons := "") {
+            if !(this.hwnd) {
+               _area := (this.outer) ? new this.outer.Area() : new Area()
+               return _area.Render(image, style, polygons)
+            } else {
+               Critical On
+               if !(type := this.DontVerifyImageType(image))
+                  type := this.ImageType(image)
+               if (type != "pBitmap")
+                  pBitmap := this.toBitmap(type, image)
+               this.DetectScreenResolutionChange()
+               this.Draw(pBitmap, style, polygons)
+               if (type != "pBitmap")
+                   Gdip_DisposeImage(pBitmap)
+               UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+               Critical Off
+               if (this.time) {
+                  self_destruct := ObjBindMethod(this, "Destroy")
+                  SetTimer, % self_destruct, % -1 * this.time
+               }
+               return this
+            }
+         }
+
+         ; Takes an array of (x,y) coodinates.
+         Draw2(polygon) {
+            ; POINTF
+            Gdip_SetSmoothingMode(pGraphics, 4)  ; None = 3, AntiAlias = 4
+            pPen := Gdip_CreatePen(0xFFFF0000, 1)
+
+            ;MsgBox % polygons[1].polygon
+            for i, polygon in polygons {
+               DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
+               VarSetCapacity(pointf, 8*polygons[i].polygon.maxIndex(), 0)
+               for j, point in polygons[i].polygon {
+                  NumPut(point.x + x, pointf, 8*(A_Index-1) + 0, "float")
+                  NumPut(point.y + y, pointf, 8*(A_Index-1) + 4, "float")
+               }
+               DllCall("gdiplus\GdipAddPathPolygon", "ptr",pPath, "ptr",&pointf, "uint",polygons[i].polygon.maxIndex())
+               DllCall("gdiplus\GdipDrawPath", "ptr",pGraphics, "ptr",pPen, "ptr",pPath) ; DRAWING!
+            }
+
+            ;DllCall("gdiplus\GdipSetPenLineJoin", "ptr",pPenGlow, "uint",2)
+            ;DllCall("gdiplus\GdipSetPenWidth", "ptr",pPen, "float",o.1 + 2*A_Index)
+            Gdip_DeletePen(pPen)
+
+
          }
 
          Redraw(x, y, w, h) {
@@ -1333,6 +1384,19 @@ class Vis2 {
             width := Gdip_GetImageWidth(pBitmap)
             height := Gdip_GetImageHeight(pBitmap)
 
+            if (s = "auto") {
+               auto_w := (width > this.ScreenWidth) ? width // this.ScreenWidth + 1 : 1
+               auto_h := (height > this.ScreenHeight) ? height // this.ScreenHeight + 1 : 1
+               s := (auto_w > auto_h) ? (1 / auto_w) : (1 / auto_h)
+            }
+
+            s  := ( s ~= valid_positive) ? RegExReplace( s, "\s", "") : 1 ; Default size is 1.00.
+            s  := ( s ~= "(pt|px)$") ? SubStr( s, 1, -2) :  s
+            s  := ( s ~= "vw$") ? RegExReplace( s, "vw$", "") * this.vw :  s
+            s  := ( s ~= "vh$") ? RegExReplace( s, "vh$", "") * this.vh :  s
+            s  := ( s ~= "vmin$") ? RegExReplace( s, "vmin$", "") * this.vmin :  s
+            s  := ( s ~= "%$") ? RegExReplace( s, "%$", "") * 0.01 :  s
+
             w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : width ; Default width is bitmap width.
             w  := ( w ~= "(pt|px)$") ? SubStr( w, 1, -2) :  w
             w  := ( w ~= "(%|vw)$") ? RegExReplace( w, "(%|vw)$", "") * this.vw :  w
@@ -1344,13 +1408,6 @@ class Vis2 {
             h  := ( h ~= "vw$") ? RegExReplace( h, "vw$", "") * this.vw :  h
             h  := ( h ~= "(%|vh)$") ? RegExReplace( h, "(%|vh)$", "") * this.vh :  h
             h  := ( h ~= "vmin$") ? RegExReplace( h, "vmin$", "") * this.vmin :  h
-
-            s  := ( s ~= valid_positive) ? RegExReplace( s, "\s", "") : 1 ; Default size is 1.00.
-            s  := ( s ~= "(pt|px)$") ? SubStr( s, 1, -2) :  s
-            s  := ( s ~= "vw$") ? RegExReplace( s, "vw$", "") * this.vw :  s
-            s  := ( s ~= "vh$") ? RegExReplace( s, "vh$", "") * this.vh :  s
-            s  := ( s ~= "vmin$") ? RegExReplace( s, "vmin$", "") * this.vmin :  s
-            s  := ( s ~= "%$") ? RegExReplace( s, "%$", "") * 0.01 :  s
 
             ; Scale width and height.
             w := Floor(w * s)
@@ -1423,8 +1480,8 @@ class Vis2 {
                DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
                VarSetCapacity(pointf, 8*polygons[i].polygon.maxIndex(), 0)
                for j, point in polygons[i].polygon {
-                  NumPut(point.x + x, pointf, 8*(A_Index-1) + 0, "float")
-                  NumPut(point.y + y, pointf, 8*(A_Index-1) + 4, "float")
+                  NumPut(point.x*s + x, pointf, 8*(A_Index-1) + 0, "float")
+                  NumPut(point.y*s + y, pointf, 8*(A_Index-1) + 4, "float")
                }
                DllCall("gdiplus\GdipAddPathPolygon", "ptr",pPath, "ptr",&pointf, "uint",polygons[i].polygon.maxIndex())
                DllCall("gdiplus\GdipDrawPath", "ptr",pGraphics, "ptr",pPen, "ptr",pPath) ; DRAWING!
@@ -3610,7 +3667,7 @@ class Vis2 {
             call(self, image:="", option:="", crop:=""){
                instance := new this
                if (image == "")
-                  return Vis2.core.returnData({"provider":instance, "option":option, "tooltip":"Tesseract: Optical Character Recognition Tool", "textPreview":true})
+                  return Vis2.core.returnData({"provider":instance, "option":option, "tooltip":"Tesseract: Optical Character Recognition Tool", "textPreview":true, "splashImage":true})
                else
                   return instance.convert(instance.preprocess(image, crop), option)
             }
@@ -3690,28 +3747,33 @@ class Vis2 {
                   ; 1 = level, 2 = page_num, 3 = block_num, 4 = par_num, 5 = line_num, 6 = word_num
                   ; 7 = left, 8 = top, 9 = width, 10 = height, 11 = confidence, 12 = text
                   field := StrSplit(A_LoopField, "`t")
-
                   rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
+                  polygon := []
+                  polygon.push({"x":field[7], "y":field[8]})
+                  polygon.push({"x":field[7] + field[9], "y":field[8]})
+                  polygon.push({"x":field[7] + field[9], "y":field[8] + field[10]})
+                  polygon.push({"x":field[7], "y":field[8] + field[10]})
+
 
                   if (word_num != field[6]) {
                      if (word_num != 0) {
                         line.words.push(word)
-                        line.text .= word.text . ((field[6] > 1) ? " " : "")
-                        line.confidence := (line.confidence == "") ? word.confidence : (1/word_num)*word.confidence + ((word_num - 1)/word_num)*line.confidence
+                        line.text .= (line.text == "") ? word.text : " " . word.text
+                        line.score := (line.score == "") ? word.score : (1/word_num)*word.score + ((word_num - 1)/word_num)*line.score
                      }
                      word_num := field[6]
                      word := {}
                      word.word_number := field[6]
                      word.text := field[12]
-                     word.confidence := field[11]
+                     word.score := field[11]
                      word.rectangle := rectangle
                   }
 
                   if (line_num != field[5]) {
                      if (line_num != 0) {
                         paragraph.lines.push(line)
-                        paragraph.text .= line.text . ((field[5] > 1) ? "`r`n" : "")
-                        paragraph.confidence := (paragraph.confidence == "") ? line.confidence : (1/line_num)*line.confidence + ((line_num - 1)/line_num)*paragraph.confidence
+                        paragraph.text .= (paragraph.text == "") ? line.text : "`r`n" . line.text
+                        paragraph.score := (paragraph.score == "") ? line.score : (1/line_num)*line.score + ((line_num - 1)/line_num)*paragraph.score
                      }
                      line_num := field[5]
                      line := {"words":[]}
@@ -3722,8 +3784,8 @@ class Vis2 {
                   if (par_num != field[4]) {
                      if (par_num != 0) {
                         block.paragraphs.push(paragraph)
-                        block.text .= paragraph.text . ((field[4] > 1) ? "`r`n" : "")
-                        block.confidence := (block.confidence == "") ? paragraph.confidence : (1/par_num)*paragraph.confidence + ((par_num - 1)/par_num)*block.confidence
+                        block.text .= (block.text == "") ? paragraph.text : "`r`n" . paragraph.text
+                        block.score := (block.score == "") ? paragraph.score : (1/par_num)*paragraph.score + ((par_num - 1)/par_num)*block.score
                      }
                      par_num := field[4]
                      paragraph := {"lines":[]}
@@ -3732,166 +3794,31 @@ class Vis2 {
                   }
                   if (block_num != field[3]) {
                      if (block_num != 0) {
-                        text .= block.text
-                        confidence := (confidence == "") ? block.confidence : (1/block_num)*block.confidence + ((block_num - 1)/block_num)*confidence
+                        text .= (text == "") ? block.text : "`r`n`r`n" . block.text
+                        score := (score == "") ? block.score : (1/block_num)*block.score + ((block_num - 1)/block_num)*score
                         obj.push(block)
                      }
                      block_num := field[3]
                      block := {"paragraphs":[]}
                      block.block_number := field[3]
                      block.rectangle := rectangle
+                     block.polygon := polygon
                   }
                }
 
+               ; Append all unfinished blocks when end of tsv is reached.
                line.words.push(word)
-               line.text .= ((field[6] > 1) ? " " : "") . word.text
-               line.confidence := (line.confidence == "") ? word.confidence : (1/word_num)*word.confidence + ((word_num - 1)/word_num)*line.confidence
+               line.text .= (line.text == "") ? word.text : " " . word.text
+               line.score := (line.score == "") ? word.score : (1/word_num)*word.score + ((word_num - 1)/word_num)*line.score
                paragraph.lines.push(line)
-               paragraph.text .= ((field[5] > 1) ? "`r`n" : "") . line.text
-               paragraph.confidence := (paragraph.confidence == "") ? line.confidence : (1/line_num)*line.confidence + ((line_num - 1)/line_num)*paragraph.confidence
+               paragraph.text .= (paragraph.text == "") ? line.text : "`r`n" . line.text
+               paragraph.score := (paragraph.score == "") ? line.score : (1/line_num)*line.score + ((line_num - 1)/line_num)*paragraph.score
                block.paragraphs.push(paragraph)
-               block.text .= paragraph.text
-               block.confidence := (block.confidence == "") ? paragraph.confidence : (1/par_num)*paragraph.confidence + ((par_num - 1)/par_num)*block.confidence
-               text .= block.text
-               confidence := (confidence == "") ? block.confidence : (1/block_num)*block.confidence + ((block_num - 1)/block_num)*confidence
+               block.text .= (block.text == "") ? paragraph.text : "`r`n" . paragraph.text
+               block.score := (block.score == "") ? paragraph.score : (1/par_num)*paragraph.score + ((par_num - 1)/par_num)*block.score
+               text .= (text == "") ? block.text : "`r`n`r`n" . block.text
+               score := (score == "") ? block.score : (1/block_num)*block.score + ((block_num - 1)/block_num)*score
                obj.push(block)
-
-
-                  /*
-                  if (block_num != field[3]) {
-                     block_num := field[3]
-                     if (field[3] > 0) {
-                        block := {"paragraphs":[]}
-                     }
-                  }
-                  if (field[3] > 0 && par_num != field[4]) {
-                     par_num := field[4]
-                     if (field[4] > 0) {
-                        paragraph := {"lines":[]}
-                     }
-                  }
-                  if (field[3] > 0 && field[4] > 0 && line_num != field[5]) {
-                     line_num := field[5]
-                     if (field[5] > 0) {
-                        line := {"words":[]}
-                        _blocks := true
-                     }
-                  }
-                  if (field[3] > 0 && field[4] > 0 && field[5] > 0 && word_num != field[6]) {
-                     word_num := field[6]
-                     if (field[6] > 0) {
-                        word := {}
-                        word.word_num := field[6]
-                        word.text := field[12]
-                        word.confidence := field[11]
-                        word.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
-                        line.words.push(word)
-                        line.text .= ((field[6] > 1) ? " " : "") . word.text
-                        line.confidence := (line.confidence == "") ? word.confidence : (1/word_num)*word.confidence + ((word_num - 1)/word_num)*line.confidence
-                        _lines := true
-                        _paragraphs := true
-                     }
-                  }
-                  if (field[3] > 0 && field[4] > 0 && field[5] > 0 && field[6] == 0)
-                     line.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
-                  if (_lines == true) {
-                     line.line_num := field[5]
-                     paragraph.text .= ((field[5] > 1) ? "`r`n" : "") . line.text
-                     paragraph.confidence := (paragraph.confidence == "") ? line.confidence : (1/line_num)*line.confidence + ((line_num - 1)/line_num)*paragraph.confidence
-                     paragraph.lines.push(line)
-                     _lines := false
-                  }
-                  if (field[3] > 0 && field[4] > 0 && field[5] == 0 && field[6] == 0)
-                     paragraph.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
-                  if (_paragraphs == true) {
-                     paragraph.par_num := field[4]
-                     block.text .= paragraph.text . "xd"
-                     block.confidence := (block.confidence == "") ? paragraph.confidence : (1/par_num)*paragraph.confidence + ((par_num - 1)/par_num)*block.confidence
-                     block.paragraphs.push(paragraph)
-                     _paragraphs == false
-                  }
-                  if (field[3] > 0 && field[4] == 0 && field[5] == 0 && field[6] == 0)
-                     block.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
-                  if (_blocks == true) {
-                     block.block_num := field[3]
-                     text .= block.text . "lol"
-                     obj.push(block)
-                     _blocks == false
-                  }
-                  */
-
-
-                  /*
-                  ; words
-                  if (field[3] > 0 && field[4] > 0 && field[5] > 0 && word_num != field[6]) {
-                     word_num := field[6]
-                     if (field[6] == 0) {
-                        line.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
-                     } else {
-                        word := {}
-                        word.text := field[12]
-                        word.confidence := field[11]
-                        word.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
-                        line.text .= word.text . " "
-                        line.confidence := (line.confidence == "") ? word.confidence : (1/word_num)*word.confidence + ((word_num - 1)/word_num)*line.confidence
-                        line.words.push(word)
-                     }
-                  }
-
-                  ; lines
-                  if (field[3] > 0 && field[4] > 0 && line_num != field[5]) {
-                     line_num := field[5]
-                     if (field[5] == 0) {
-                        paragraph.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
-                     } else {
-                        paragraph.text .= line.text . "`r`n"
-                        paragraph.confidence := (paragraph.confidence == "") ? line.confidence : (1/line_num)*line.confidence + ((line_num - 1)/line_num)*paragraph.confidence
-                        paragraph.lines.push(line)
-                        line := {"words":[]}
-                     }
-                  }
-
-                  ; paragraphs
-                  if (field[3] > 0 && par_num != field[4]) {
-                     par_num := field[4]
-                     if (field[4] == 0) {
-                        block.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
-                     } else {
-                        block.text .= paragraph.text . "xd"
-                        block.confidence := (block.confidence == "") ? paragraph.confidence : (1/par_num)*paragraph.confidence + ((par_num - 1)/par_num)*block.confidence
-                        block.paragraphs.push(paragraph)
-                        paragraph := {"lines":[]}
-                     }
-                  }
-
-                  ; blocks
-                  if (block_num != field[3]) {
-                     block_num := field[3]
-                     if (field[3] == 0) {
-                        block.rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
-                     } else {
-                        obj.text .= block.text . "lol"
-                        obj.confidence := (obj.confidence == "") ? block.confidence : (1/block_num)*block.confidence + ((block_num - 1)/block_num)*obj.confidence
-                        obj.blocks.push(block)
-                        block := {"paragraphs":[]}
-                     }
-                  }
-               }
-               */
-               /*
-               if (field[7] < obj[block].x)
-                  obj[block].x := field[7]
-               if (field[8] < obj[block].y)
-                  obj[block].y := field[8]
-               if (field[9] > obj[block].w)
-                  obj[block].w := field[9]
-               if (field[10] > obj[block].h)
-                  obj[block].h := field[10]
-
-               Loop % obj.MaxIndex() {
-                  MsgBox % "number A_Index x:" obj[A_Index].x " y:" obj[A_Index].y " w:" obj[A_Index].w " h:" obj[A_Index].h
-               }
-               */
 
                data := text
                data.base.FullData := obj
@@ -4122,6 +4049,13 @@ class Vis2 {
 
       clipboard(data){
          clipboard := data
+         return data
+      }
+
+      file(data, filename:="Vis2.txt") {
+         file := FileOpen(filename, "w", "UTF-8")
+         file.write(data)
+         file.close()
          return data
       }
 
