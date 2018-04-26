@@ -136,18 +136,14 @@ class Vis2 {
             Vis2.obj.style2_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"Black"}
             Vis2.obj.subtitle.render(Vis2.obj.tooltip, Vis2.obj.style1_back, Vis2.obj.style1_text)
 
-            Vis2.obj.timer := {}
-            Vis2.obj.timer.selectImage := ObjBindMethod(Vis2.core.ux.process, "selectImage")
-            Vis2.obj.timer.textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
-
             return Vis2.core.ux.waitForUserInput()
          }
 
          waitForUserInput(){
          static escape := ObjBindMethod(Vis2.core.ux, "escape")
          static waitForUserInput := ObjBindMethod(Vis2.core.ux, "waitForUserInput")
-         selectImage := Vis2.obj.timer.selectImage
-         textPreview := Vis2.obj.timer.TextPreview
+         static selectImage := ObjBindMethod(Vis2.core.ux.process, "selectImage")
+         static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
 
             if (GetKeyState("Escape", "P")) {
                Vis2.obj.EXITCODE := -1
@@ -155,10 +151,10 @@ class Vis2 {
                return
             }
             else if (GetKeyState("LButton", "P")) {
-               SetTimer, % selectImage, 10
+               SetTimer, % selectImage, -10
                if (Vis2.obj.textPreview) {
-                  Vis2.obj.subtitle.render("Searching for data...", Vis2.obj.style1_back, Vis2.obj.style1_text)
-                  SetTimer, % textPreview, 500
+                  Vis2.core.ux.display("Searching for data...", Vis2.obj.style1_back, Vis2.obj.style1_text)
+                  SetTimer, % textPreview, -250
                }
                else
                   Vis2.obj.subtitle.render("Waiting for user selection...", Vis2.obj.style2_back, Vis2.obj.style2_text)
@@ -173,11 +169,10 @@ class Vis2 {
          class process {
 
             selectImage(){
-            selectImage := Vis2.obj.timer.selectImage
+            static selectImage := ObjBindMethod(Vis2.core.ux.process, "selectImage")
 
                if (GetKeyState("Escape", "P")) {
                   Vis2.obj.EXITCODE := -1
-                  SetTimer, % selectImage, Off
                   return Vis2.core.ux.process.treasureChest(A_ThisFunc)
                }
 
@@ -187,12 +182,13 @@ class Vis2 {
                   Vis2.core.ux.process.selectImageAdvanced()
 
                Vis2.core.ux.display()
+
+               if !(Vis2.obj.unlock.1 ~= "^Vis2.core.ux.process.selectImage" || Vis2.obj.unlock.2 ~= "^Vis2.core.ux.process.selectImage")
+                  SetTimer, % selectImage, -10
                return
             }
 
             selectImageQuick(){
-            selectImage := Vis2.obj.timer.selectImage
-
                if (GetKeyState("LButton", "P")) {
                   if (GetKeyState("Control", "P") || GetKeyState("Alt", "P") || GetKeyState("Shift", "P"))
                      Vis2.core.ux.process.selectImageTransition()
@@ -204,10 +200,8 @@ class Vis2 {
                   else
                      Vis2.obj.area.draw()
                }
-               else {
-                  SetTimer, % selectImage, Off
-                  return Vis2.core.ux.process.treasureChest(A_ThisFunc)
-               }
+               else
+                  Vis2.core.ux.process.treasureChest(A_ThisFunc)
                ; Do not return.
             }
 
@@ -228,7 +222,6 @@ class Vis2 {
 
             selectImageAdvanced(){
             static void := ObjBindMethod({}, {})
-            selectImage := Vis2.obj.timer.selectImage
 
                if ((Vis2.obj.area.width() < -25 || Vis2.obj.area.height() < -25) && !Vis2.obj.note_02)
                   Vis2.obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 67%, p1.35%, c: FCF9AF, r8", "c000000 s2.23%")
@@ -266,16 +259,15 @@ class Vis2 {
                   ? ((!Vis2.obj.action.Space) ? 1 : -1) : 0
 
                ; Space Hotkeys
-               if (Vis2.obj.action.Control_Space = 1){
-                  Vis2.obj.picture.render(Vis2.obj.preprocess, 0.5)
+               if (Vis2.obj.action.Control_Space = 1) {
+                  Vis2.obj.picture.render(Vis2.obj.provider.ImageData, "size:auto width:80vw height:33vh", Vis2.obj.data.FullData)
                   Vis2.obj.picture.toggleVisible()
-               } else if (Vis2.obj.action.Alt_Space = 1){
+               } else if (Vis2.obj.action.Alt_Space = 1) {
                   Vis2.obj.area.toggleCoordinates()
-               } else if (Vis2.obj.action.Shift_Space = 1){
+               } else if (Vis2.obj.action.Shift_Space = 1) {
 
                } else if (Vis2.obj.action.Space = 1) {
-                  SetTimer, % selectImage, Off
-                  return Vis2.core.ux.process.treasureChest(A_ThisFunc) ; Exit function.
+                  Vis2.core.ux.process.treasureChest(A_ThisFunc) ; Exit function.
                }
 
                ; Mouse Hotkeys
@@ -303,7 +295,7 @@ class Vis2 {
             }
 
             textPreview(bypass:=""){
-            textPreview := Vis2.obj.timer.TextPreview
+            static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
 
                ; The bypass parameter is normally used when textPreview (preview text on bottom) is off.
                if (bypass || Vis2.obj.textPreview) {
@@ -320,10 +312,10 @@ class Vis2 {
                      if (bypass || coordinates != Vis2.obj.coordinates || !Vis2.obj.picture.isBitmapEqual(pBitmap, Vis2.obj.pBitmap)) {
 
                         try {
-                           Vis2.obj.preprocess := Vis2.obj.provider.preprocess({"pBitmap":pBitmap}) ; Declare type as pBitmap
+                           Vis2.obj.provider.preprocess({"pBitmap":pBitmap}) ; Declare type as pBitmap
+                           Vis2.obj.data := Vis2.obj.provider.convert(Vis2.obj.provider.ImageData, Vis2.obj.option, 100)
                            if (Vis2.obj.picture.isVisible() == true)
-                              Vis2.obj.picture.render(Vis2.obj.preprocess, 0.5)
-                           Vis2.obj.data := Vis2.obj.provider.convert(Vis2.obj.preprocess, Vis2.obj.option, 100)
+                              Vis2.obj.picture.render(Vis2.obj.provider.ImageData, "size:auto width:80vw height:33vh", Vis2.obj.data.FullData)
                         }
                         catch e {
                            MsgBox, 16,, % "Exception thrown!`n`nwhat: " e.what "`nfile: " e.file
@@ -347,10 +339,10 @@ class Vis2 {
                   }
                }
 
-               if (Vis2.obj.unlock.1 && !Vis2.obj.unlock.2) {
-                  SetTimer, % textPreview, Off
+               if (Vis2.obj.unlock.1 && !Vis2.obj.unlock.2)
                   return Vis2.core.ux.process.treasureChest(A_ThisFunc)
-               }
+               else if (!Vis2.obj.unlock.2)
+                  SetTimer, % textPreview, % -500
                return
             }
 
@@ -398,6 +390,7 @@ class Vis2 {
                 Vis2.obj.style2_back.y := (Vis2.obj.style2_back.y == "83%") ? "2.07%" : "83%"
             }
 
+            ; Save the current text so when overlap is detected, it can remember the last text.
             if (text != "")
                Vis2.obj.displayText := text
 
@@ -414,29 +407,14 @@ class Vis2 {
                if (Vis2.obj.data != "") {
                   if (Vis2.obj.noCopy != true) {
                      clipboard := Vis2.obj.data
-                     t := 2500
+                     ; Let's estimate the average reading time.
+                     t := 1250 + 8*Vis2.obj.data.maxLines(3).characters() ; Each character adds 8 milliseconds to base.
                      if (Vis2.obj.splashImage == true) {
-                        t := 5000
-                        Vis2.Graphics.Picture.Render(Vis2.obj.provider.imageData, "time:5000 x:center y:center margin:0.926vmin size:auto", Vis2.obj.data.FullData)
+                        t += 2000 + 150*Vis2.obj.data.FullData.maxIndex() ; Each category adds 100 milliseconds to base.
+                        Vis2.Graphics.Picture.Render(Vis2.obj.provider.ImageData, "time:" t " x:center y:center margin:0.926vmin size:auto", Vis2.obj.data.FullData).FreeMemory()
                      }
                      Vis2.obj.Subtitle.Hide()
-                     if (Vis2.obj.splashImage = "csv"){
-                        for i, value in Vis2.obj.data.FullData {
-                           category .= ((A_Index == 1) ? "" : "`r`n`r`n") . value.category
-                           score    .= ((A_Index == 1) ? "" : "`r`n`r`n") . Format("{:#.3f}", value.score)
-                        }
-                        p := new Vis2.Graphics.Subtitle()
-                        p.Draw(category, "time:" 10000 " c:DD000000 x:Left y:Top w:20vw h:100vh", "c:White x:1.5vw y:2.95vh f:Arial size:2.23vmin j:left margin:()", p.G)
-                        for i, value in Vis2.obj.data.FullData {
-                           y += 0.05145 * A_ScreenHeight
-                           width := value.score * 0.17 * A_ScreenWidth
-                           p.Draw("", " c:NavajoWhite x:1.5vw y:" y " w: 17vw h:0.7vh",, p.G)
-                           p.Draw("", " c:DodgerBlue x:1.5vw y:" y " w:" width " h:0.7vh",, p.G)
-                        }
-                        p.Render("uigugugiugig;iug`nhfyfjyfjyfjyfyjfjyfjyfjyfjyfjyfjyfj", "c:Black x:Center y:Top w:20vw h:100vh", "a:right c:White f:Arial size:2.23vmin j:right", p.G)
-                     }
-                     else
-                        Vis2.Graphics.Subtitle.Render(Vis2.obj.data.maxLines(3), "time:" t " x:center y:83% padding:1.35% c:Black radius:8", "size:2.23% f:(Arial) z:(Arial Narrow) j:left c:White")
+                     Vis2.Graphics.Subtitle.Render(Vis2.obj.data.maxLines(3), "time:" t " x:center y:83% padding:1.35% c:Black radius:8", "size:2.23% f:(Arial) z:(Arial Narrow) j:left c:White")
                      Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: " t ", x: center, y: 75%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial")
                   }
                   Vis2.obj.EXITCODE := 1  ; Success.
@@ -608,7 +586,12 @@ class Vis2 {
          action := ["base"], x := [0], y := [0], w := [1], h := [1], a := ["top left"], q := ["bottom right"]
 
          __New(title := "", color := "0x7FDDDDDD") {
-            this.outer.Startup()
+            global pToken
+            if !(this.outer.Startup())
+               if !(pToken)
+                  if !(this.pToken := Gdip_Startup())
+                     throw Exception("Gdiplus failed to start. Please ensure you have gdiplus on your system.")
+
             Gui, New, +LastFound +AlwaysOnTop -Caption -DPIScale +E0x80000 +ToolWindow +hwndhwnd
             this.color := color
             this.hwnd := hwnd
@@ -624,7 +607,13 @@ class Vis2 {
          }
 
          __Delete() {
-            this.outer.Shutdown()
+            global pToken
+            if (this.outer.pToken)
+               return this.outer.Shutdown()
+            if (pToken)
+               return
+            if (this.pToken)
+               return Gdip_Shutdown(this.pToken)
          }
 
          Destroy() {
@@ -685,37 +674,35 @@ class Vis2 {
             }
          }
 
-         Render(polygon, style := "", polygons := "") {
+         Render(shape, style := "", polygons := "") {
             if !(this.hwnd) {
                _area := (this.outer) ? new this.outer.Area() : new Area()
-               return _area.Render(image, style, polygons)
+               return _area.Render(shape, style, polygons)
             } else {
                Critical On
-               if !(type := this.DontVerifyImageType(image))
-                  type := this.ImageType(image)
-               if (type != "pBitmap")
-                  pBitmap := this.toBitmap(type, image)
-               this.DetectScreenResolutionChange()
-               this.Draw(pBitmap, style, polygons)
-               if (type != "pBitmap")
-                   Gdip_DisposeImage(pBitmap)
+               this.Draw2(shape, style, polygons)
                UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
                Critical Off
-               if (this.time) {
-                  self_destruct := ObjBindMethod(this, "Destroy")
-                  SetTimer, % self_destruct, % -1 * this.time
-               }
                return this
             }
          }
 
          ; Takes an array of (x,y) coodinates.
-         Draw2(polygon) {
+         Draw2(shape, style := "", polygons := "", pGraphics := "") {
+            if (pGraphics == "")
+               pGraphics := this.G
+
+            style := !IsObject(style) ? RegExReplace(style, "\s+", " ") : style
+
+            if (style == "")
+               style := this.style
+            else
+               this.style := style
+
             ; POINTF
             Gdip_SetSmoothingMode(pGraphics, 4)  ; None = 3, AntiAlias = 4
             pPen := Gdip_CreatePen(0xFFFF0000, 1)
 
-            ;MsgBox % polygons[1].polygon
             for i, polygon in polygons {
                DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
                VarSetCapacity(pointf, 8*polygons[i].polygon.maxIndex(), 0)
@@ -727,11 +714,9 @@ class Vis2 {
                DllCall("gdiplus\GdipDrawPath", "ptr",pGraphics, "ptr",pPen, "ptr",pPath) ; DRAWING!
             }
 
-            ;DllCall("gdiplus\GdipSetPenLineJoin", "ptr",pPenGlow, "uint",2)
-            ;DllCall("gdiplus\GdipSetPenWidth", "ptr",pPen, "float",o.1 + 2*A_Index)
             Gdip_DeletePen(pPen)
 
-
+            return (pGraphics == "") ? this : ""
          }
 
          Redraw(x, y, w, h) {
@@ -739,9 +724,10 @@ class Vis2 {
             this.DetectScreenResolutionChange()
             Gdip_GraphicsClear(this.G)
             Gdip_FillRectangle(this.G, this.pBrush, x, y, w, h)
-            if (this.coordinates)
-               Vis2.Graphics.Subtitle.Draw("x: " x " │ y: " y " │ w: " w " │ h: " h
-                  , {"a":"top_right", "x":"right", "y":"top", "color":"Black"}, {"font":"Lucida Sans Typewriter", "size":"1.67%"}, this.G)
+            if (this.coordinates == true) {
+               ; BROKEN!!!!!
+               this.outer.Subtitle.Draw("x: " x " │ y: " y " │ w: " w " │ h: " h, {"a":"top_right", "x":"right", "y":"top", "color":"Black"}, {"font":"Lucida Sans Typewriter", "size":"1.67%"}, this.G)
+            }
             UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
             Critical Off
          }
@@ -1315,6 +1301,7 @@ class Vis2 {
                if (type != "pBitmap")
                   pBitmap := this.toBitmap(type, image)
                this.DetectScreenResolutionChange()
+               Gdip_GraphicsClear(this.G)
                this.Draw(pBitmap, style, polygons)
                if (type != "pBitmap")
                    Gdip_DisposeImage(pBitmap)
@@ -1380,14 +1367,36 @@ class Vis2 {
             q := (q >= 0 && q <= 7) ? q : 7       ; Default InterpolationMode is HighQualityBicubic.
             Gdip_SetInterpolationMode(pGraphics, q)
 
-            ; Get original Bitmap width and height.
+            ; Get original image width and height.
             width := Gdip_GetImageWidth(pBitmap)
             height := Gdip_GetImageHeight(pBitmap)
 
+            w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : width ; Default width is image width.
+            w  := ( w ~= "(pt|px)$") ? SubStr( w, 1, -2) :  w
+            w  := ( w ~= "vw$") ? RegExReplace( w, "vw$", "") * this.vw :  w
+            w  := ( w ~= "vh$") ? RegExReplace( w, "vh$", "") * this.vh :  w
+            w  := ( w ~= "vmin$") ? RegExReplace( w, "vmin$", "") * this.vmin :  w
+            w  := ( w ~= "%$") ? RegExReplace( w, "%$", "") * 0.01 * width :  w
+
+            h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : height ; Default height is image height.
+            h  := ( h ~= "(pt|px)$") ? SubStr( h, 1, -2) :  h
+            h  := ( h ~= "vw$") ? RegExReplace( h, "vw$", "") * this.vw :  h
+            h  := ( h ~= "vh$") ? RegExReplace( h, "vh$", "") * this.vh :  h
+            h  := ( h ~= "vmin$") ? RegExReplace( h, "vmin$", "") * this.vmin :  h
+            h  := ( h ~= "%$") ? RegExReplace( h, "%$", "") * 0.01 * height :  h
+
+            ; If size is "auto" automatically downscale by a multiple of 2. Ex: 50%, 25%, 12.5%...
             if (s = "auto") {
-               auto_w := (width > this.ScreenWidth) ? width // this.ScreenWidth + 1 : 1
-               auto_h := (height > this.ScreenHeight) ? height // this.ScreenHeight + 1 : 1
+               ; Determine what is smaller: declared width and height or screen width and height.
+               ; Since the declared w and h are overwritten by the size, they now determine the bounds.
+               ; Default bounds are the ScreenWidth and ScreenHeight, and can be decreased, never increased.
+               visible_w := (w > this.ScreenWidth) ? this.ScreenWidth : w
+               visible_h := (h > this.ScreenHeight) ? this.ScreenHeight : h
+               auto_w := (width > visible_w) ? width // visible_w + 1 : 1
+               auto_h := (height > visible_h) ? height // visible_h + 1 : 1
                s := (auto_w > auto_h) ? (1 / auto_w) : (1 / auto_h)
+               w := width ; Since the width was overwritten, restore it to the default.
+               h := height ; w and h determine the bounds of the size.
             }
 
             s  := ( s ~= valid_positive) ? RegExReplace( s, "\s", "") : 1 ; Default size is 1.00.
@@ -1396,18 +1405,6 @@ class Vis2 {
             s  := ( s ~= "vh$") ? RegExReplace( s, "vh$", "") * this.vh :  s
             s  := ( s ~= "vmin$") ? RegExReplace( s, "vmin$", "") * this.vmin :  s
             s  := ( s ~= "%$") ? RegExReplace( s, "%$", "") * 0.01 :  s
-
-            w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : width ; Default width is bitmap width.
-            w  := ( w ~= "(pt|px)$") ? SubStr( w, 1, -2) :  w
-            w  := ( w ~= "(%|vw)$") ? RegExReplace( w, "(%|vw)$", "") * this.vw :  w
-            w  := ( w ~= "vh$") ? RegExReplace( w, "vh$", "") * this.vh :  w
-            w  := ( w ~= "vmin$") ? RegExReplace( w, "vmin$", "") * this.vmin :  w
-
-            h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : height ; Default height is bitmap height.
-            h  := ( h ~= "(pt|px)$") ? SubStr( h, 1, -2) :  h
-            h  := ( h ~= "vw$") ? RegExReplace( h, "vw$", "") * this.vw :  h
-            h  := ( h ~= "(%|vh)$") ? RegExReplace( h, "(%|vh)$", "") * this.vh :  h
-            h  := ( h ~= "vmin$") ? RegExReplace( h, "vmin$", "") * this.vmin :  h
 
             ; Scale width and height.
             w := Floor(w * s)
@@ -1475,7 +1472,6 @@ class Vis2 {
             Gdip_SetSmoothingMode(pGraphics, 4)  ; None = 3, AntiAlias = 4
             pPen := Gdip_CreatePen(0xFFFF0000, 1)
 
-            ;MsgBox % polygons[1].polygon
             for i, polygon in polygons {
                DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
                VarSetCapacity(pointf, 8*polygons[i].polygon.maxIndex(), 0)
@@ -1487,11 +1483,7 @@ class Vis2 {
                DllCall("gdiplus\GdipDrawPath", "ptr",pGraphics, "ptr",pPen, "ptr",pPath) ; DRAWING!
             }
 
-            ;DllCall("gdiplus\GdipSetPenLineJoin", "ptr",pPenGlow, "uint",2)
-            ;DllCall("gdiplus\GdipSetPenWidth", "ptr",pPen, "float",o.1 + 2*A_Index)
             Gdip_DeletePen(pPen)
-
-
 
             return (pGraphics == "") ? this : ""
          }
@@ -2401,7 +2393,8 @@ class Vis2 {
 
             ; Define color.
             _c := this.color(_c, 0xDD424242) ; Default background color is transparent gray.
-            c  := this.color( c, 0xFFFFFFFF) ; Default text color is white.
+            SourceCopy := (c ~= "i)(delete|eraser?|overwrite|sourceCopy)") ? 1 : 0 ; Eraser brush for text.
+            c  := (SourceCopy) ? 0x00000000 : this.color( c, 0xFFFFFFFF) ; Default text color is white.
 
             ; Define outline and dropShadow.
             o := this.outline(o, s, c)
@@ -2472,15 +2465,14 @@ class Vis2 {
                   DropShadowG := pGraphics
                }
 
-               ; Literally draw the text. Then later a second version will be drawn over.
-               ; This version that is drawn under is called the "shadow".
+               ; Use Gdip_DrawString if and only if there is a horizontal/vertical offset.
                if (o.void && d.6 == 0)
                {
                   pBrush := Gdip_BrushCreateSolid(d.4)
                   Gdip_DrawString(DropShadowG, Text, hFont, hFormat, pBrush, RC) ; DRAWING!
                   Gdip_DeleteBrush(pBrush)
                }
-               else ; Fancy stuff occurs when outline and dropShadow parameters are set.
+               else ; Otherwise, use the below code if blur, size, and opacity are set.
                {
                   ; Draw the outer edge of the text string.
                   DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
@@ -2491,7 +2483,7 @@ class Vis2 {
                   DllCall("gdiplus\GdipDrawPath", "ptr",DropShadowG, "ptr",pPen, "ptr",pPath)
                   Gdip_DeletePen(pPen)
 
-                  ; Fill in the outline. Turn off antialiasing and alpha blending to the gaps are 100% filled.
+                  ; Fill in the outline. Turn off antialiasing and alpha blending so the gaps are 100% filled.
                   pBrush := Gdip_BrushCreateSolid(d.4)
                   Gdip_SetCompositingMode(DropShadowG, 1) ; Turn off alpha blending
                   Gdip_SetSmoothingMode(DropShadowG, 3)   ; Turn off anti-aliasing
@@ -2523,8 +2515,9 @@ class Vis2 {
 
                ; Create a glow effect around the edges.
                if (o.3) {
+                  Gdip_SetClipPath(pGraphics, pPath, 3) ; Exclude original text region from being drawn on.
                   pPenGlow := Gdip_CreatePen(Format("0x{:02X}",((o.4 & 0xFF000000) >> 24)/o.3) . Format("{:06X}",(o.4 & 0x00FFFFFF)), 1)
-                  DllCall("gdiplus\GdipSetPenLineJoin", "ptr",pPenGlow, "uInt",2)
+                  DllCall("gdiplus\GdipSetPenLineJoin", "ptr",pPenGlow, "uint",2)
 
                   loop % o.3
                   {
@@ -2532,6 +2525,7 @@ class Vis2 {
                      DllCall("gdiplus\GdipDrawPath", "ptr",pGraphics, "ptr",pPenGlow, "ptr",pPath) ; DRAWING!
                   }
                   Gdip_DeletePen(pPenGlow)
+                  Gdip_ResetClip(pGraphics)
                }
 
                ; Draw outline text.
@@ -2543,11 +2537,11 @@ class Vis2 {
                }
 
                ; Fill outline text.
-               if (c && (c & 0xFF000000)) {
-                  pBrush := Gdip_BrushCreateSolid(c)
-                  Gdip_FillPath(pGraphics, pBrush, pPath) ; DRAWING!
-                  Gdip_DeleteBrush(pBrush)
-               }
+               pBrush := Gdip_BrushCreateSolid(c)
+               Gdip_SetCompositingMode(pGraphics, SourceCopy)
+               Gdip_FillPath(pGraphics, pBrush, pPath) ; DRAWING!
+               Gdip_SetCompositingMode(pGraphics, 0)
+               Gdip_DeleteBrush(pBrush)
                Gdip_DeletePath(pPath)
             }
 
@@ -2555,7 +2549,9 @@ class Vis2 {
             if (text != "" && o.void) {
                CreateRectF(RC, x, y, w, h)
                pBrushText := Gdip_BrushCreateSolid(c)
+               Gdip_SetCompositingMode(pGraphics, SourceCopy)
                Gdip_DrawString(pGraphics, A_IsUnicode ? text : wtext, hFont, hFormat, pBrushText, RC) ; DRAWING!
+               Gdip_SetCompositingMode(pGraphics, 0)
                Gdip_DeleteBrush(pBrushText)
             }
 
@@ -2628,43 +2624,8 @@ class Vis2 {
             return d
          }
 
-         outline(o, font_size, font_color) {
-            static valid_positive := "^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
-            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
+         font(f, default := "Arial"){
 
-            if IsObject(o) {
-               o.1 := (o.1) ? o.1 : (o.stroke != "") ? o.stroke : o.s
-               o.2 := (o.2) ? o.2 : (o.color  != "") ? o.color  : o.c
-               o.3 := (o.3) ? o.3 : (o.glow   != "") ? o.glow   : o.g
-               o.4 := (o.4) ? o.4 : (o.tint   != "") ? o.tint   : o.t
-            } else if (o != "") {
-               _ := RegExReplace(o, ":\s+", ":")
-               _ := RegExReplace(_, "\s+", " ")
-               _ := StrSplit(_, " ")
-               _.1 := ((___ := RegExReplace(o, q1    "(s(troke)?)"        q2, "${value}")) != o) ? ___ : _.1
-               _.2 := ((___ := RegExReplace(o, q1    "(c(olor)?)"         q2, "${value}")) != o) ? ___ : _.2
-               _.3 := ((___ := RegExReplace(o, q1    "(g(low)?)"          q2, "${value}")) != o) ? ___ : _.3
-               _.4 := ((___ := RegExReplace(o, q1    "(t(int)?)"          q2, "${value}")) != o) ? ___ : _.4
-               o := _
-            }
-            else return {"void":true, 1:0, 2:0, 3:0, 4:0}
-
-            for key, value in o {
-               if (key = 2) || (key = 4) ; Don't mess with color data.
-                  continue
-               o[key] := (o[key] ~= valid_positive) ? RegExReplace(o[key], "\s", "") : 0 ; Default for everything is 0.
-               o[key] := (o[key] ~= "(pt|px)$") ? SubStr(o[key], 1, -2) : o[key]
-               o[key] := (o[key] ~= "vw$") ? RegExReplace(o[key], "vw$", "") * this.vw : o[key]
-               o[key] := (o[key] ~= "vh$") ? RegExReplace(o[key], "vh$", "") * this.vh : o[key]
-               o[key] := (o[key] ~= "vmin$") ? RegExReplace(o[key], "vmin$", "") * this.vmin : o[key]
-            }
-
-            o.1 := (o.1 ~= "%$") ? SubStr(o.1, 1, -1) * 0.01 * font_size : o.1
-            o.2 := this.color(o.2, font_color) ; Default color is the text font color.
-            o.3 := (o.3 ~= "%$") ? SubStr(o.3, 1, -1) * 0.01 * font_size : o.3
-            o.4 := this.color(o.4, o.2) ; Default color is outline color.
-            return o
          }
 
          margin_and_padding(m, default := 0) {
@@ -2709,6 +2670,45 @@ class Vis2 {
             m.3 := (m.3 ~= "%$") ? SubStr(m.3, 1, -1) * this.vh : m.3
             m.4 := (m.4 ~= "%$") ? SubStr(m.4, 1, -1) * (exception ? this.vh : this.vw) : m.4
             return m
+         }
+
+         outline(o, font_size, font_color) {
+            static valid_positive := "^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
+            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
+
+            if IsObject(o) {
+               o.1 := (o.1) ? o.1 : (o.stroke != "") ? o.stroke : o.s
+               o.2 := (o.2) ? o.2 : (o.color  != "") ? o.color  : o.c
+               o.3 := (o.3) ? o.3 : (o.glow   != "") ? o.glow   : o.g
+               o.4 := (o.4) ? o.4 : (o.tint   != "") ? o.tint   : o.t
+            } else if (o != "") {
+               _ := RegExReplace(o, ":\s+", ":")
+               _ := RegExReplace(_, "\s+", " ")
+               _ := StrSplit(_, " ")
+               _.1 := ((___ := RegExReplace(o, q1    "(s(troke)?)"        q2, "${value}")) != o) ? ___ : _.1
+               _.2 := ((___ := RegExReplace(o, q1    "(c(olor)?)"         q2, "${value}")) != o) ? ___ : _.2
+               _.3 := ((___ := RegExReplace(o, q1    "(g(low)?)"          q2, "${value}")) != o) ? ___ : _.3
+               _.4 := ((___ := RegExReplace(o, q1    "(t(int)?)"          q2, "${value}")) != o) ? ___ : _.4
+               o := _
+            }
+            else return {"void":true, 1:0, 2:0, 3:0, 4:0}
+
+            for key, value in o {
+               if (key = 2) || (key = 4) ; Don't mess with color data.
+                  continue
+               o[key] := (o[key] ~= valid_positive) ? RegExReplace(o[key], "\s", "") : 0 ; Default for everything is 0.
+               o[key] := (o[key] ~= "(pt|px)$") ? SubStr(o[key], 1, -2) : o[key]
+               o[key] := (o[key] ~= "vw$") ? RegExReplace(o[key], "vw$", "") * this.vw : o[key]
+               o[key] := (o[key] ~= "vh$") ? RegExReplace(o[key], "vh$", "") * this.vh : o[key]
+               o[key] := (o[key] ~= "vmin$") ? RegExReplace(o[key], "vmin$", "") * this.vmin : o[key]
+            }
+
+            o.1 := (o.1 ~= "%$") ? SubStr(o.1, 1, -1) * 0.01 * font_size : o.1
+            o.2 := this.color(o.2, font_color) ; Default color is the text font color.
+            o.3 := (o.3 ~= "%$") ? SubStr(o.3, 1, -1) * 0.01 * font_size : o.3
+            o.4 := this.color(o.4, o.2) ; Default color is outline color.
+            return o
          }
 
          colorMap(c) {
@@ -3122,12 +3122,12 @@ class Vis2 {
                      Gdip_DisposeImage(pBitmap)
                   pBitmap := pBitmap2
                }
-               this.imageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
+               this.ImageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
                if (type != "pBitmap" || process.isScreenshot(crop))
                   Gdip_DisposeImage(pBitmap)
                process.Destroy()
                process := ""
-               return this.imageData
+               return this.ImageData
             }
 
             convert(base64, option := ""){
@@ -3178,12 +3178,12 @@ class Vis2 {
                      Gdip_DisposeImage(pBitmap)
                   pBitmap := pBitmap2
                }
-               this.imageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
+               this.ImageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
                if (type != "pBitmap" || process.isScreenshot(crop))
                   Gdip_DisposeImage(pBitmap)
                process.Destroy()
                process := ""
-               return this.imageData
+               return this.ImageData
             }
 
             convert(base64, option := ""){
@@ -3418,12 +3418,12 @@ class Vis2 {
                      Gdip_DisposeImage(pBitmap)
                   pBitmap := pBitmap2
                }
-               this.imageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
+               this.ImageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
                if (type != "pBitmap" || process.isScreenshot(crop))
                   Gdip_DisposeImage(pBitmap)
                process.Destroy()
                process := ""
-               return this.imageData
+               return this.ImageData
             }
 
             convert(base64, option := ""){
@@ -3708,8 +3708,7 @@ class Vis2 {
                if !(FileExist(this.temp2))
                   throw Exception("Preprocessing failed.",, _cmd)
 
-               FileDelete, % this.temp1
-               return this.imageData := this.temp2
+               return this.ImageData := this.temp2
             }
 
             convert(file, option := "", speed := 0){
@@ -3728,13 +3727,9 @@ class Vis2 {
                ;_cmd := "powershell -NoProfile -command "  q  "& " _cmd q
                RunWait % _cmd,, Hide
 
-               if !(database := FileOpen(this.temp3, "r`n", "UTF-8"))
-                  throw Exception("Tesseract did not output a file.",, this.temp3)
+               database := FileOpen(this.temp3, "r`n", "UTF-8")
                tsv := RegExReplace(database.Read(), "^\s*(.*?)\s*+$", "$1")
                database.Close()
-
-               OnExit(ObjBindMethod(this, "Exit")) ; Deletes temp2 on exit.
-               FileDelete, % this.temp3
 
                obj := {}, block := {"paragraphs":[]}, paragraph := {"lines":[]}, line := {"words":[]}, word := {}
 
@@ -3829,8 +3824,10 @@ class Vis2 {
                return data
             }
 
-            exit(){
-               FileDelete , % this.temp2 ; imageData
+            __Delete(){
+               FileDelete, % this.temp1
+               FileDelete, % this.temp2 ; ImageData
+               FileDelete, % this.temp3
             }
          }
       }
@@ -4045,6 +4042,11 @@ class Vis2 {
          }
 
          return (data == "") ? Vis2.Text.paste(text) : text
+      }
+
+      characters(data) {
+         RegExReplace(data, "s).", "", i)
+         return i
       }
 
       clipboard(data){
