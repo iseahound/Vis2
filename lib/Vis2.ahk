@@ -1296,15 +1296,9 @@ class Vis2 {
                return _picture.Render(image, style, polygons)
             } else {
                Critical On
-               if !(type := this.DontVerifyImageType(image))
-                  type := this.ImageType(image)
-               if (type != "pBitmap")
-                  pBitmap := this.toBitmap(type, image)
                this.DetectScreenResolutionChange()
                Gdip_GraphicsClear(this.G)
-               this.Draw(pBitmap, style, polygons)
-               if (type != "pBitmap")
-                   Gdip_DisposeImage(pBitmap)
+               this.Draw(image, style, polygons)
                UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
                Critical Off
                if (this.time) {
@@ -1315,9 +1309,13 @@ class Vis2 {
             }
          }
 
-         Draw(pBitmap, style := "", polygons := "", pGraphics := "") {
+         Draw(image, style := "", polygons := "", pGraphics := "") {
             if (pGraphics == "")
                pGraphics := this.G
+
+            if !(type := this.DontVerifyImageType(image))
+               type := this.ImageType(image)
+            pBitmap := this.toBitmap(type, image)
 
             style := !IsObject(style) ? RegExReplace(style, "\s+", " ") : style
 
@@ -1370,6 +1368,7 @@ class Vis2 {
             ; Get original image width and height.
             width := Gdip_GetImageWidth(pBitmap)
             height := Gdip_GetImageHeight(pBitmap)
+            minimum := (width < height) ? width : height
 
             w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : width ; Default width is image width.
             w  := ( w ~= "(pt|px)$") ? SubStr( w, 1, -2) :  w
@@ -1401,9 +1400,9 @@ class Vis2 {
 
             s  := ( s ~= valid_positive) ? RegExReplace( s, "\s", "") : 1 ; Default size is 1.00.
             s  := ( s ~= "(pt|px)$") ? SubStr( s, 1, -2) :  s
-            s  := ( s ~= "vw$") ? RegExReplace( s, "vw$", "") * this.vw :  s
-            s  := ( s ~= "vh$") ? RegExReplace( s, "vh$", "") * this.vh :  s
-            s  := ( s ~= "vmin$") ? RegExReplace( s, "vmin$", "") * this.vmin :  s
+            s  := ( s ~= "vw$") ? RegExReplace( s, "vw$", "") * this.vw / width :  s
+            s  := ( s ~= "vh$") ? RegExReplace( s, "vh$", "") * this.vh / height:  s
+            s  := ( s ~= "vmin$") ? RegExReplace( s, "vmin$", "") * this.vmin / minimum :  s
             s  := ( s ~= "%$") ? RegExReplace( s, "%$", "") * 0.01 :  s
 
             ; Scale width and height.
@@ -1484,6 +1483,9 @@ class Vis2 {
             }
 
             Gdip_DeletePen(pPen)
+
+            if (type != "pBitmap")
+               Gdip_DisposeImage(pBitmap)
 
             return (pGraphics == "") ? this : ""
          }
