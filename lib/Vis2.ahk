@@ -1,567 +1,1304 @@
 ﻿; Script:    Vis2.ahk
 ; Author:    iseahound
-; Version:   2017-08-19
-; Recent:    2018-04-04
+; Version:   2018-08-21 (alpha)
+; Release:   2018-08-21
 
 #include <Gdip_All>    ; https://goo.gl/rUuEF5
 #include <JSON>        ; https://goo.gl/MAsQDe
 
 
-; Describe() - Creates a phrase that best describes the image.
+; Describe() - Creates a phrase that best captions the image.
 Describe(image:="", option:="", crop:=""){
-   return Vis2.Describe(image, option, crop)
+   return Vis2.Finding(A_ThisFunc, image, option, crop)
 }
 
 ; ExplicitContent() - Detect offensive or inappropriate content.
 ExplicitContent(image:="", option:="", crop:=""){
-   return Vis2.ExplicitContent(image, option, crop)
+   return Vis2.Finding(A_ThisFunc, image, option, crop)
 }
 
 ; FindFaces() - Detect faces in images.
 FindFaces(image:="", option="", crop:=""){
-   return Vis2.FindFaces(image, option, crop)
+   return Vis2.Finding(A_ThisFunc, image, option, crop)
 }
 
 ; ImageIdentify() - Name and identify objects in images.
 ImageIdentify(image:="", option:="", crop:=""){
-   return Vis2.ImageIdentify(image, option, crop)
+   return Vis2.Finding(A_ThisFunc, image, option, crop)
 }
 
 ; TextRecognize() - Convert pictures of text into text.
 TextRecognize(image:="", option:="", crop:=""){
-   return Vis2.TextRecognize(image, option, crop)
+   return Vis2.Finding(A_ThisFunc, image, option, crop)
 }
 ; Alias for TextRecognize()
-OCR(image:="", option:="", crop:=""){
-   return Vis2.TextRecognize(image, option, crop)
+OCR(terms*){
+   return TextRecognize(terms*)
 }
 
 
 class Vis2 {
 
-   class Describe extends Vis2.functor {
-      call(self, image:="", obj:="", crop:=""){
-         Vis2.provider.listAll("Describe").SelectBest()
-         return (image != "") ? (new Vis2.provider.Google()).ImageIdentify(image, search, crop)
-            : Vis2.core.returnData({"provider":(new Vis2.provider.Google(search)), "tooltip":"Image Identification Tool", "splashImage":true})
+   ; Flow 01 - Search for the word Flow to follow the function calls.
+   Finding(name, terms*){
+      for index, service in Vis2.service
+         if IsObject(service[name])
+            return service[name].call(self, terms*)
+   }
+
+   class service {
+
+      static user_agent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36"
+
+      class functor {
+
+         ; SKIPPED!!
+         ; Flow 02 - Boilerplate code that redirects to a .call() function.
+         __Call(method, args*) {
+            ; When casting to Call(), use a new instance of the "function object"
+            ; so as to avoid directly storing the properties(used across sub-methods)
+            ; into the "function object" itself. Modified to accept empty arg.
+            if (method == "")
+               return (new this).Call(args*)
+            if IsObject(method)
+               return (new this).Call(method, args*)
+         }
+
+         inner[]
+         {
+            get {
+               ; Gets a reference to the current class.
+               ; Returns void if this function is not nested in a class.
+               if (_class := this.__class)
+                  Loop, Parse, _class, .
+                     inner := (A_Index=1) ? %A_LoopField% : inner[A_LoopField]
+               return inner
+            }
+         }
+
+         outer[]
+         {
+            get {
+               ; Determine if there is a parent class. this.__class will retrive the
+               ; current instance's class name. Array notation [] will dereference.
+               ; Returns void if this function is not nested in at least 2 classes.
+               if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
+                  Loop, Parse, _class, .
+                     outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
+               return outer
+            }
+         }
       }
-   }
 
-   class ExplicitContent extends Vis2.functor {
+      class shared extends Vis2.service.functor {
 
-   }
+         ; Flow 03 - The below code is inherited by all subclasses of service providers.
+         call(self, image:="", option:="", crop:=""){
+            if (image == "")
+               return Vis2.ux.returnData({"service":new this, "option":option, "tooltip":this.tooltip
+                  , "alert":this.alert, "splashImage":this.splashImage, "textPreview":this.textPreview})
+            else
+               return (new this).convert(image, crop, option)
+         }
 
-   class FindFaces extends Vis2.functor {
+         CreateUUID() {
+            VarSetCapacity(puuid, 16, 0)
+            if !(DllCall("rpcrt4.dll\UuidCreate", "ptr", &puuid))
+               if !(DllCall("rpcrt4.dll\UuidToString", "ptr", &puuid, "uint*", suuid))
+                  return StrGet(suuid), DllCall("rpcrt4.dll\RpcStringFree", "uint*", suuid)
+            return
+         }
 
-   }
-
-   class ImageIdentify extends Vis2.functor {
-      static rank := ["Google", "IBM"]
-
-      call(self, image:="", option:="", crop:=""){
-         for i, provider in this.rank {
-            try {
-               test := Vis2.provider[provider].ImageIdentify(image, option, crop)
+         QuickSort(a){
+            if (a.MaxIndex() <= 1)
+               return a
+            Less := [], Same := [], More := []
+            Pivot := a[1].score
+            for k, v in a
+            {
+               if (v.score > Pivot)
+                  less.push(v)
+               else if (v.score < Pivot)
+                  more.push(v)
+               else
+                  same.push(v)
             }
-            catch e {
-               this.rank.removeAt(i)
+            Less := this.QuickSort(Less)
+            Out := this.QuickSort(More)
+            if (Same.MaxIndex())
+               Out.InsertAt(1, Same*) ; insert all values of same at index 1
+            if (Less.MaxIndex())
+               Out.InsertAt(1, Less*) ; insert all values of less at index 1
+            return Out
+         }
+      }
+
+      class Google extends Vis2.service.functor {
+         static api := true
+
+         ; https://cloud.google.com/vision/docs/supported-files
+         ; Supported Image Formats
+         ; JPEG, PNG8, PNG24, GIF, Animated GIF (first frame only)
+         ; BMP, WEBP, RAW, ICO
+         ; Maximum Image Size - 4 MB
+         ; Maximum Size per Request - 8 MB
+         ; Compression to 640 x 480 - LABEL_DETECTION
+         ;
+         ; Cloud Platform Console Help - Setting up API keys
+         ; Step 1: https://support.google.com/cloud/answer/6158862?hl=en
+         ; Step 2: https://cloud.google.com/vision/docs/before-you-begin
+         ;
+         ; You must enter billing information to use the Cloud Vision API.
+         ; https://cloud.google.com/vision/pricing
+         ; First 1000 LABEL_DETECTION per month is free.
+         ;
+         ; Please enter your api_key for Google Cloud Vision API.
+         ; static api_key := "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+         ; FOR SAFETY REASONS, DO NOT PASTE YOUR API KEY HERE.
+         ; Instead, keep your api_key in a separate file, "Vis2_API.txt"
+
+         call(self, api_key:=""){
+            if (api_key != "")
+               this.inner.api_key := api_key
+            return this
+         }
+
+         getCredentials(error:=""){
+            if (error != "") {
+               (Vis2.obj) ? Vis2.ux.suspend() : ""
+               InputBox, api_key, Vis2.GoogleCloudVision.ImageIdentify, Enter your api_key for GoogleCloudVision.
+               (Vis2.obj) ? Vis2.ux.resume() : ""
+               FileAppend, GoogleCloudVision=%api_key%, Vis2_API.txt
+               return api_key
             }
-            if (test != "")
-               return test
+
+            if (this.api_key ~= "^X{39}$") {
+               if FileExist("Vis2_API.txt") {
+                  file := FileOpen("Vis2_API.txt", "r")
+                  keys := file.Read()
+                  api_key := ((___ := RegExReplace(keys, "s)^.*?GoogleCloudVision(?:\s*)=(?:\s*)([A-Za-z0-9\-]+).*$", "$1")) != keys) ? ___ : ""
+                  file.close()
+
+                  if (api_key != "")
+                     return api_key
+               }
+            }
+            else
+               return this.api_key
+         }
+
+         request(base64, extension, models*){
+            whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+            if (api_key := this.getCredentials())
+               whr.Open("POST", "https://vision.googleapis.com/v1/images:annotate?key=" api_key, true)
+            else
+               whr.Open("POST", "https://cxl-services.appspot.com/proxy?url=https%3A%2F%2Fvision.googleapis.com%2Fv1%2Fimages%3Aannotate", true)
+            whr.SetRequestHeader("Accept", "*/*")
+            whr.SetRequestHeader("Origin", "https://cloud.google.com")
+            whr.SetRequestHeader("Content-Type", "text/plain;charset=UTF-8")
+            whr.SetRequestHeader("Referer", "https://cloud.google.com/vision/")
+            whr.SetRequestHeader("User-Agent", this.outer.user_agent)
+
+            req := {"requests":[]}
+            req.requests[1] := {"features":[], "image":{}, "imageContext":{}}
+            for i, model in models
+               req.requests[1].features.push({"type":model, "maxResults":50})
+            req.requests[1].image.content := base64
+            req.requests[1].imageContext.cropHintsParams := {"aspectRatios":[0.8, 1.0, 1.2]}
+
+            whr.Send(JSON.Dump(req))
+            whr.WaitForResponse()
+            ado          := ComObjCreate("adodb.stream")
+            ado.Type     := 1
+            ado.Mode     := 3
+            ado.Open()
+            ado.Write(whr.ResponseBody)
+            ado.Position := 0
+            ado.Type     := 2
+            ado.Charset  := "UTF-8"
+            best := ado.ReadText()
+            ado.Close()
+            try reply := JSON.Load(best)
+            catch
+               this.getCredentials(best)
+            return reply
+         }
+
+         ; Vis2.service.Google.Describe()
+         class Describe extends Vis2.service.shared {
+         }
+
+         ; Vis2.service.Google.ImageIdentify()
+         class ImageIdentify extends Vis2.service.shared {
+
+            static tooltip := "Google: Image Identification Tool"
+            static alert := "ERROR: No images could be identified."
+            static splashImage := true
+            static textPreview := 0
+            static extension := "jpg"
+            static compression := "75"
+
+            convert(image, crop := "", option := ""){
+               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.extension, this.compression)
+               reply := this.outer.request(this.coimage, this.extension, "LABEL_DETECTION")
+               obj := {}
+               for i, value in reply.responses[1].labelAnnotations {
+                  value.category := value.description
+                  value.score    := value.score
+                  obj.push(value)
+               }
+               obj := this.QuickSort(obj)
+               for k, v in obj {
+                  sentence  .= ((A_Index == 1) ? "" : ", ") . v.category
+                  sentence2 .= ((A_Index == 1) ? "" : "`r`n") . v.category ", " Format("{:#.3f}", v.score)
+               }
+               data := sentence2
+               data.base.FullData := obj
+               for reference, function in Vis2.Text {
+                  if IsFunc(function)
+                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
+               } ; All of the functions in Vis2.Text can now be called as such: data.google()
+               return data
+            }
+         }
+
+         ; Vis2.service.Google.TextRecognize()
+         class TextRecognize extends Vis2.service.shared {
+
+            static tooltip := "Google: Text Recognition Tool"
+            static alert := "ERROR: No text data found."
+            static splashImage := true
+            static textPreview := 0
+            static extension := "png"
+
+            convert(image, crop := "", option := ""){
+               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.extension, this.compression)
+
+               ; Note: DOCUMENT_TEXT_DETECTION will take precedence over TEXT_DETECTION
+               reply := this.outer.request(this.coimage, this.extension, "DOCUMENT_TEXT_DETECTION", "TEXT_DETECTION")
+
+               ; Get text from both models. I'm not sure if the text is the same.
+               if !(data := reply.responses[1].fullTextAnnotation.text)
+                  data := reply.responses[1].textAnnotations[1].description
+
+               ; Extract blocks of text: Full sentences or sections, not individual words.
+               obj := {}
+               for i, block in reply.responses[1].fullTextAnnotation.pages[1].blocks {
+                  ; Begin constructing blocks of text from symbols.
+                  text := ""
+                  for j, paragraph in block.paragraphs {
+                     text .= (j == 1) ? "" : "`r`n"
+                     for k, word in block.paragraphs[j].words {
+                        text .= (k == 1) ? "" : " "
+                        for l, symbol in block.paragraphs[j].words[k].symbols {
+                           text .= symbol.text
+                        }
+                     }
+                  }
+
+                  ; Standardize objects
+                  block.category := text
+                  block.score    := block.confidence
+                  block.polygon  := block.boundingBox.vertices
+                  obj.push(block)
+               }
+
+               data := RegExReplace(data, "(?<!\r)\n", "`r`n") ; LF to CRLF
+               data.base.FullData := obj
+               for reference, function in Vis2.Text {
+                  if IsFunc(function)
+                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
+               } ; All of the functions in Vis2.Text can now be called as such: data.google()
+               return data
+            }
+         }
+      }
+
+      class IBM extends Vis2.service.functor {
+         static api := true
+
+         request(base64, extension){
+            whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+            whr.Open("POST", "https://watson-visual-recognition-duo-dev.ng.bluemix.net/api/classify", true)
+            whr.SetRequestHeader("Accept", "application/json")
+            whr.SetRequestHeader("Origin", "https://watson-visual-recognition-duo-dev.ng.bluemix.net")
+            whr.SetRequestHeader("User-Agent", this.outer.user_agent)
+            whr.SetRequestHeader("Content-Type", "application/json")
+            whr.SetRequestHeader("Referer", "https://watson-visual-recognition-duo-dev.ng.bluemix.net/")
+
+            req := {"type":"file", "image_file":"data:image/" extension ";base64," base64}
+
+            whr.Send(JSON.Dump(req))
+            whr.WaitForResponse()
+            return JSON.Load(whr.ResponseText)
+         }
+
+         ; Vis2.service.IBM.ExplicitContent()
+         class ExplicitContent extends Vis2.service.shared {
+
+            static tooltip := "IBM: Explicit Content Detection Tool"
+            static alert := "ERROR: No content could be detected."
+            static splashImage := true
+            static textPreview := 0
+            static extension := "jpg"
+            static compression := "75"
+
+            convert(image, crop := "", option := ""){
+               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.extension, this.compression)
+               reply := this.outer.request(this.coimage, this.extension)
+               i := 0, obj := {}
+               while (i++ < reply.maxIndex())
+                  if (reply[i].classifier_id = "explicit")
+                     for j, value in reply[i].classes {
+                        value.category := value.class
+                        value.score    := value.score
+                        obj.push(value)
+                     }
+
+               obj := this.QuickSort(obj)
+               for k, v in obj {
+                  sentence  .= ((A_Index == 1) ? "" : ", ") . v.category
+                  sentence2 .= ((A_Index == 1) ? "" : ", ") . v.category " " Format("{:#.3f}", v.score)
+               }
+
+               data := sentence2
+               data.base.FullData := obj
+               for reference, function in Vis2.Text {
+                  if IsFunc(function)
+                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
+               } ; All of the functions in Vis2.Text can now be called as such: data.google()
+               return data
+            }
+         }
+
+         ; Vis2.service.IBM.FindFaces()
+         class FindFaces extends Vis2.service.shared {
+
+            static tooltip := "IBM: Facial Recognition Tool"
+            static alert := "ERROR: No facial features detected."
+            static splashImage := true
+            static textPreview := 0
+            static extension := "jpg"
+            static compression := "75"
+
+            convert(image, crop := "", option := ""){
+               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.extension, this.compression)
+               reply := this.outer.request(this.coimage, this.extension)
+               i := 0, obj := {}
+               while (i++ < reply.maxIndex())
+                  if (reply[i].classifier_id = "faces")
+                     for j, value in reply[i].faces {
+                        value.category := Format("{:i}", (value.age.max + value.age.min)/2) " year old " Format("{:L}", value.gender.gender)
+                        value.location := {"x":value.face_location.left, "y":value.face_location.top, "w":value.face_location.width, "h":value.face_location.height}
+                        obj.push(value)
+                     }
+
+               obj := this.QuickSort(obj)
+               for k, v in obj {
+                  sentence  .= ((A_Index == 1) ? "" : ", ") . v.category
+                  sentence2 .= ((A_Index == 1) ? "" : ", ") . v.category " " Format("{:#.3f}", v.score)
+               }
+
+               data := sentence
+               data.base.FullData := obj
+               for reference, function in Vis2.Text {
+                  if IsFunc(function)
+                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
+               } ; All of the functions in Vis2.Text can now be called as such: data.google()
+               return data
+            }
+
+            /*
+            {
+             "classifier_id": "faces",
+             "display": "Face Model",
+             "description": "Locate faces within an image and assess gender and age.",
+             "faces": [
+               {
+                 "age": {
+                    "min": 23,
+                    "max": 26,
+                    "score": 0.7395025
+                 },
+                 "face_location": {
+                    "height": 90,
+                    "width": 79,
+                    "left": 358,
+                    "top": 83
+                 },
+                 "gender": {
+                    "gender": "FEMALE",
+                    "score": 0.9999887
+                 }
+               }
+             ]
+            },
+            */
+
+         }
+
+         ; Vis2.service.IBM.ImageIdentify()
+         class ImageIdentify extends Vis2.service.shared {
+
+            static tooltip := "IBM: Image Identification Tool"
+            static alert := "ERROR: No image data found."
+            static splashImage := true
+            static textPreview := 0
+            static extension := "jpg"
+            static compression := "75"
+
+            convert(image, crop := "", option := ""){
+               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.extension, this.compression)
+               reply := this.outer.request(this.coimage, this.extension)
+               i := 0, obj := {}
+               while (i++ < reply.maxIndex())
+                  if (reply[i].classifier_id = "default")
+                     for j, value in reply[i].classes {
+                        value.category := value.class
+                        value.score    := value.score
+                        obj.push(value)
+                     }
+
+               obj := this.QuickSort(obj)
+               for k, v in obj {
+                  sentence  .= ((A_Index == 1) ? "" : ", ") . v.category
+                  sentence2 .= ((A_Index == 1) ? "" : "`r`n") . v.category ", " Format("{:#.3f}", v.score)
+               }
+
+               data := sentence2
+               data.base.FullData := obj
+               for reference, function in Vis2.Text {
+                  if IsFunc(function)
+                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
+               } ; All of the functions in Vis2.Text can now be called as such: data.google()
+               return data
+            }
+         }
+
+         ; Vis2.service.IBM.TextRecognize()
+         class TextRecognize extends Vis2.service.shared {
+
+            static tooltip := "IBM: Text Recognition Tool"
+            static alert := "ERROR: No text data found."
+            static splashImage := true
+            static textPreview := 0
+            static extension := "png"
+
+            convert(image, crop := "", option := ""){
+               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.extension, this.compression)
+               reply := this.outer.request(this.coimage, this.extension)
+               i := 0, obj := {}
+               while (i++ < reply.maxIndex())
+                  if (reply[i].classifier_id = "text") {
+                     data := reply[i].text
+                     for j, value in reply[i].words {
+                        value.category := value.class
+                        value.score    := value.score
+                        obj.push(value)
+                     }
+                  }
+
+               data := RegExReplace(data, "(?<!\r)\n", "`r`n")
+               data.base.FullData := obj
+               for reference, function in Vis2.Text {
+                  if IsFunc(function)
+                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
+               } ; All of the functions in Vis2.Text can now be called as such: data.google()
+               return data
+            }
+
+            /*
+            {
+               "classifier_id": "text",
+               "display": "Text Model (private beta)",
+               "description": "Extract text from natural scene images. To learn more, please contact sragarwa@us.ibm.com with a screenshot of the results.",
+               "image": "7976da80-3d15-11e8-8328-7140922c1cd9.jpg",
+               "text": "if ive learned anything\nfrom video games it is\nthat when you meet\nenemies it means that\nyoure going in the right\ndirection\nreally inspiring\nthats",
+               "words": [
+                  {
+                     "word": "if",
+                     "location": {
+                        "width": 41,
+                        "height": 59,
+                        "left": 255,
+                        "top": 33
+                     },
+                     "score": 0.9536,
+                     "line_number": 0
+                  },
+                  {
+                     "word": "ive",
+                     "location": {
+                        "width": 110,
+                        "height": 61,
+                        "left": 315,
+                        "top": 33
+                     },
+                     "score": 0.9635,
+                     "line_number": 0
+                  },
+                  {
+                     "word": "learned",
+                     "location": {
+                        "width": 237,
+                        "height": 58,
+                        "left": 446,
+                        "top": 35
+                     },
+                     "score": 0.9728,
+                     "line_number": 0
+                  },
+                  {
+                     "word": "anything",
+                     "location": {
+                        "width": 301,
+                        "height": 125,
+                        "left": 692,
+                        "top": 0
+                     },
+                     "score": 0.9779,
+                     "line_number": 0
+                  },
+                  {
+                     "word": "from",
+                     "location": {
+                        "width": 147,
+                        "height": 74,
+                        "left": 250,
+                        "top": 138
+                     },
+                     "score": 0.9558,
+                     "line_number": 1
+                  },
+                  {
+                     "word": "video",
+                     "location": {
+                        "width": 192,
+                        "height": 67,
+                        "left": 407,
+                        "top": 134
+                     },
+                     "score": 0.9779,
+                     "line_number": 1
+                  },
+                  {
+                     "word": "games",
+                     "location": {
+                        "width": 256,
+                        "height": 115,
+                        "left": 596,
+                        "top": 124
+                     },
+                     "score": 0.9246,
+                     "line_number": 1
+                  },
+                  {
+                     "word": "it",
+                     "location": {
+                        "width": 35,
+                        "height": 58,
+                        "left": 866,
+                        "top": 147
+                     },
+                     "score": 0.9788,
+                     "line_number": 1
+                  },
+                  {
+                     "word": "is",
+                     "location": {
+                        "width": 53,
+                        "height": 62,
+                        "left": 921,
+                        "top": 144
+                     },
+                     "score": 0.9794,
+                     "line_number": 1
+                  },
+                  {
+                     "word": "that",
+                     "location": {
+                        "width": 120,
+                        "height": 58,
+                        "left": 253,
+                        "top": 260
+                     },
+                     "score": 0.9722,
+                     "line_number": 2
+                  },
+                  {
+                     "word": "when",
+                     "location": {
+                        "width": 192,
+                        "height": 108,
+                        "left": 380,
+                        "top": 238
+                     },
+                     "score": 0.9718,
+                     "line_number": 2
+                  },
+                  {
+                     "word": "you",
+                     "location": {
+                        "width": 116,
+                        "height": 61,
+                        "left": 583,
+                        "top": 272
+                     },
+                     "score": 0.9832,
+                     "line_number": 2
+                  },
+            */
+         }
+      }
+
+      class Tesseract extends Vis2.service.functor {
+
+         static leptonica := A_ScriptDir "\service\leptonica_util\leptonica_util.exe"
+         static tesseract := A_ScriptDir "\service\tesseract\tesseract.exe"
+         static tessdata_best := A_ScriptDir "\service\tesseract\tessdata_best"
+         static tessdata_fast := A_ScriptDir "\service\tesseract\tessdata_fast"
+
+         ; Vis2.service.Tesseract.TextRecognize()
+         class TextRecognize extends Vis2.service.shared {
+
+            static tooltip := "Tesseract: Optical Character Recognition Tool"
+            static alert := "ERROR: No text data found."
+            static splashImage := true
+            static textPreview := 500
+
+            uuid := this.CreateUUID()
+            temp1 := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
+            temp2 := A_Temp "\Vis2_preprocess" this.uuid ".tif"
+            temp3 := A_Temp "\Vis2_text" this.uuid ".tsv"
+
+            ; Flow 04 B - FINAL. If an image was provided, the GUI for image selection does not launch.
+            convert(image, crop := "", option := "", speed := 0){
+               this.coimage := Vis2.Graphics.Picture.Preprocess("file", image, crop, this.temp1, this.compression)
+
+               static ocrPreProcessing := 1
+               static negateArg := 2
+               static performScaleArg := 1
+               static scaleFactor := 3.5
+
+               if !(FileExist(this.outer.leptonica))
+                  throw Exception("Leptonica not found.",, this.outer.leptonica)
+
+               static q := Chr(0x22)
+               _cmd := q this.outer.leptonica q " " q this.coimage q " " q this.temp2 q
+               _cmd .= " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
+               _cmd := ComSpec " /C " q _cmd q
+               RunWait, % _cmd,, Hide
+
+               if !(FileExist(this.temp2))
+                  throw Exception("Preprocessing failed.",, _cmd)
+
+               this.coimage := this.temp2
+
+               if !(FileExist(this.coimage))
+                  throw Exception("File not found.",, this.coimage)
+
+               if !(FileExist(this.outer.tesseract))
+                  throw Exception("Tesseract not found.",, this.outer.tesseract)
+
+               _cmd := q this.outer.tesseract q " --tessdata-dir " q ((speed) ? this.outer.tessdata_fast : this.outer.tessdata_best) q
+               _cmd .= " " q this.coimage q " " q SubStr(this.temp3, 1, -4) q
+               _cmd .= (option) ? " -l " q option q : ""
+               _cmd .= " -c tessedit_create_tsv=1 -c tessedit_pageseg_mode=1"
+               _cmd := ComSpec " /C " q _cmd q
+               ;_cmd := "powershell -NoProfile -command "  q  "& " _cmd q
+               RunWait % _cmd,, Hide
+
+               database := FileOpen(this.temp3, "r`n", "UTF-8")
+               tsv := RegExReplace(database.Read(), "^\s*(.*?)\s*+$", "$1")
+               database.Close()
+
+               obj := {}, block := {"paragraphs":[]}, paragraph := {"lines":[]}, line := {"words":[]}, word := {}
+
+               line_num := block_num := par_num := word_num := 0
+               Loop, Parse, tsv, `n
+               {
+                  if (A_Index = 1)
+                     continue ; Skip headers
+
+                  ; 1 = level, 2 = page_num, 3 = block_num, 4 = par_num, 5 = line_num, 6 = word_num
+                  ; 7 = left, 8 = top, 9 = width, 10 = height, 11 = confidence, 12 = text
+                  field := StrSplit(A_LoopField, "`t")
+                  rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
+                  polygon := []
+                  polygon.push({"x":field[7], "y":field[8]})
+                  polygon.push({"x":field[7] + field[9], "y":field[8]})
+                  polygon.push({"x":field[7] + field[9], "y":field[8] + field[10]})
+                  polygon.push({"x":field[7], "y":field[8] + field[10]})
+
+
+                  if (word_num != field[6]) {
+                     if (word_num != 0) {
+                        line.words.push(word)
+                        line.text .= (line.text == "") ? word.text : " " . word.text
+                        line.score := (line.score == "") ? word.score : (1/word_num)*word.score + ((word_num - 1)/word_num)*line.score
+                     }
+                     word_num := field[6]
+                     word := {}
+                     word.word_number := field[6]
+                     word.text := field[12]
+                     word.score := field[11]
+                     word.rectangle := rectangle
+                  }
+
+                  if (line_num != field[5]) {
+                     if (line_num != 0) {
+                        paragraph.lines.push(line)
+                        paragraph.text .= (paragraph.text == "") ? line.text : "`r`n" . line.text
+                        paragraph.score := (paragraph.score == "") ? line.score : (1/line_num)*line.score + ((line_num - 1)/line_num)*paragraph.score
+                     }
+                     line_num := field[5]
+                     line := {"words":[]}
+                     line.line_number := field[5]
+                     line.rectangle := rectangle
+                  }
+
+                  if (par_num != field[4]) {
+                     if (par_num != 0) {
+                        block.paragraphs.push(paragraph)
+                        block.text .= (block.text == "") ? paragraph.text : "`r`n" . paragraph.text
+                        block.score := (block.score == "") ? paragraph.score : (1/par_num)*paragraph.score + ((par_num - 1)/par_num)*block.score
+                     }
+                     par_num := field[4]
+                     paragraph := {"lines":[]}
+                     paragraph.paragraph_number := field[4]
+                     paragraph.rectangle := rectangle
+                  }
+                  if (block_num != field[3]) {
+                     if (block_num != 0) {
+                        text .= (text == "") ? block.text : "`r`n`r`n" . block.text
+                        score := (score == "") ? block.score : (1/block_num)*block.score + ((block_num - 1)/block_num)*score
+                        obj.push(block)
+                     }
+                     block_num := field[3]
+                     block := {"paragraphs":[]}
+                     block.block_number := field[3]
+                     block.rectangle := rectangle
+                     block.polygon := polygon
+                  }
+               }
+
+               ; Append all unfinished blocks when end of tsv is reached.
+               line.words.push(word)
+               line.text .= (line.text == "") ? word.text : " " . word.text
+               line.score := (line.score == "") ? word.score : (1/word_num)*word.score + ((word_num - 1)/word_num)*line.score
+               paragraph.lines.push(line)
+               paragraph.text .= (paragraph.text == "") ? line.text : "`r`n" . line.text
+               paragraph.score := (paragraph.score == "") ? line.score : (1/line_num)*line.score + ((line_num - 1)/line_num)*paragraph.score
+               block.paragraphs.push(paragraph)
+               block.text .= (block.text == "") ? paragraph.text : "`r`n" . paragraph.text
+               block.score := (block.score == "") ? paragraph.score : (1/par_num)*paragraph.score + ((par_num - 1)/par_num)*block.score
+               text .= (text == "") ? block.text : "`r`n`r`n" . block.text
+               score := (score == "") ? block.score : (1/block_num)*block.score + ((block_num - 1)/block_num)*score
+               obj.push(block)
+
+               data := text
+               data.base.FullData := obj
+               for reference, function in Vis2.Text {
+                  if IsFunc(function)
+                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
+               } ; All of the functions in Vis2.Text can now be called as such: data.google()
+               return data
+            }
+
+            __Delete(){
+               try FileDelete, % this.temp1
+               try FileDelete, % this.temp2 ; coimage
+               try FileDelete, % this.temp3
+            }
+         }
+      }
+
+      class Wolfram extends Vis2.service.functor {
+
+         request(filename){
+            objParam := { "image": [filename] }
+
+            CreateFormData(postData, hdr_ContentType, objParam)
+
+            static q := Chr(0x22)
+            whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+            whr.Open("POST", "https://www.imageidentify.com/objects/user-26a7681f-4b48-4f71-8f9f-93030898d70d/prd/imageapi", true)
+            whr.SetRequestHeader("Accept", "application/json, text/javascript, */*; q=0.01")
+            whr.SetRequestHeader("Origin", "https://www.imageidentify.com")
+            whr.SetRequestHeader("X-Requested-With", "XMLHttpRequest")
+            whr.SetRequestHeader("Content-Disposition", "attachment; filename=" q filename q)
+            whr.SetRequestHeader("User-Agent", this.outer.user_agent)
+            whr.SetRequestHeader("Content-Type", hdr_ContentType)
+            whr.SetRequestHeader("Referer", "https://www.imageidentify.com/")
+
+            whr.Send(postData)
+            whr.WaitForResponse()
+            return JSON.Load(whr.ResponseText)
+         }
+
+         class ImageIdentify extends Vis2.service.shared {
+
+            static tooltip := "Wolfram: Image Identification Tool"
+            static alert := "ERROR: No image content found."
+            static splashImage := true
+            static textPreview := 0
+            static compression := "92"
+
+            uuid := this.CreateUUID()
+            file := A_Temp "\Vis2_screenshot" this.uuid ".png"
+
+            convert(image, crop := "", option := ""){
+               this.coimage := Vis2.Graphics.Picture.Preprocess("file", image, crop, this.file, this.compression)
+               reply := this.outer.request(this.coimage)
+               obj := reply.identify
+               obj.category := reply.title
+               obj.score    := reply.score
+               data := reply.identify.title
+               data.base.FullData := obj
+               for reference, function in Vis2.Text {
+                  if IsFunc(function)
+                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
+               } ; All of the functions in Vis2.Text can now be called as such: data.google()
+               return data
+            }
          }
       }
    }
 
-   class TextRecognize extends Vis2.functor {
-      call(self, image:="", option:="", crop:=""){
-         return (image != "") ? (new Vis2.provider.Tesseract()).OCR(image, option, crop)
-            : Vis2.core.returnData({"provider":(new Vis2.provider.Tesseract(option)), "tooltip":"Optical Character Recognition Tool", "textPreview":true})
-      }
+   class ux {
 
-      google(){
-         return (image != "") ? (new Vis2.provider.Tesseract()).OCR(image, language, crop).google()
-            : Vis2.core.returnData({"provider":(new Vis2.provider.Tesseract(language)), "tooltip":"Any selected text will be Googled.", "textPreview":true, "noCopy":true}).google()
-      }
-   }
-
-   class core {
-
-      ; returnData() is a wrapper function of Vis2.core.ux.start()
-      ; Unlike Vis2.core.ux.start(), this function will return a string of text.
-      ; You'll need a provider: Vis2.core.returnData({"provider":new Vis2.provider.Tesseract.TextRecognize()})
+      ; Flow 04 A - Starts the GUI. Query the status code.
+      ; returnData() is a wrapper function of Vis2.ux.start()
+      ; Unlike Vis2.ux.start(), this function will return a string of text.
+      ; You'll need a service: Vis2.ux.returnData({"service":new Vis2.service.Tesseract.TextRecognize()})
       returnData(obj){
-         obj.callback := "returnData"
-         if (error := Vis2.core.ux.start(obj))
+         if (error := Vis2.ux.start(obj))
             return error
-         while !(EXITCODE := Vis2.obj.EXITCODE)
+         while !(Vis2.ux.io.status)
             Sleep 10
-         data := Vis2.obj.data
-         Vis2.obj.callbackConfirmed := true ; Deletes Vis2.obj
-         return (EXITCODE > 0) ? data : EXITCODE
+         return (Vis2.ux.io.status > 0) ? Vis2.ux.io.data : Vis2.ux.io.status
       }
 
-      class ux {
+      ; start() is the function that launches the user interface.
+      ; This can be called directly without calling Vis2.ux.returnData().
+      ; You'll need a service: Vis2.ux.start({"service":new Vis2.service.Tesseract.TextRecognize()})
+      start(obj){
+      static void := ObjBindMethod({}, {})
 
-         ; start() is the function that launches the user interface.
-         ; This can be called directly without calling Vis2.core.returnData().
-         ; You'll need a provider: Vis2.core.ux.start({"provider":new Vis2.provider.Tesseract.TextRecognize()})
-         start(obj){
-         static void := ObjBindMethod({}, {})
+         if (Vis2.ux.io.status == 0)
+            return "Already in use."
 
-            if (Vis2.obj != "")
-               return "Already in use."
+         if !IsObject(obj.service)
+            return "Service required."
 
-            if !IsObject(obj.provider)
-               return "Provider required."
+         ; Sets a lock (status), preventing multiple instances of the user experience.
+         Vis2.ux.io := {"data":"", "status":0} ; -2 = blank data; -1 = escaped; 0 = in progress; 1 = success
 
-            Vis2.Graphics.Startup()
-            Vis2.stdlib.setSystemCursor(32515) ; IDC_Cross := 32515
-            Hotkey, LButton, % void, On
-            Hotkey, ^LButton, % void, On
-            Hotkey, !LButton, % void, On
-            Hotkey, +LButton, % void, On
-            Hotkey, RButton, % void, On
-            Hotkey, Escape, % void, On
+         Vis2.ux.setSystemCursor(32515) ; IDC_Cross := 32515
+         Hotkey, LButton, % void, On
+         Hotkey, ^LButton, % void, On
+         Hotkey, !LButton, % void, On
+         Hotkey, +LButton, % void, On
+         Hotkey, RButton, % void, On
+         Hotkey, Escape, % void, On
 
-            Vis2.obj := obj
-            Vis2.obj.EXITCODE := 0 ; -2 = blank data; -1 = escape; 0 = in progress; 1 = success
-            Vis2.obj.selectMode := "Quick"
-            Vis2.obj.area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
-            Vis2.obj.picture := new Vis2.Graphics.Picture("Vis2_Kitsune").Hide()
-            Vis2.obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
+         Vis2.Graphics.Startup()
+         obj.selectMode := "Quick"
+         obj.area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
+         obj.picture := new Vis2.Graphics.Picture("Vis2_Kitsune").Hide()
+         obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
 
-            Vis2.obj.style1_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"DD000000", "radius":8}
-            Vis2.obj.style1_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"White"}
-            Vis2.obj.style2_back := {"x":"center", "y":"83%", "padding":"1.35%", "color":"FF88EAB6", "radius":8}
-            Vis2.obj.style2_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"Black"}
-            Vis2.obj.subtitle.render(Vis2.obj.tooltip, Vis2.obj.style1_back, Vis2.obj.style1_text)
+         obj.style1_back := {"x":"center", "y":"83.33vh", "padding":"1.35vh", "color":"DD000000", "radius":8}
+         obj.style1_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"White"}
+         obj.style2_back := {"x":"center", "y":"83.33vh", "padding":"1.35vh", "color":"FF88EAB6", "radius":8}
+         obj.style2_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"Black"}
+         obj.subtitle.render(obj.tooltip, obj.style1_back, obj.style1_text)
 
-            return Vis2.core.ux.waitForUserInput()
-         }
+         Vis2.ux.process.waitForUserInput(obj)
+         return
+      }
 
-         waitForUserInput(){
-         static escape := ObjBindMethod(Vis2.core.ux, "escape")
-         static waitForUserInput := ObjBindMethod(Vis2.core.ux, "waitForUserInput")
-         static selectImage := ObjBindMethod(Vis2.core.ux.process, "selectImage")
-         static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
+      class process {
+
+         waitForUserInput(obj){
 
             if (GetKeyState("Escape", "P")) {
-               Vis2.obj.EXITCODE := -1
+               Vis2.ux.io.status := -1
+               escape := ObjBindMethod(Vis2.ux, "escape", obj)
                SetTimer, % escape, -9
                return
             }
             else if (GetKeyState("LButton", "P")) {
+               Vis2.obj := obj
+               selectImage := ObjBindMethod(Vis2.ux.process, "selectImage", obj)
                SetTimer, % selectImage, -10
-               if (Vis2.obj.textPreview) {
-                  Vis2.core.ux.display("Searching for data...", Vis2.obj.style1_back, Vis2.obj.style1_text)
+               if (obj.textPreview) {
+                  Vis2.ux.process.display(obj, "Searching for data...", obj.style1_back, obj.style1_text)
+                  textPreview := ObjBindMethod(Vis2.ux.process, "textPreview", obj)
                   SetTimer, % textPreview, -250
                }
                else
-                  Vis2.obj.subtitle.render("Waiting for user selection...", Vis2.obj.style2_back, Vis2.obj.style2_text)
+                  obj.subtitle.render("Waiting for user selection...", obj.style2_back, obj.style2_text)
             }
             else {
-               Vis2.obj.area.origin()
+               obj.area.origin()
+               waitForUserInput := ObjBindMethod(Vis2.ux.process, "waitForUserInput", obj)
                SetTimer, % waitForUserInput, -10
             }
             return
          }
 
-         class process {
+         selectImage(obj){
+            Tooltip % A_TickCount
 
-            selectImage(){
-            static selectImage := ObjBindMethod(Vis2.core.ux.process, "selectImage")
-
-               if (GetKeyState("Escape", "P")) {
-                  Vis2.obj.EXITCODE := -1
-                  return Vis2.core.ux.process.treasureChest(A_ThisFunc)
-               }
-
-               if (Vis2.obj.selectMode == "Quick")
-                  Vis2.core.ux.process.selectImageQuick()
-               if (Vis2.obj.selectMode == "Advanced")
-                  Vis2.core.ux.process.selectImageAdvanced()
-
-               Vis2.core.ux.display()
-
-               if !(Vis2.obj.unlock.1 ~= "^Vis2.core.ux.process.selectImage" || Vis2.obj.unlock.2 ~= "^Vis2.core.ux.process.selectImage")
-                  SetTimer, % selectImage, -10
-               return
+            if (GetKeyState("Escape", "P")) {
+               Vis2.ux.io.status := -1
+               return Vis2.ux.process.treasureChest(obj, A_ThisFunc)
             }
 
-            selectImageQuick(){
-               if (GetKeyState("LButton", "P")) {
-                  if (GetKeyState("Control", "P") || GetKeyState("Alt", "P") || GetKeyState("Shift", "P"))
-                     Vis2.core.ux.process.selectImageTransition()
-                  else if (GetKeyState("RButton", "P")) {
-                     Vis2.obj.area.move()
-                     if (!Vis2.obj.area.isMouseOnCorner() && Vis2.obj.area.isMouseStopped())
-                        Vis2.obj.area.draw() ; Error Correction of Offset
-                  }
-                  else
-                     Vis2.obj.area.draw()
-               }
-               else
-                  Vis2.core.ux.process.treasureChest(A_ThisFunc)
-               ; Do not return.
+            if (obj.selectMode == "Quick")
+               Vis2.ux.process.selectImageQuick(obj)
+            if (obj.selectMode == "Advanced")
+               Vis2.ux.process.selectImageAdvanced(obj)
+
+            Vis2.ux.process.display(obj)
+
+            if !(obj.unlock.1 ~= "^Vis2.ux.process.selectImage" || obj.unlock.2 ~= "^Vis2.ux.process.selectImage") {
+               selectImage := ObjBindMethod(Vis2.ux.process, "selectImage", obj)
+               SetTimer, % selectImage, -10
             }
-
-            selectImageTransition(){
-            static void := ObjBindMethod({}, {})
-
-               DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
-               Hotkey, Space, % void, On
-               Hotkey, ^Space, % void, On
-               Hotkey, !Space, % void, On
-               Hotkey, +Space, % void, On
-               Vis2.obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35% cFFB1AC r8", "c000000 s2.23%")
-               Vis2.obj.tokenMousePressed := 1
-               Vis2.obj.selectMode := "Advanced" ; Exit selectImageQuick.
-               Vis2.obj.key := {}
-               Vis2.obj.action := {}
-            }
-
-            selectImageAdvanced(){
-            static void := ObjBindMethod({}, {})
-
-               if ((Vis2.obj.area.width() < -25 || Vis2.obj.area.height() < -25) && !Vis2.obj.note_02)
-                  Vis2.obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 67%, p1.35%, c: FCF9AF, r8", "c000000 s2.23%")
-
-               Vis2.obj.key.LButton := GetKeyState("LButton", "P") ? 1 : 0
-               Vis2.obj.key.RButton := GetKeyState("RButton", "P") ? 1 : 0
-               Vis2.obj.key.Space   := GetKeyState("Space", "P")   ? 1 : 0
-               Vis2.obj.key.Control := GetKeyState("Control", "P") ? 1 : 0
-               Vis2.obj.key.Alt     := GetKeyState("Alt", "P")     ? 1 : 0
-               Vis2.obj.key.Shift   := GetKeyState("Shift", "P")   ? 1 : 0
-
-               ; Check if mouse is inside on activation.
-               Vis2.obj.action.Control_LButton := (Vis2.obj.area.isMouseInside() && Vis2.obj.key.Control && Vis2.obj.key.LButton)
-                  ? 1 : (Vis2.obj.key.Control && Vis2.obj.key.LButton) ? Vis2.obj.action.Control_LButton : 0
-               Vis2.obj.action.Shift_LButton   := (Vis2.obj.area.isMouseInside() && Vis2.obj.key.Shift && Vis2.obj.key.LButton)
-                  ? 1 : (Vis2.obj.key.Shift && Vis2.obj.key.LButton) ? Vis2.obj.action.Shift_LButton : 0
-               Vis2.obj.action.LButton         := (Vis2.obj.area.isMouseInside() && Vis2.obj.key.LButton)
-                  ? 1 : (Vis2.obj.key.LButton) ? Vis2.obj.action.LButton : 0
-               Vis2.obj.action.RButton         := (Vis2.obj.area.isMouseInside() && Vis2.obj.key.RButton)
-                  ? 1 : (Vis2.obj.key.RButton) ? Vis2.obj.action.RButton : 0
-
-               ;___|¯¯¯|___ 00011111000 Keypress
-               ;___|_______ 0001----000 Activation Function (pseudo heaviside)
-               Vis2.obj.action.Control_Space   := (Vis2.obj.key.Control && Vis2.obj.key.Space)
-                  ? ((!Vis2.obj.action.Control_Space) ? 1 : -1) : 0
-               Vis2.obj.action.Alt_Space       := (Vis2.obj.key.Alt && Vis2.obj.key.Space)
-                  ? ((!Vis2.obj.action.Alt_Space) ? 1 : -1) : 0
-               Vis2.obj.action.Shift_Space     := (Vis2.obj.key.Shift && Vis2.obj.key.Space)
-                  ? ((!Vis2.obj.action.Shift_Space) ? 1 : -1) : 0
-               Vis2.obj.action.Alt_LButton     := (Vis2.obj.key.Alt && Vis2.obj.key.LButton)
-                  ? ((!Vis2.obj.action.Alt_LButton) ? 1 : -1) : 0
-
-               ; Ensure only Space is pressed.
-               Vis2.obj.action.Space := (Vis2.obj.key.Space && !Vis2.obj.key.Control && !Vis2.obj.key.Alt && !Vis2.obj.key.Shift)
-                  ? ((!Vis2.obj.action.Space) ? 1 : -1) : 0
-
-               ; Space Hotkeys
-               if (Vis2.obj.action.Control_Space = 1) {
-                  Vis2.obj.picture.render(Vis2.obj.provider.ImageData, "size:auto width:80vw height:33vh", Vis2.obj.data.FullData)
-                  Vis2.obj.picture.toggleVisible()
-               } else if (Vis2.obj.action.Alt_Space = 1) {
-                  Vis2.obj.area.toggleCoordinates()
-               } else if (Vis2.obj.action.Shift_Space = 1) {
-
-               } else if (Vis2.obj.action.Space = 1) {
-                  Vis2.core.ux.process.treasureChest(A_ThisFunc) ; Exit function.
-               }
-
-               ; Mouse Hotkeys
-               if (Vis2.obj.action.Control_LButton)
-                  Vis2.obj.area.resizeCorners()
-               else if (Vis2.obj.action.Alt_LButton = 1)
-                  Vis2.obj.area.origin()
-               else if (Vis2.obj.action.Alt_LButton = -1)
-                  Vis2.obj.area.draw()
-               else if (Vis2.obj.action.Shift_LButton)
-                  Vis2.obj.area.resizeEdges()
-               else if (Vis2.obj.action.LButton || Vis2.obj.action.RButton)
-                  Vis2.obj.area.move()
-               else {
-                  Vis2.obj.area.hover() ; Collapse Stack
-                  if Vis2.obj.area.isMouseInside() {
-                     Hotkey, LButton, % void, On
-                     Hotkey, RButton, % void, On
-                  } else {
-                     Hotkey, LButton, % void, Off
-                     Hotkey, RButton, % void, Off
-                  }
-               }
-               ; Do not return.
-            }
-
-            textPreview(bypass:=""){
-            static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
-
-               ; The bypass parameter is normally used when textPreview (preview text on bottom) is off.
-               if (bypass || Vis2.obj.textPreview) {
-                  ; Check for valid coordinates, returns "" if invalid.
-                  if (coordinates := Vis2.obj.Area.ScreenshotRectangle()) {
-                     ; Sometimes a user will make the subtitle blink from top to bottom. If so, hide subtitle temporarily.
-                     (overlap := Vis2.core.ux.overlap()) ? Vis2.obj.subtitle.hide() : ""
-                     ;Vis2.obj.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
-                     pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
-                     ;Vis2.obj.area.changeColor(0x7FDDDDDD) ; Lighten Area object, but do not hide or delete it until key up.
-                     (overlap) ? Vis2.obj.subtitle.show() : ""
-
-                     ; If any x,y,w,h coordinates are different, or the image has changed (like video), proceed.
-                     if (bypass || coordinates != Vis2.obj.coordinates || !Vis2.obj.picture.isBitmapEqual(pBitmap, Vis2.obj.pBitmap)) {
-
-                        try {
-                           Vis2.obj.provider.preprocess({"pBitmap":pBitmap}) ; Declare type as pBitmap
-                           Vis2.obj.data := Vis2.obj.provider.convert(Vis2.obj.provider.ImageData, Vis2.obj.option, 100)
-                           if (Vis2.obj.picture.isVisible() == true)
-                              Vis2.obj.picture.render(Vis2.obj.provider.ImageData, "size:auto width:80vw height:33vh", Vis2.obj.data.FullData)
-                        }
-                        catch e {
-                           MsgBox, 16,, % "Exception thrown!`n`nwhat: " e.what "`nfile: " e.file
-                              . "`nline: " e.line "`nmessage: " e.message "`nextra: " e.extra "`ncoordinates: " coordinates
-                        }
-
-                        ; Do not update last coordinates (space) and last pBitmap (time) until conversion finishes.
-                        ; In Vis2.core.ux.process.treasureChest(), Vis2.obj.coordinates will be compared to user's mouse release.
-                        if (Vis2.obj.pBitmap)
-                           Gdip_DisposeImage(Vis2.obj.pBitmap)
-                        Vis2.obj.coordinates := coordinates
-                        Vis2.obj.pBitmap := pBitmap
-
-                        if !(bypass)
-                           Vis2.core.ux.display((Vis2.obj.data.maxLines(3)) ? Vis2.obj.data.maxLines(3) : "ERROR: No Text Data Found")
-
-                     }
-                     else { ; This is an identical image, so delete it.
-                        Gdip_DisposeImage(pBitmap)
-                     }
-                  }
-               }
-
-               if (Vis2.obj.unlock.1 && !Vis2.obj.unlock.2)
-                  return Vis2.core.ux.process.treasureChest(A_ThisFunc)
-               else if (!Vis2.obj.unlock.2)
-                  SetTimer, % textPreview, % -500
-               return
-            }
-
-            treasureChest(key){
-               ; Create an "unlock" object with two vacancies that will be filled when SelectImage and TextPreview return.
-               (IsObject(Vis2.obj.unlock) && key != Vis2.obj.unlock.1) ? Vis2.obj.unlock.push(key) : (Vis2.obj.unlock := [key])
-
-               ; SelectImage returns. If TextPreview was not started, start it now or escape depending on the exit code.
-               if (key ~= "^Vis2.core.ux.process.selectImage") {
-                  Vis2.obj.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
-                  if (!Vis2.obj.textPreview){
-                     if (Vis2.obj.EXITCODE == -1)
-                        return Vis2.core.ux.escape()
-                     if (Vis2.obj.EXITCODE == 0) {
-                        Vis2.obj.subtitle.render("Processing using " RegExReplace(Vis2.obj.provider.__class, ".*\.(.*)\.(.*)$", "$1's $2()..."), Vis2.obj.style2_back, Vis2.obj.style2_text)
-                        return Vis2.core.ux.process.textPreview("bypass")
-                     }
-                  } else {
-                     ; If user's final coordinates and last processed coordinates are the same:
-                     ; Do an early exit. Don't wait for the in progress textPreview to return. Skip that.
-                     if (Vis2.obj.area.screenshotRectangle() == Vis2.obj.coordinates)
-                        return Vis2.core.ux.finale()
-                  }
-               }
-
-               ; TextPreview returns.
-               if (Vis2.obj.unlock.maxIndex() == 2) {
-                  if (Vis2.obj.EXITCODE == 0) {
-                     ; Even though TextPreview has returned, make sure that the area coordinates when the mouse was released
-                     ; are equal to the coordinates that were sent to the last iteration of TextPreview.
-                     if (Vis2.obj.area.screenshotRectangle() != Vis2.obj.coordinates)
-                        Vis2.core.ux.process.textPreview("bypass")
-
-                     Vis2.core.ux.finale()
-                  }
-                  return Vis2.core.ux.escape()
-               }
-               return
-            }
+            return
          }
 
-         display(text := "", backgroundStyle := "", textStyle := ""){
-            if (overlap := Vis2.core.ux.overlap()) {
-                Vis2.obj.style1_back.y := (Vis2.obj.style1_back.y == "83%") ? "2.07%" : "83%"
-                Vis2.obj.style2_back.y := (Vis2.obj.style2_back.y == "83%") ? "2.07%" : "83%"
+         selectImageQuick(obj){
+            if (GetKeyState("LButton", "P")) {
+               if (GetKeyState("Control", "P") || GetKeyState("Alt", "P") || GetKeyState("Shift", "P"))
+                  Vis2.ux.process.selectImageTransition(obj)
+               else if (GetKeyState("RButton", "P")) {
+                  obj.area.move()
+                  if (!obj.area.isMouseOnCorner() && obj.area.isMouseStopped())
+                     obj.area.draw() ; Error Correction of Offset
+               }
+               else
+                  obj.area.draw()
+            }
+            else
+               Vis2.ux.process.treasureChest(obj, A_ThisFunc)
+            ; Do not return.
+         }
+
+         selectImageTransition(obj){
+         static void := ObjBindMethod({}, {})
+
+            DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
+            Hotkey, Space, % void, On
+            Hotkey, ^Space, % void, On
+            Hotkey, !Space, % void, On
+            Hotkey, +Space, % void, On
+            obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35vh cFFB1AC r8", "fArial c000000 s2.23%")
+            obj.tokenMousePressed := 1
+            obj.selectMode := "Advanced" ; Exit selectImageQuick.
+            obj.key := {}
+            obj.action := {}
+         }
+
+         selectImageAdvanced(obj){
+         static void := ObjBindMethod({}, {})
+
+            if ((obj.area.width() < -25 || obj.area.height() < -25) && !obj.note_02)
+               obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 67%, p1.35vh, c: FCF9AF, r8", "c000000 s2.23%")
+
+            obj.key.LButton := GetKeyState("LButton", "P") ? 1 : 0
+            obj.key.RButton := GetKeyState("RButton", "P") ? 1 : 0
+            obj.key.Space   := GetKeyState("Space", "P")   ? 1 : 0
+            obj.key.Control := GetKeyState("Control", "P") ? 1 : 0
+            obj.key.Alt     := GetKeyState("Alt", "P")     ? 1 : 0
+            obj.key.Shift   := GetKeyState("Shift", "P")   ? 1 : 0
+
+            ; Check if mouse is inside on activation.
+            obj.action.Control_LButton := (obj.area.isMouseInside() && obj.key.Control && obj.key.LButton)
+               ? 1 : (obj.key.Control && obj.key.LButton) ? obj.action.Control_LButton : 0
+            obj.action.Shift_LButton   := (obj.area.isMouseInside() && obj.key.Shift && obj.key.LButton)
+               ? 1 : (obj.key.Shift && obj.key.LButton) ? obj.action.Shift_LButton : 0
+            obj.action.LButton         := (obj.area.isMouseInside() && obj.key.LButton)
+               ? 1 : (obj.key.LButton) ? obj.action.LButton : 0
+            obj.action.RButton         := (obj.area.isMouseInside() && obj.key.RButton)
+               ? 1 : (obj.key.RButton) ? obj.action.RButton : 0
+
+            ;___|¯¯¯|___ 00011111000 Keypress
+            ;___|_______ 0001----000 Activation Function (pseudo heaviside)
+            obj.action.Control_Space   := (obj.key.Control && obj.key.Space)
+               ? ((!obj.action.Control_Space) ? 1 : -1) : 0
+            obj.action.Alt_Space       := (obj.key.Alt && obj.key.Space)
+               ? ((!obj.action.Alt_Space) ? 1 : -1) : 0
+            obj.action.Shift_Space     := (obj.key.Shift && obj.key.Space)
+               ? ((!obj.action.Shift_Space) ? 1 : -1) : 0
+            obj.action.Alt_LButton     := (obj.key.Alt && obj.key.LButton)
+               ? ((!obj.action.Alt_LButton) ? 1 : -1) : 0
+
+            ; Ensure only Space is pressed.
+            obj.action.Space := (obj.key.Space && !obj.key.Control && !obj.key.Alt && !obj.key.Shift)
+               ? ((!obj.action.Space) ? 1 : -1) : 0
+
+            ; Space Hotkeys
+            if (obj.action.Control_Space = 1) {
+               obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
+               obj.picture.toggleVisible()
+            } else if (obj.action.Alt_Space = 1) {
+               obj.area.toggleCoordinates()
+            } else if (obj.action.Shift_Space = 1) {
+
+            } else if (obj.action.Space = 1) {
+               Vis2.ux.process.treasureChest(obj, A_ThisFunc) ; Exit function.
+            }
+
+            ; Mouse Hotkeys
+            if (obj.action.Control_LButton)
+               obj.area.resizeCorners()
+            else if (obj.action.Alt_LButton = 1)
+               obj.area.origin()
+            else if (obj.action.Alt_LButton = -1)
+               obj.area.draw()
+            else if (obj.action.Shift_LButton)
+               obj.area.resizeEdges()
+            else if (obj.action.LButton || obj.action.RButton)
+               obj.area.move()
+            else {
+               obj.area.hover() ; Collapse Stack
+               if obj.area.isMouseInside() {
+                  Hotkey, LButton, % void, On
+                  Hotkey, RButton, % void, On
+               } else {
+                  Hotkey, LButton, % void, Off
+                  Hotkey, RButton, % void, Off
+               }
+            }
+            ; Do not return.
+         }
+
+         textPreview(obj, bypass:=""){
+            ; The bypass parameter is normally used when textPreview (preview text on bottom) is off.
+            if (bypass || obj.textPreview) {
+               ; Check for valid coordinates, returns "" if invalid.
+               if (coordinates := obj.area.screenshotCoordinates()) {
+                  ; Sometimes a user will make the subtitle blink from top to bottom. If so, hide subtitle temporarily.
+                  (overlap := Vis2.ux.process.overlap(obj.area.rect(), obj.subtitle.rect())) ? obj.subtitle.hide() : ""
+                  ;obj.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
+                  pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
+                  ;obj.area.changeColor(0x7FDDDDDD) ; Lighten Area object, but do not hide or delete it until key up.
+                  (overlap) ? obj.subtitle.show() : ""
+
+                  ; If any x,y,w,h coordinates are different, or the image has changed (like video), proceed.
+                  if (bypass || coordinates != obj.coordinates || !obj.picture.isBitmapEqual(pBitmap, obj.pBitmap)) {
+
+                     try {
+                        ; Declare type as pBitmap
+                        Vis2.ux.io.data := obj.service.convert({"pBitmap":pBitmap},, obj.option, 100)
+                        if (obj.picture.isVisible() == true)
+                           obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
+                     }
+                     catch e {
+                        MsgBox, 16,, % "Exception thrown!`n`nwhat: " e.what "`nfile: " e.file
+                           . "`nline: " e.line "`nmessage: " e.message "`nextra: " e.extra "`ncoordinates: " coordinates
+                     }
+
+                     ; Do not update last coordinates (space) and last pBitmap (time) until conversion finishes.
+                     ; In Vis2.ux.process.treasureChest(), obj.coordinates will be compared to user's mouse release.
+                     if (obj.pBitmap)
+                        Gdip_DisposeImage(obj.pBitmap)
+                     obj.coordinates := coordinates
+                     obj.pBitmap := pBitmap
+
+                     if !(bypass)
+                        Vis2.ux.process.display(obj, (Vis2.ux.io.data.maxLines(3)) ? Vis2.ux.io.data.maxLines(3) : "ERROR: No Text Data Found")
+
+                  }
+                  else { ; This is an identical image, so delete it.
+                     Gdip_DisposeImage(pBitmap)
+                  }
+               }
+            }
+
+            if (obj.unlock.1 && !obj.unlock.2)
+               return Vis2.ux.process.treasureChest(obj, A_ThisFunc)
+            else if (!obj.unlock.2) {
+               textPreview := ObjBindMethod(Vis2.ux.process, "textPreview", obj)
+               SetTimer, % textPreview, % -obj.service.textPreview
+            }
+            return
+         }
+
+         treasureChest(obj, key){
+            ; Create an "unlock" object with two vacancies that will be filled when SelectImage and TextPreview return.
+            (IsObject(obj.unlock) && key != obj.unlock.1) ? obj.unlock.push(key) : (obj.unlock := [key])
+
+            ; SelectImage returns. If TextPreview was not started, start it now or escape depending on the exit code.
+            if (key ~= "^Vis2.ux.process.selectImage") {
+               obj.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
+               if (!obj.textPreview){
+                  if (Vis2.ux.io.status == -1)
+                     return Vis2.ux.escape(obj)
+                  if (Vis2.ux.io.status == 0) {
+                     obj.subtitle.render("Processing using " RegExReplace(obj.service.__class, ".*\.(.*)\.(.*)$", "$1's $2()..."), obj.style2_back, obj.style2_text)
+                     return Vis2.ux.process.textPreview(obj, "bypass")
+                  }
+               } else {
+                  ; If user's final coordinates and last processed coordinates are the same:
+                  ; Do an early exit. Don't wait for the in progress textPreview to return. Skip that.
+                  if (obj.area.screenshotCoordinates() == obj.coordinates)
+                     return Vis2.ux.process.finale(obj)
+               }
+            }
+
+            ; TextPreview returns.
+            if (obj.unlock.maxIndex() == 2) {
+               if (Vis2.ux.io.status == 0) {
+                  ; Even though TextPreview has returned, make sure that the area coordinates when the mouse was released
+                  ; are equal to the coordinates that were sent to the last iteration of TextPreview.
+                  if (obj.area.screenshotCoordinates() != obj.coordinates)
+                     Vis2.ux.process.textPreview(obj, "bypass")
+
+                  Vis2.ux.process.finale(obj)
+               }
+               return Vis2.ux.escape(obj)
+            }
+            return
+         }
+
+         display(obj, text := "", backgroundStyle := "", textStyle := ""){
+            if (overlap := Vis2.ux.process.overlap(obj.area.rect(), obj.subtitle.rect())) {
+                obj.style1_back.y := (obj.style1_back.y == "83.33vh") ? "2.07%" : "83.33vh"
+                obj.style2_back.y := (obj.style2_back.y == "83.33vh") ? "2.07%" : "83.33vh"
             }
 
             ; Save the current text so when overlap is detected, it can remember the last text.
             if (text != "")
-               Vis2.obj.displayText := text
+               obj.displayText := text
 
             if (text != "" || overlap) {
-               if (Vis2.obj.textPreview)
-                  Vis2.obj.subtitle.render(Vis2.obj.displayText, Vis2.obj.style1_back, Vis2.obj.style1_text)
+               if (obj.textPreview)
+                  obj.subtitle.render(obj.displayText, obj.style1_back, obj.style1_text)
                else
-                  Vis2.obj.subtitle.render("Still patiently waiting for user selection...", Vis2.obj.style2_back, Vis2.obj.style2_text)
+                  obj.subtitle.render("Still patiently waiting for user selection...", obj.style2_back, obj.style2_text)
             }
          }
 
-         finale(){
-            if (Vis2.obj.EXITCODE == 0) { ; Make sure escape (-1) isn't called.
-               if (Vis2.obj.data != "") {
-                  if (Vis2.obj.noCopy != true) {
-                     clipboard := Vis2.obj.data
-                     ; Let's estimate the average reading time.
-                     t := 1250 + 8*Vis2.obj.data.maxLines(3).characters() ; Each character adds 8 milliseconds to base.
-                     if (Vis2.obj.splashImage == true) {
-                        t += 2000 + 150*Vis2.obj.data.FullData.maxIndex() ; Each category adds 100 milliseconds to base.
-                        Vis2.Graphics.Picture.Render(Vis2.obj.provider.ImageData, "time:" t " x:center y:center margin:0.926vmin size:auto", Vis2.obj.data.FullData).FreeMemory()
-                     }
-                     Vis2.obj.Subtitle.Hide()
-                     Vis2.Graphics.Subtitle.Render(Vis2.obj.data.maxLines(3), "time:" t " x:center y:83% padding:1.35% c:Black radius:8", "size:2.23% f:(Arial) z:(Arial Narrow) j:left c:White")
-                     Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: " t ", x: center, y: 75%, p: 1.35%, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial")
-                  }
-                  Vis2.obj.EXITCODE := 1  ; Success.
-               } else {
-                  Vis2.obj.EXITCODE := -2 ; Error: No Text Data Found
-               }
-            }
-         }
-
-         escape(){
-         static escape := ObjBindMethod(Vis2.core.ux, "escape")
-         static void := ObjBindMethod({}, {})
-
-            if (Vis2.obj.callback) {
-               if !(Vis2.obj.callbackConfirmed) {
-                  SetTimer, % escape, -9
-                  return
-               }
-            }
-
-            ; Fixes a bug where AHK does not detect key releases if there is an admin-level window beneath.
-            ; This code must be positioned before Vis2.obj.area.destroy().
-            if WinActive("ahk_id" Vis2.obj.area.hwnd) {
-               KeyWait Control
-               KeyWait Alt
-               KeyWait Shift
-               KeyWait RButton
-               KeyWait LButton
-               KeyWait Space
-               KeyWait Escape
-            }
-
-            Gdip_DisposeImage(Vis2.obj.pBitmap)
-            Vis2.obj.area.destroy()
-            Vis2.obj.picture.destroy()
-            Vis2.obj.subtitle.destroy()
-            Vis2.obj.note_01.hide() ; Let them time out instead of Destroy()
-            Vis2.obj.note_02.destroy()
-            Vis2.obj := "" ; Goodbye all, you were loved :c
-            Vis2.Graphics.Shutdown()
-
-            Hotkey, LButton, % void, Off
-            Hotkey, ^LButton, % void, Off
-            Hotkey, !LButton, % void, Off
-            Hotkey, +LButton, % void, Off
-            Hotkey, RButton, % void, Off
-            Hotkey, Escape, % void, Off
-            Hotkey, Space, % void, Off
-            Hotkey, ^Space, % void, Off
-            Hotkey, !Space, % void, Off
-            Hotkey, +Space, % void, Off
-
-            return DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
-         }
-
-         overlap() {
-            p1 := Vis2.obj.area.x1()
-            p2 := Vis2.obj.area.x2()
-            r1 := Vis2.obj.area.y1()
-            r2 := Vis2.obj.area.y2()
-
-            q1 := Vis2.obj.subtitle.x1()
-            q2 := Vis2.obj.subtitle.x2()
-            s1 := Vis2.obj.subtitle.y1()
-            s2 := Vis2.obj.subtitle.y2()
-
-            a := (p1 < q1 && q1 < p2) || (p1 < q2 && q2 < p2) || (q1 < p1 && p1 < q2) || (q1 < p2 && p2 < q2)
-            b := (r1 < s1 && s1 < r2) || (r1 < s2 && s2 < r2) || (s1 < r1 && r1 < s2) || (s1 < r2 && r2 < s2)
-
-            ;Tooltip % a "`t" b "`n`n" p1 "`t" r1 "`n" p2 "`t" r2 "`n`n" q1 "`t" s1 "`n" q2 "`t" s2
+         overlap(rect1, rect2) {
+            a := (rect1.1 < rect2.1 && rect2.1 < rect1.3) || (rect1.1 < rect2.3 && rect2.3 < rect1.3) || (rect2.1 < rect1.1 && rect1.1 < rect2.3) || (rect2.1 < rect1.3 && rect1.3 < rect2.3)
+            b := (rect1.2 < rect2.2 && rect2.2 < rect1.4) || (rect1.2 < rect2.4 && rect2.4 < rect1.4) || (rect2.2 < rect1.2 && rect1.2 < rect2.4) || (rect2.2 < rect1.4 && rect1.4 < rect2.4)
+            ;Tooltip % a "`t" b "`n`n" rect1.1 "`t" rect1.2 "`n" rect1.3 "`t" rect1.4 "`n`n" rect2.1 "`t" rect2.2 "`n" rect2.3 "`t" rect2.4
             return (a && b)
          }
 
-         suspend(){
-            static void := ObjBindMethod({}, {})
-            Hotkey, LButton, % void, Off
-            Hotkey, ^LButton, % void, Off
-            Hotkey, !LButton, % void, Off
-            Hotkey, +LButton, % void, Off
-            Hotkey, RButton, % void, Off
-            Hotkey, Escape, % void, Off
-            Hotkey, Space, % void, Off
-            Hotkey, ^Space, % void, Off
-            Hotkey, !Space, % void, Off
-            Hotkey, +Space, % void, Off
-            DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor
-            Vis2.obj.area.hide()
-            return
-         }
-
-         resume(){
-            Hotkey, LButton, % void, On
-            Hotkey, ^LButton, % void, On
-            Hotkey, !LButton, % void, On
-            Hotkey, +LButton, % void, On
-            Hotkey, RButton, % void, On
-            Hotkey, Escape, % void, On
-
-            if (Vis2.obj.selectMode == "Quick")
-               Vis2.stdlib.setSystemCursor(32515) ; IDC_Cross := 32515
-
-            if (Vis2.obj.selectMode == "Advanced") {
-               Hotkey, Space, % void, On
-               Hotkey, ^Space, % void, On
-               Hotkey, !Space, % void, On
-               Hotkey, +Space, % void, On
+         finale(obj){
+            if (Vis2.ux.io.status == 0) { ; Make sure escape (-1) isn't called.
+               if (Vis2.ux.io.data != "") {
+                  if (obj.noCopy != true) {
+                     clipboard := Vis2.ux.io.data
+                     ; Let's estimate the average reading time.
+                     t := 1250 + 8*Vis2.ux.io.data.maxLines(3).characters() ; Each character adds 8 milliseconds to base.
+                     if (obj.splashImage == true) {
+                        t += 1250 + 75*Vis2.ux.io.data.FullData.maxIndex() ; Each category adds 75 milliseconds to base.
+                        Vis2.Graphics.Picture.Render(obj.service.coimage, "time:" t " a:center x:center y:40.99vh margin:0.926vmin size:auto width:100vw height:80.13vh", Vis2.ux.io.data.FullData).FreeMemory()
+                     }
+                     obj.Subtitle.Hide()
+                     Vis2.Graphics.Subtitle.Render(Vis2.ux.io.data.maxLines(3), "time:" t " x:center y:83.33vh padding:1.35vh c:Black radius:8", "size:2.23% f:(Arial) z:(Arial Narrow) j:left c:White")
+                     Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: " t ", x: center, y: 75%, p: 1.35vh, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial")
+                  }
+                  Vis2.ux.io.status := 1  ; Success.
+               } else {
+                  Vis2.ux.io.status := -2 ; Error: No Text Data Found
+               }
             }
-            Vis2.obj.area.show()
-            return
-         }
-      }
-   }
-
-   class functor {
-
-      __Call(method, args*) {
-         ; When casting to Call(), use a new instance of the "function object"
-         ; so as to avoid directly storing the properties(used across sub-methods)
-         ; into the "function object" itself. Modified to accept empty arg.
-         if (method == "")
-            return (new this).Call(args*)
-         if IsObject(method)
-            return (new this).Call(method, args*)
-      }
-
-      inner[]
-      {
-         get {
-            ; Gets a reference to the current class.
-            ; Returns void if this function is not nested in a class.
-            if (_class := this.__class)
-               Loop, Parse, _class, .
-                  inner := (A_Index=1) ? %A_LoopField% : inner[A_LoopField]
-            return inner
          }
       }
 
-      outer[]
-      {
-         get {
-            ; Determine if there is a parent class. this.__class will retrive the
-            ; current instance's class name. Array notation [] will dereference.
-            ; Returns void if this function is not nested in at least 2 classes.
-            if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
-               Loop, Parse, _class, .
-                  outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
-            return outer
+      escape(obj){
+      static void := ObjBindMethod({}, {})
+
+         ; Fixes a bug where AHK does not detect key releases if there is an admin-level window beneath.
+         ; This code must be positioned before obj.area.destroy().
+         if WinActive("ahk_id" obj.area.hwnd) {
+            KeyWait Control
+            KeyWait Alt
+            KeyWait Shift
+            KeyWait RButton
+            KeyWait LButton
+            KeyWait Space
+            KeyWait Escape
+         }
+
+         obj.area.destroy()
+         obj.picture.destroy()
+         obj.subtitle.destroy()
+         obj.note_01.hide() ; Let them time out instead of Destroy()
+         obj.note_02.destroy()
+         obj := "" ; Goodbye all, you were loved :c
+         Gdip_DisposeImage(obj.pBitmap)
+         Vis2.Graphics.Shutdown()
+
+         Hotkey, LButton, % void, Off
+         Hotkey, ^LButton, % void, Off
+         Hotkey, !LButton, % void, Off
+         Hotkey, +LButton, % void, Off
+         Hotkey, RButton, % void, Off
+         Hotkey, Escape, % void, Off
+         Hotkey, Space, % void, Off
+         Hotkey, ^Space, % void, Off
+         Hotkey, !Space, % void, Off
+         Hotkey, +Space, % void, Off
+
+         return DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
+      }
+
+      suspend(){
+         static void := ObjBindMethod({}, {})
+         Hotkey, LButton, % void, Off
+         Hotkey, ^LButton, % void, Off
+         Hotkey, !LButton, % void, Off
+         Hotkey, +LButton, % void, Off
+         Hotkey, RButton, % void, Off
+         Hotkey, Escape, % void, Off
+         Hotkey, Space, % void, Off
+         Hotkey, ^Space, % void, Off
+         Hotkey, !Space, % void, Off
+         Hotkey, +Space, % void, Off
+         DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor
+         Vis2.obj.area.hide()
+         return
+      }
+
+      resume(){
+         Hotkey, LButton, % void, On
+         Hotkey, ^LButton, % void, On
+         Hotkey, !LButton, % void, On
+         Hotkey, +LButton, % void, On
+         Hotkey, RButton, % void, On
+         Hotkey, Escape, % void, On
+
+         if (Vis2.obj.selectMode == "Quick")
+            Vis2.ux.setSystemCursor(32515) ; IDC_Cross := 32515
+
+         if (Vis2.obj.selectMode == "Advanced") {
+            Hotkey, Space, % void, On
+            Hotkey, ^Space, % void, On
+            Hotkey, !Space, % void, On
+            Hotkey, +Space, % void, On
+         }
+         Vis2.obj.area.show()
+         return
+      }
+
+      setSystemCursor(CursorID = "", cx = 0, cy = 0 ) { ; Thanks to Serenity - https://autohotkey.com/board/topic/32608-changing-the-system-cursor/
+         static SystemCursors := "32512,32513,32514,32515,32516,32640,32641,32642,32643,32644,32645,32646,32648,32649,32650,32651"
+
+         Loop, Parse, SystemCursors, `,
+         {
+               Type := "SystemCursor"
+               CursorHandle := DllCall( "LoadCursor", "uInt",0, "Int",CursorID )
+               %Type%%A_Index% := DllCall( "CopyImage", "uInt",CursorHandle, "uInt",0x2, "Int",cx, "Int",cy, "uInt",0 )
+               CursorHandle := DllCall( "CopyImage", "uInt",%Type%%A_Index%, "uInt",0x2, "Int",0, "Int",0, "Int",0 )
+               DllCall( "SetSystemCursor", "uInt",CursorHandle, "Int",A_Loopfield)
          }
       }
    }
@@ -1053,12 +1790,25 @@ class Vis2 {
             return x_mouse == this.x_last && y_mouse == this.y_last
          }
 
-         ScreenshotArray() {
-            x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
-            return (w > 0 && h > 0) ? [x, y, w, h] : ""
+         outer[]
+         {
+            get {
+               ; Determine if there is a parent class. this.__class will retrive the
+               ; current instance's class name. Array notation [] will dereference.
+               ; Returns void if this function is not nested in at least 2 classes.
+               if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
+                  Loop, Parse, _class, .
+                     outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
+               return outer
+            }
          }
 
-         ScreenshotRectangle() {
+         Rect() {
+            x1 := this.x1(), y1 := this.y1(), x2 := this.x2(), y2 := this.y2()
+            return (x2 > x1 && y2 > y1) ? [x1, y1, x2, y2] : ""
+         }
+
+         ScreenshotCoordinates() {
             x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
             return (w > 0 && h > 0) ? (x "|" y "|" w "|" h) : ""
          }
@@ -1086,99 +1836,7 @@ class Vis2 {
          height() {
             return this.h[this.h.maxIndex()]
          }
-
-         outer[]
-         {
-            get {
-               ; Determine if there is a parent class. this.__class will retrive the
-               ; current instance's class name. Array notation [] will dereference.
-               ; Returns void if this function is not nested in at least 2 classes.
-               if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
-                  Loop, Parse, _class, .
-                     outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
-               return outer
-            }
-         }
       } ; End of Area class.
-
-      Class CustomFont {
-         /*
-         CustomFont v2.00 (2016-2-24) by tmplinshi
-         ---------------------------------------------------------
-         Description: Load font from file or resource, without needed install to system.
-         ---------------------------------------------------------
-         Useage Examples:
-
-            * Load From File
-               font1 := New CustomFont("ewatch.ttf")
-               Gui, Font, s100, ewatch
-
-            * Load From Resource
-               Gui, Add, Text, HWNDhCtrl w400 h200, 12345
-               font2 := New CustomFont("res:ewatch.ttf", "ewatch", 80) ; <- Add a res: prefix to the resource name.
-               font2.ApplyTo(hCtrl)
-
-            * The fonts will removed automatically when script exits.
-              To remove a font manually, just clear the variable (e.g. font1 := "").
-         */
-
-         static FR_PRIVATE  := 0x10
-
-         __New(FontFile, FontName="", FontSize=30) {
-            if RegExMatch(FontFile, "i)res:\K.*", _FontFile) {
-               this.AddFromResource(_FontFile, FontName, FontSize)
-            } else {
-               this.AddFromFile(FontFile)
-            }
-         }
-
-         AddFromFile(FontFile) {
-            DllCall( "AddFontResourceEx", "Str", FontFile, "UInt", this.FR_PRIVATE, "UInt", 0 )
-            this.data := FontFile
-         }
-
-         AddFromResource(ResourceName, FontName, FontSize = 30) {
-            static FW_NORMAL := 400, DEFAULT_CHARSET := 0x1
-
-            nSize    := this.ResRead(fData, ResourceName)
-            fh       := DllCall( "AddFontMemResourceEx", "Ptr", &fData, "UInt", nSize, "UInt", 0, "UIntP", nFonts )
-            hFont    := DllCall( "CreateFont", Int,FontSize, Int,0, Int,0, Int,0, UInt,FW_NORMAL, UInt,0
-                        , Int,0, Int,0, UInt,DEFAULT_CHARSET, Int,0, Int,0, Int,0, Int,0, Str,FontName )
-
-            this.data := {fh: fh, hFont: hFont}
-         }
-
-         ApplyTo(hCtrl) {
-            SendMessage, 0x30, this.data.hFont, 1,, ahk_id %hCtrl%
-         }
-
-         __Delete() {
-            if IsObject(this.data) {
-               DllCall( "RemoveFontMemResourceEx", "UInt", this.data.fh    )
-               DllCall( "DeleteObject"           , "UInt", this.data.hFont )
-            } else {
-               DllCall( "RemoveFontResourceEx"   , "Str", this.data, "UInt", this.FR_PRIVATE, "UInt", 0 )
-            }
-         }
-
-         ; ResRead() By SKAN, from http://www.autohotkey.com/board/topic/57631-crazy-scripting-resource-only-dll-for-dummies-36l-v07/?p=609282
-         ResRead( ByRef Var, Key ) {
-            VarSetCapacity( Var, 128 ), VarSetCapacity( Var, 0 )
-            If ! ( A_IsCompiled ) {
-               FileGetSize, nSize, %Key%
-               FileRead, Var, *c %Key%
-               Return nSize
-            }
-
-            If hMod := DllCall( "GetModuleHandle", UInt,0 )
-               If hRes := DllCall( "FindResource", UInt,hMod, Str,Key, UInt,10 )
-                  If hData := DllCall( "LoadResource", UInt,hMod, UInt,hRes )
-                     If pData := DllCall( "LockResource", UInt,hData )
-                        Return VarSetCapacity( Var, nSize := DllCall( "SizeofResource", UInt,hMod, UInt,hRes ) )
-                           ,  DllCall( "RtlMoveMemory", Str,Var, UInt,pData, UInt,nSize )
-            Return 0
-         }
-      } ; End of CustomFont class.
 
       class Picture {
 
@@ -1250,6 +1908,11 @@ class Vis2 {
             return this
          }
 
+         Caption() {
+            WinSet, Style, ^0xC00000, % "ahk_id" this.hwnd
+            return this
+         }
+
          ClickThrough() {
             _dhw := A_DetectHiddenWindows
             DetectHiddenWindows On
@@ -1259,6 +1922,11 @@ class Vis2 {
             else
                WinSet, ExStyle, +0x20, % "ahk_id" this.hwnd
             DetectHiddenWindows %_dhw%
+            return this
+         }
+
+         ToolWindow() {
+            WinSet, ExStyle, ^0x80, % "ahk_id" this.hwnd
             return this
          }
 
@@ -1278,6 +1946,184 @@ class Vis2 {
             }
          }
 
+         ; Preprocess() - Modifies an input image and returns a Bitmap.
+         ; Example: Preprocess("base64", "https://goo.gl/BWUygC")
+         ;          The image is downloaded from the URL and is converted to base64.
+         Preprocess(cotype, image, crop := "", terms*) {
+            if !(this.hwnd) {
+               _picture := (this.outer) ? new this.outer.Picture() : new Picture()
+               coimage := _picture.Preprocess(cotype, image, crop, terms*)
+               _picture.FreeMemory()
+               _picture := ""
+               return coimage
+            } else {
+               ; Determine the representation (type) of the input image.
+               if !(type := this.DontVerifyImageType(image))
+                  type := this.ImageType(image)
+               ; If the type and cotype match, return the image as-is.
+               if (type = cotype && !this.isRectangle(crop))
+                  return image
+               ; Or else crop the image via pBitmap as a intermediate type.
+               pBitmap := this.toBitmap(type, image)
+               if this.isRectangle(crop){
+                  pBitmap2 := this.Gdip_CropBitmap(pBitmap, image)
+                  if (type != "pBitmap")
+                     Gdip_DisposeImage(pBitmap)
+                  pBitmap := pBitmap2
+               }
+               ; Convert from pBitmap intermediate to the cotype representation.
+               coimage := this.toCotype(cotype, pBitmap, terms*)
+               ; Delete the pBitmap representation, unless originally was pBitmap typed.
+               if (type != "pBitmap" || this.isRectangle(crop))
+                  Gdip_DisposeImage(pBitmap)
+               return coimage
+            }
+         }
+
+         ; DontVerifyImageType() - The user should declare exactly what type it is.
+         ; Ex. DontVerifyImageType({"Screenshot":[0,0,100,100]})
+         DontVerifyImageType(ByRef image) {
+            ; Check for type declaration.
+            if !IsObject(image)
+               return
+
+            if (image.screenshot)
+               return "screenshot", image := image.screenshot
+
+            if (image.file)
+               return "file", image := image.file
+
+            if (image.url)
+               return "url", image := image.url
+
+            if (image.window)
+               return "window", image := image.window
+
+            if (image.hwnd)
+               return "hwnd", image := image.hwnd
+
+            if (image.pBitmap)
+               return "pBitmap", image := image.pBitmap
+
+            if (image.hBitmap)
+               return "hBitmap", image := image.hBitmap
+
+            if (image.base64)
+               return "base64", image := image.base64
+
+            return
+         }
+
+         ; ImageType() -  Makes best guess as to the user's intention.
+         ImageType(image) {
+            ; Check if image is empty string.
+            if (image == "")
+               throw Exception("Image data is empty string.")
+            ; Check if image is an array of 4 numbers.
+            if this.isRectangle(image)
+               return "screenshot"
+            ; Check if image points to a valid file.
+            if FileExist(image)
+               return "file"
+            ; Check if image points to a valid URL.
+            if this.isURL(image)
+               return "url"
+            ; Check if image matches a window title.
+            if WinExist(image)
+               return "window"
+            ; Check if image is a valid handle to a window.
+            if DllCall("IsWindow", "ptr", image)
+               return "hwnd"
+            ; Check if image is a valid GDI Bitmap.
+            if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image))
+               return "pBitmap"
+            ; Check if image is a valid handle to a GDI Bitmap.
+            if (DllCall("GetObjectType", "ptr", image) == 7)
+               return "hBitmap"
+            ; Check if image is a base64 string.
+            if (image ~= "^(?:[A-Za-z0-9+/]{4})*?(?:[A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$")
+               return "base64"
+
+            throw Exception("Image type could not be identified.")
+         }
+
+         toBitmap(type, image) {
+            if (type = "screenshot")
+               return Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
+
+            if (type = "file")
+               return Gdip_CreateBitmapFromFile(image)
+
+            if (type = "url"){
+               req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+               req.Open("GET", image)
+               req.Send()
+               pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
+               DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+               ObjRelease(pStream)
+               return pBitmap
+            }
+
+            if (type = "window")
+               return this.Gdip_BitmapFromClientHWND(WinExist(image))
+
+            if (type = "hwnd")
+               return this.Gdip_BitmapFromClientHWND(image)
+
+            if (type = "pBitmap")
+               return image
+
+            if (type = "hBitmap")
+               return Gdip_CreateBitmapFromHBITMAP(image)
+
+            if (type = "base64"){
+               DllCall("crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A"), "ptr",&image, "uint",0, "uint",1, "ptr",0, "uint*",nSize, "ptr",0, "ptr",0)
+               VarSetCapacity(bin, nSize, 0)
+               DllCall("crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A"), "ptr",&image, "uint",0, "uint",1, "ptr",&bin, "uint*",nSize, "ptr",0, "ptr",0)
+               hData := DllCall("GlobalAlloc", "uint",0x2, "ptr",nSize)
+               pData := DllCall("GlobalLock", "ptr",hData)
+               DllCall("RtlMoveMemory", "ptr",pData, "ptr",&bin, "ptr",nSize)
+               DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",0, "uptr*",pStream)
+               DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+               pBitmap2 := Gdip_CloneBitmapArea(pBitmap, 0, 0, Gdip_GetImageWidth(pBitmap), Gdip_GetImageHeight(pBitmap))
+               Gdip_DisposeImage(pBitmap)
+               ObjRelease(pStream)
+               DllCall("GlobalUnlock", "ptr",hData)
+               DllCall("GlobalFree", "ptr",hData) ; Will delete the original bitmap if not cloned.
+               return pBitmap2
+            }
+         }
+
+         toCotype(cotype, pBitmap, terms*) {
+            if (cotype = "screenshot")
+               return this.Render({"pBitmap":pBitmap})
+               ; Place it on the screen.
+
+            if (cotype = "file") {
+               Gdip_SaveBitmapToFile(pBitmap, filename := terms.1, compression := terms.2)
+               return filename
+            }
+
+            if (cotype = "url"){
+               ; make a url
+            }
+
+            if (cotype = "window")
+               return "ahk_id " . this.Render({"pBitmap":pBitmap}).AlwaysOnTop().ToolWindow().Caption().hwnd
+
+            if (cotype = "hwnd")
+               return this.Render({"pBitmap":pBitmap}).hwnd
+
+            if (cotype = "pBitmap")
+               return pBitmap
+
+            if (cotype = "hBitmap")
+               return Gdip_CreateHBITMAPFromBitmap(pBitmap, alpha := terms.1)
+
+            if (cotype = "base64")
+               return this.Gdip_EncodeBitmapToBase64(pBitmap, extension := terms.1, compression := terms.2)
+         }
+
          ; Types of input accepted
          ; Objects: Rectangle Array (Screenshot)
          ; Strings: File, URL, Window Title (ahk_class...), base64
@@ -1285,10 +2131,10 @@ class Vis2 {
          ; Rawfile: Binary
 
          ; Vis2.preprocess(image, crop) - This is a template function.
-         ; Each provider should implement their own preprocess function based off
+         ; Each service should implement their own preprocess function based off
          ; this template. Accepts all 8 input types, returns a cropped pBitmap.
-         ; If a provider implements this, it should return file/base64/binary.
-         ; The provider should also implement a bypass if there is no crop array,
+         ; If a service implements this, it should return file/base64/binary.
+         ; The service should also implement a bypass if there is no crop array,
          ; and the input and output types are the same.
          Render(image, style := "", polygons := "") {
             if !(this.hwnd) {
@@ -1549,147 +2395,6 @@ class Vis2 {
             return m
          }
 
-         ; TEMPLATE FUNCTION - Please copy, paste, and modify.
-         ; Preprocess() - Modifies an input image and returns a Bitmap.
-         ; Example: Preprocess("https://goo.gl/BWUygC", "base64")
-         ;          The image is downloaded from the URL and is converted to base64.
-         Preprocess(image, crop := "") {
-            ; Attempt to extract the type of the input image.
-            if !(type := this.DontVerifyImageType(image))
-               type := this.ImageType(image)
-            ; If the input type and output type match, return the input image.
-            ; MODIFY - "pBitmap" to your destination type.
-            if (type = "pBitmap" && !this.isScreenshot(crop))
-               return image
-            ; Or else convert the input image to the output type and crop.
-            pBitmap := this.toBitmap(type, image)
-            if this.isScreenshot(crop){
-               pBitmap2 := this.Gdip_CropBitmap(pBitmap, image)
-               if (type != "pBitmap")
-                  Gdip_DisposeImage(pBitmap)
-               pBitmap := pBitmap2
-            }
-            ; Conversion code here...
-            ; if (type != "pBitmap" || this.isScreenshot(crop))
-            ;    Gdip_DisposeImage(pBitmap)
-            ; MODIFY - return your destination type.
-            return pBitmap
-         }
-
-         ; DontVerifyImageType() - The user should declare exactly what type it is.
-         ; Ex. DontVerifyImageType({"Screenshot":[0,0,100,100]})
-         DontVerifyImageType(ByRef image) {
-            ; Check for type declaration.
-            if !IsObject(image)
-               return
-
-            if (image.screenshot)
-               return "screenshot", image := image.screenshot
-
-            if (image.file)
-               return "file", image := image.file
-
-            if (image.url)
-               return "url", image := image.url
-
-            if (image.window)
-               return "window", image := image.window
-
-            if (image.hwnd)
-               return "hwnd", image := image.hwnd
-
-            if (image.pBitmap)
-               return "pBitmap", image := image.pBitmap
-
-            if (image.hBitmap)
-               return "hBitmap", image := image.hBitmap
-
-            if (image.base64)
-               return "base64", image := image.base64
-
-            return
-         }
-
-         ; ImageType() -  Makes best guess as to the user's intention.
-         ImageType(image) {
-            ; Check if image is empty string.
-            if (image == "")
-               throw Exception("Image data is empty string.")
-            ; Check if image is an array of 4 numbers.
-            if this.isScreenshot(image)
-               return "screenshot"
-            ; Check if image points to a valid file.
-            if FileExist(image)
-               return "file"
-            ; Check if image points to a valid URL.
-            if this.isURL(image)
-               return "url"
-            ; Check if image matches a window title.
-            if WinExist(image)
-               return "window"
-            ; Check if image is a valid handle to a window.
-            if DllCall("IsWindow", "ptr", image)
-               return "hwnd"
-            ; Check if image is a valid GDI Bitmap.
-            if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image))
-               return "pBitmap"
-            ; Check if image is a valid handle to a GDI Bitmap.
-            if (DllCall("GetObjectType", "ptr", image) == 7)
-               return "hBitmap"
-            ; Check if image is a base64 string.
-            if (image ~= "^(?:[A-Za-z0-9+/]{4})*?(?:[A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$")
-               return "base64"
-
-            throw Exception("Image type could not be identified.")
-         }
-
-         toBitmap(type, image) {
-            if (type = "screenshot")
-               return Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
-
-            if (type = "file")
-               return Gdip_CreateBitmapFromFile(image)
-
-            if (type = "url"){
-               req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-               req.Open("GET", image)
-               req.Send()
-               pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
-               DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
-               ObjRelease(pStream)
-               return pBitmap
-            }
-
-            if (type = "window")
-               return this.Gdip_BitmapFromClientHWND(WinExist(image))
-
-            if (type = "hwnd")
-               return this.Gdip_BitmapFromClientHWND(image)
-
-            if (type = "pBitmap")
-               return image
-
-            if (type = "hBitmap")
-               return Gdip_CreateBitmapFromHBITMAP(image)
-
-            if (type = "base64"){
-               DllCall("crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A"), "ptr",&image, "uint",0, "uint",1, "ptr",0, "uint*",nSize, "ptr",0, "ptr",0)
-               VarSetCapacity(bin, nSize, 0)
-               DllCall("crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A"), "ptr",&image, "uint",0, "uint",1, "ptr",&bin, "uint*",nSize, "ptr",0, "ptr",0)
-               hData := DllCall("GlobalAlloc", "uint",0x2, "ptr",nSize)
-               pData := DllCall("GlobalLock", "ptr",hData)
-               DllCall("RtlMoveMemory", "ptr",pData, "ptr",&bin, "ptr",nSize)
-               DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",0, "uptr*",pStream)
-               DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
-               pBitmap2 := Gdip_CloneBitmapArea(pBitmap, 0, 0, Gdip_GetImageWidth(pBitmap), Gdip_GetImageHeight(pBitmap))
-               Gdip_DisposeImage(pBitmap)
-               ObjRelease(pStream)
-               DllCall("GlobalUnlock", "ptr",hData)
-               DllCall("GlobalFree", "ptr",hData) ; Will delete the original bitmap if not cloned.
-               return pBitmap2
-            }
-         }
-
          Gdip_BitmapFromClientHWND(hwnd) {
             VarSetCapacity(rc, 16)
             DllCall("GetClientRect", "ptr", hwnd, "ptr", &rc)
@@ -1802,7 +2507,7 @@ class Vis2 {
             return (byte == size) ? true : false
          }
 
-         isScreenshot(array){
+         isRectangle(array){
             return array.1 ~= "^\d+$" && array.2 ~= "^\d+$" && array.3 ~= "^\d+$"  && array.4 ~= "^\d+$"
          }
 
@@ -1829,6 +2534,11 @@ class Vis2 {
                      outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
                return outer
             }
+         }
+
+         Rect() {
+            x1 := this.x1(), y1 := this.y1(), x2 := this.x2(), y2 := this.y2()
+            return (x2 > x1 && y2 > y1) ? [x1, y1, x2, y2] : ""
          }
 
          x1() {
@@ -1926,6 +2636,11 @@ class Vis2 {
             return this
          }
 
+         Bottom() {
+            WinSet, Bottom,, % "ahk_id" this.hwnd
+            return this
+         }
+
          ClickThrough() {
             _dhw := A_DetectHiddenWindows
             DetectHiddenWindows On
@@ -1935,6 +2650,45 @@ class Vis2 {
             else
                WinSet, ExStyle, +0x20, % "ahk_id" this.hwnd
             DetectHiddenWindows %_dhw%
+            return this
+         }
+
+         Desktop() {
+            ; Based on: https://www.codeproject.com/Articles/856020/Draw-Behind-Desktop-Icons-in-Windows-plus?msg=5478543#xx5478543xx
+            DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",0)
+            DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",1) ; Post-Creator's Update Windows 10.
+            WinGet, windows, List, ahk_class WorkerW
+            Loop, %windows%
+               if (DllCall("FindWindowEx", "ptr",windows%A_Index%, "ptr",0, "str","SHELLDLL_DefView", "ptr",0) != 0)
+                  WorkerW := DllCall("FindWindowEx", "ptr",0, "ptr",windows%A_Index%, "str","WorkerW", "ptr",0)
+
+            if (WorkerW) {
+               this.Destroy()
+               this.hwnd := WorkerW
+               DllCall("SetWindowPos", "uint",WorkerW, "uint",1, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight, "uint",0)
+               this.base.FreeMemory := ObjBindMethod(this, "DesktopFreeMemory")
+               this.base.Destroy := ObjBindMethod(this, "DesktopDestroy")
+               this.hdc := DllCall("GetDCEx", "ptr",WorkerW, "ptr",0, "int",0x403)
+               this.G := Gdip_GraphicsFromHDC(this.hdc)
+            }
+            return this
+         }
+
+         DesktopFreeMemory() {
+            ReleaseDC(this.hdc)
+            Gdip_DeleteGraphics(this.G)
+            return this
+         }
+
+         DesktopDestroy() {
+            this.FreeMemory()
+            DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",0)
+            DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",1)
+            return this
+         }
+
+         Normal() {
+            WinSet, AlwaysOnTop, Off, % "ahk_id" this.hwnd
             return this
          }
 
@@ -2965,6 +3719,11 @@ class Vis2 {
             }
          }
 
+         Rect() {
+            x1 := this.x1(), y1 := this.y1(), x2 := this.x2(), y2 := this.y2()
+            return (x2 > x1 && y2 > y1) ? [x1, y1, x2, y2] : ""
+         }
+
          x1() {
             return this.x
          }
@@ -2999,973 +3758,6 @@ class Vis2 {
                Loop, Parse, _class, .
                   inner := (A_Index=1) ? %A_LoopField% : inner[A_LoopField]
             return inner
-         }
-      }
-   }
-
-   class provider {
-
-      ; https://cloud.google.com/vision/docs/supported-files
-      ; Supported Image Formats
-      ; JPEG, PNG8, PNG24, GIF, Animated GIF (first frame only)
-      ; BMP, WEBP, RAW, ICO
-      ; Maximum Image Size - 4 MB
-      ; Maximum Size per Request - 8 MB
-      ; Compression to 640 x 480 - LABEL_DETECTION
-
-      class Google extends Vis2.functor {
-         static api := true
-         ; Cloud Platform Console Help - Setting up API keys
-         ; Step 1: https://support.google.com/cloud/answer/6158862?hl=en
-         ; Step 2: https://cloud.google.com/vision/docs/before-you-begin
-
-         ; You must enter billing information to use the Cloud Vision API.
-         ; https://cloud.google.com/vision/pricing
-         ; First 1000 LABEL_DETECTION per month is free.
-
-         ; Please enter your api_key for Google Cloud Vision API.
-         ; static api_key := "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-         ; FOR SAFETY REASONS, DO NOT PASTE YOUR API KEY HERE.
-         ; Instead, keep your api_key in a separate file, "Vis2_API.txt"
-
-         call(self, api_key:=""){
-            if (api_key != "")
-               this.inner.api_key := api_key
-            return this
-         }
-
-         getCredentials(error:=""){
-            if (error != "") {
-               (Vis2.obj) ? Vis2.core.ux.suspend() : ""
-               InputBox, api_key, Vis2.GoogleCloudVision.ImageIdentify, Enter your api_key for GoogleCloudVision.
-               (Vis2.obj) ? Vis2.core.ux.resume() : ""
-               FileAppend, GoogleCloudVision=%api_key%, Vis2_API.txt
-               return api_key
-            }
-
-            if (this.api_key ~= "^X{39}$") {
-               if FileExist("Vis2_API.txt") {
-                  file := FileOpen("Vis2_API.txt", "r")
-                  keys := file.Read()
-                  api_key := ((___ := RegExReplace(keys, "s)^.*?GoogleCloudVision(?:\s*)=(?:\s*)([A-Za-z0-9\-]+).*$", "$1")) != keys) ? ___ : ""
-                  file.close()
-
-                  if (api_key != "")
-                     return api_key
-               }
-            }
-            else
-               return this.api_key
-         }
-
-         request(base64, extension, models*){
-            whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-            if (api_key := this.getCredentials())
-               whr.Open("POST", "https://vision.googleapis.com/v1/images:annotate?key=" api_key, true)
-            else
-               whr.Open("POST", "https://cxl-services.appspot.com/proxy?url=https%3A%2F%2Fvision.googleapis.com%2Fv1%2Fimages%3Aannotate", true)
-            whr.SetRequestHeader("Accept", "*/*")
-            whr.SetRequestHeader("Origin", "https://cloud.google.com")
-            whr.SetRequestHeader("Content-Type", "text/plain;charset=UTF-8")
-            whr.SetRequestHeader("Referer", "https://cloud.google.com/vision/")
-            whr.SetRequestHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36")
-
-            req := {"requests":[]}
-            req.requests[1] := {"features":[], "image":{}, "imageContext":{}}
-            for i, model in models
-               req.requests[1].features.push({"type":model, "maxResults":50})
-            req.requests[1].image.content := base64
-            req.requests[1].imageContext.cropHintsParams := {"aspectRatios":[0.8, 1.0, 1.2]}
-
-            whr.Send(JSON.Dump(req))
-            whr.WaitForResponse()
-            ado          := ComObjCreate("adodb.stream")
-            ado.Type     := 1
-            ado.Mode     := 3
-            ado.Open()
-            ado.Write(whr.ResponseBody)
-            ado.Position := 0
-            ado.Type     := 2
-            ado.Charset  := "UTF-8"
-            best := ado.ReadText()
-            ado.Close()
-            try reply := JSON.Load(best)
-            catch
-               this.getCredentials(best)
-            return reply
-         }
-
-         ; Vis2.provider.Google.Describe()
-         class Describe extends Vis2.functor{
-         }
-
-         ; Vis2.provider.Google.ImageIdentify()
-         class ImageIdentify extends Vis2.functor {
-            static extension := "jpg", compression := "75"
-
-            call(self, image:="", option:="", crop:=""){
-               instance := new this
-               if (image == "")
-                  return Vis2.core.returnData({"provider":instance, "option":option, "tooltip":"Google: Image Identification Tool", "splashImage":true})
-               else
-                  return instance.convert(instance.preprocess(image, crop), option)
-            }
-
-            preprocess(image, crop := "") {
-               process := new Vis2.Graphics.Picture()
-               if !(type := process.DontVerifyImageType(image))
-                  type := process.ImageType(image)
-               if (type = "base64" && !process.isScreenshot(crop))
-                  return image
-               pBitmap := process.toBitmap(type, image)
-               if process.isScreenshot(crop){
-                  pBitmap2 := process.Gdip_CropBitmap(pBitmap, crop)
-                  if (type != "pBitmap")
-                     Gdip_DisposeImage(pBitmap)
-                  pBitmap := pBitmap2
-               }
-               this.ImageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
-               if (type != "pBitmap" || process.isScreenshot(crop))
-                  Gdip_DisposeImage(pBitmap)
-               process.Destroy()
-               process := ""
-               return this.ImageData
-            }
-
-            convert(base64, option := ""){
-               reply := this.outer.request(base64, this.extension, "LABEL_DETECTION")
-               obj := {}
-               for i, value in reply.responses[1].labelAnnotations {
-                  value.category := value.description
-                  value.score    := value.score
-                  obj.push(value)
-               }
-               obj := Vis2.stdlib.QuickSort(obj)
-               for k, v in obj {
-                  sentence  .= ((A_Index == 1) ? "" : ", ") . v.category
-                  sentence2 .= ((A_Index == 1) ? "" : "`r`n") . v.category ", " Format("{:#.3f}", v.score)
-               }
-               data := sentence2
-               data.base.FullData := obj
-               for reference, function in Vis2.Text {
-                  if IsFunc(function)
-                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
-               } ; All of the functions in Vis2.Text can now be called as such: data.google()
-               return data
-            }
-         }
-
-         ; Vis2.provider.Google.TextRecognize()
-         class TextRecognize extends Vis2.functor {
-            static extension := "png"
-
-            call(self, image:="", option:="", crop:=""){
-               instance := new this
-               if (image == "")
-                  return Vis2.core.returnData({"provider":instance, "option":option, "tooltip":"Google: Text Recognition Tool", "splashImage":true})
-               else
-                  return instance.convert(instance.preprocess(image, crop), option)
-            }
-
-            preprocess(image, crop := "") {
-               process := new Vis2.Graphics.Picture()
-               if !(type := process.DontVerifyImageType(image))
-                  type := process.ImageType(image)
-               if (type = "base64" && !process.isScreenshot(crop))
-                  return image
-               pBitmap := process.toBitmap(type, image)
-               if process.isScreenshot(crop){
-                  pBitmap2 := process.Gdip_CropBitmap(pBitmap, crop)
-                  if (type != "pBitmap")
-                     Gdip_DisposeImage(pBitmap)
-                  pBitmap := pBitmap2
-               }
-               this.ImageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
-               if (type != "pBitmap" || process.isScreenshot(crop))
-                  Gdip_DisposeImage(pBitmap)
-               process.Destroy()
-               process := ""
-               return this.ImageData
-            }
-
-            convert(base64, option := ""){
-               ; Note: DOCUMENT_TEXT_DETECTION will take precedence over TEXT_DETECTION
-               reply := this.outer.request(base64, this.extension, "DOCUMENT_TEXT_DETECTION", "TEXT_DETECTION")
-
-               ; Get text from both models. I'm not sure if the text is the same.
-               if !(data := reply.responses[1].fullTextAnnotation.text)
-                  data := reply.responses[1].textAnnotations[1].description
-
-               ; Extract blocks of text: Full sentences or sections, not individual words.
-               obj := {}
-               for i, block in reply.responses[1].fullTextAnnotation.pages[1].blocks {
-                  ; Begin constructing blocks of text from symbols.
-                  text := ""
-                  for j, paragraph in block.paragraphs {
-                     text .= (j == 1) ? "" : "`r`n"
-                     for k, word in block.paragraphs[j].words {
-                        text .= (k == 1) ? "" : " "
-                        for l, symbol in block.paragraphs[j].words[k].symbols {
-                           text .= symbol.text
-                        }
-                     }
-                  }
-
-                  ; Standardize objects
-                  block.category := text
-                  block.score    := block.confidence
-                  block.polygon  := block.boundingBox.vertices
-                  obj.push(block)
-               }
-
-               data := RegExReplace(data, "(?<!\r)\n", "`r`n") ; LF to CRLF
-               data.base.FullData := obj
-               for reference, function in Vis2.Text {
-                  if IsFunc(function)
-                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
-               } ; All of the functions in Vis2.Text can now be called as such: data.google()
-               return data
-            }
-         }
-      }
-
-      class IBM {
-         static api := true
-
-         request(base64, extension){
-            whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-            whr.Open("POST", "https://watson-visual-recognition-duo-dev.ng.bluemix.net/api/classify", true)
-            whr.SetRequestHeader("Accept", "application/json")
-            whr.SetRequestHeader("Origin", "https://watson-visual-recognition-duo-dev.ng.bluemix.net")
-            whr.SetRequestHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36")
-            whr.SetRequestHeader("Content-Type", "application/json")
-            whr.SetRequestHeader("Referer", "https://watson-visual-recognition-duo-dev.ng.bluemix.net/")
-
-            req := {"type":"file", "image_file":"data:image/" extension ";base64," base64}
-
-            whr.Send(JSON.Dump(req))
-            whr.WaitForResponse()
-            return JSON.Load(whr.ResponseText)
-         }
-
-         ; Vis2.provider.IBM.ExplicitContent()
-         class ExplicitContent extends Vis2.functor {
-            static extension := "jpg", compression := "75"
-
-            call(self, image:="", option:="", crop:=""){
-               instance := new this
-               if (image == "")
-                  return Vis2.core.returnData({"provider":instance, "option":option, "tooltip":"IBM: Explicit Content Detection Tool", "splashImage":true})
-               else
-                  return instance.convert(instance.preprocess(image, crop), option)
-            }
-
-            preprocess(image, crop := ""){
-               Vis2.Graphics.Startup()
-               if !(type := Vis2.preprocess.DontVerifyImageType(image))
-                  if !(type := Vis2.preprocess.ImageType(image))
-                     throw Exception("Ensure that the reference to an image is valid.")
-               if (type = "base64" && !Vis2.stdlib.isScreenshot(crop))
-                  return image
-               pBitmap := Vis2.preprocess.toBitmap(type, image)
-               if Vis2.stdlib.isScreenshot(crop){
-                  pBitmap2 := Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop)
-                  if (type != "pBitmap")
-                     Gdip_DisposeImage(pBitmap)
-                  pBitmap := pBitmap2
-               }
-               this.base64 := Vis2.stdlib.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
-               if (type != "pBitmap" || Vis2.stdlib.isScreenshot(crop))
-                  Gdip_DisposeImage(pBitmap)
-               Vis2.Graphics.Shutdown()
-               return this.base64
-            }
-
-            convert(base64, option := ""){
-               reply := this.outer.request(base64, this.extension)
-               i := 0, obj := {}
-               while (i++ < reply.maxIndex())
-                  if (reply[i].classifier_id = "explicit")
-                     for j, value in reply[i].classes {
-                        value.category := value.class
-                        value.score    := value.score
-                        obj.push(value)
-                     }
-
-               obj := Vis2.stdlib.QuickSort(obj)
-               for k, v in obj {
-                  sentence  .= ((A_Index == 1) ? "" : ", ") . v.category
-                  sentence2 .= ((A_Index == 1) ? "" : ", ") . v.category " " Format("{:#.3f}", v.score)
-               }
-
-               data := sentence2
-               data.base.FullData := obj
-               for reference, function in Vis2.Text {
-                  if IsFunc(function)
-                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
-               } ; All of the functions in Vis2.Text can now be called as such: data.google()
-               return data
-            }
-         }
-
-         ; Vis2.provider.IBM.FindFaces()
-         class FindFaces extends Vis2.functor {
-            static extension := "jpg", compression := "75"
-
-            call(self, image:="", option:="", crop:=""){
-               instance := new this
-               if (image == "")
-                  return Vis2.core.returnData({"provider":instance, "option":option, "tooltip":"IBM: Face Detection Tool", "splashImage":true})
-               else
-                  return instance.convert(instance.preprocess(image, crop), option)
-            }
-
-            preprocess(image, crop := ""){
-               Vis2.Graphics.Startup()
-               if !(type := Vis2.preprocess.DontVerifyImageType(image))
-                  if !(type := Vis2.preprocess.ImageType(image))
-                     throw Exception("Ensure that the reference to an image is valid.")
-               if (type = "base64" && !Vis2.stdlib.isScreenshot(crop))
-                  return image
-               pBitmap := Vis2.preprocess.toBitmap(type, image)
-               if Vis2.stdlib.isScreenshot(crop){
-                  pBitmap2 := Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop)
-                  if (type != "pBitmap")
-                     Gdip_DisposeImage(pBitmap)
-                  pBitmap := pBitmap2
-               }
-               this.base64 := Vis2.stdlib.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
-               if (type != "pBitmap" || Vis2.stdlib.isScreenshot(crop))
-                  Gdip_DisposeImage(pBitmap)
-               Vis2.Graphics.Shutdown()
-               return this.base64
-            }
-
-            /*
-            {
-             "classifier_id": "faces",
-             "display": "Face Model",
-             "description": "Locate faces within an image and assess gender and age.",
-             "faces": [
-               {
-                 "age": {
-                    "min": 23,
-                    "max": 26,
-                    "score": 0.7395025
-                 },
-                 "face_location": {
-                    "height": 90,
-                    "width": 79,
-                    "left": 358,
-                    "top": 83
-                 },
-                 "gender": {
-                    "gender": "FEMALE",
-                    "score": 0.9999887
-                 }
-               }
-             ]
-            },
-            */
-
-            convert(base64, option := ""){
-               reply := this.outer.request(base64, this.extension)
-               i := 0, obj := {}
-               while (i++ < reply.maxIndex())
-                  if (reply[i].classifier_id = "faces")
-                     for j, value in reply[i].faces {
-                        value.category := Format("{:i}", (value.age.max + value.age.min)/2) " year old " Format("{:L}", value.gender.gender)
-                        value.location := {"x":value.face_location.left, "y":value.face_location.top, "w":value.face_location.width, "h":value.face_location.height}
-                        obj.push(value)
-                     }
-
-               obj := Vis2.stdlib.QuickSort(obj)
-               for k, v in obj {
-                  sentence  .= ((A_Index == 1) ? "" : ", ") . v.category
-                  sentence2 .= ((A_Index == 1) ? "" : ", ") . v.category " " Format("{:#.3f}", v.score)
-               }
-
-               data := sentence
-               data.base.FullData := obj
-               for reference, function in Vis2.Text {
-                  if IsFunc(function)
-                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
-               } ; All of the functions in Vis2.Text can now be called as such: data.google()
-               return data
-            }
-         }
-
-         ; Vis2.provider.IBM.ImageIdentify()
-         class ImageIdentify extends Vis2.functor {
-            static extension := "jpg", compression := "75"
-
-            call(self, image:="", option:="", crop:=""){
-               instance := new this
-               if (image == "")
-                  return Vis2.core.returnData({"provider":instance, "option":option, "tooltip":"IBM: Image Identification Tool", "splashImage":true})
-               else
-                  return instance.convert(instance.preprocess(image, crop), option)
-            }
-
-            preprocess(image, crop := "") {
-               process := new Vis2.Graphics.Picture()
-               if !(type := process.DontVerifyImageType(image))
-                  type := process.ImageType(image)
-               if (type = "base64" && !process.isScreenshot(crop))
-                  return image
-               pBitmap := process.toBitmap(type, image)
-               if process.isScreenshot(crop){
-                  pBitmap2 := process.Gdip_CropBitmap(pBitmap, crop)
-                  if (type != "pBitmap")
-                     Gdip_DisposeImage(pBitmap)
-                  pBitmap := pBitmap2
-               }
-               this.ImageData := process.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
-               if (type != "pBitmap" || process.isScreenshot(crop))
-                  Gdip_DisposeImage(pBitmap)
-               process.Destroy()
-               process := ""
-               return this.ImageData
-            }
-
-            convert(base64, option := ""){
-               reply := this.outer.request(base64, this.extension)
-               i := 0, obj := {}
-               while (i++ < reply.maxIndex())
-                  if (reply[i].classifier_id = "default")
-                     for j, value in reply[i].classes {
-                        value.category := value.class
-                        value.score    := value.score
-                        obj.push(value)
-                     }
-
-               obj := Vis2.stdlib.QuickSort(obj)
-               for k, v in obj {
-                  sentence  .= ((A_Index == 1) ? "" : ", ") . v.category
-                  sentence2 .= ((A_Index == 1) ? "" : "`r`n") . v.category ", " Format("{:#.3f}", v.score)
-               }
-
-               data := sentence2
-               data.base.FullData := obj
-               for reference, function in Vis2.Text {
-                  if IsFunc(function)
-                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
-               } ; All of the functions in Vis2.Text can now be called as such: data.google()
-               return data
-            }
-         }
-
-         ; Vis2.provider.IBM.TextRecognize()
-         class TextRecognize extends Vis2.functor {
-            static extension := "png"
-
-            call(self, image:="", option:="", crop:=""){
-               instance := new this
-               if (image == "")
-                  return Vis2.core.returnData({"provider":instance, "option":option, "tooltip":"IBM: Text Recognition Tool", "splashImage":true})
-               else
-                  return instance.convert(instance.preprocess(image, crop), option)
-            }
-
-            preprocess(image, crop := ""){
-               Vis2.Graphics.Startup()
-               if !(type := Vis2.preprocess.DontVerifyImageType(image))
-                  if !(type := Vis2.preprocess.ImageType(image))
-                     throw Exception("Ensure that the reference to an image is valid.")
-               if (type = "base64" && !Vis2.stdlib.isScreenshot(crop))
-                  return image
-               pBitmap := Vis2.preprocess.toBitmap(type, image)
-               if Vis2.stdlib.isScreenshot(crop){
-                  pBitmap2 := Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop)
-                  if (type != "pBitmap")
-                     Gdip_DisposeImage(pBitmap)
-                  pBitmap := pBitmap2
-               }
-               this.base64 := Vis2.stdlib.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
-               if (type != "pBitmap" || Vis2.stdlib.isScreenshot(crop))
-                  Gdip_DisposeImage(pBitmap)
-               Vis2.Graphics.Shutdown()
-               return this.base64
-            }
-            /*
-            {
-               "classifier_id": "text",
-               "display": "Text Model (private beta)",
-               "description": "Extract text from natural scene images. To learn more, please contact sragarwa@us.ibm.com with a screenshot of the results.",
-               "image": "7976da80-3d15-11e8-8328-7140922c1cd9.jpg",
-               "text": "if ive learned anything\nfrom video games it is\nthat when you meet\nenemies it means that\nyoure going in the right\ndirection\nreally inspiring\nthats",
-               "words": [
-                  {
-                     "word": "if",
-                     "location": {
-                        "width": 41,
-                        "height": 59,
-                        "left": 255,
-                        "top": 33
-                     },
-                     "score": 0.9536,
-                     "line_number": 0
-                  },
-                  {
-                     "word": "ive",
-                     "location": {
-                        "width": 110,
-                        "height": 61,
-                        "left": 315,
-                        "top": 33
-                     },
-                     "score": 0.9635,
-                     "line_number": 0
-                  },
-                  {
-                     "word": "learned",
-                     "location": {
-                        "width": 237,
-                        "height": 58,
-                        "left": 446,
-                        "top": 35
-                     },
-                     "score": 0.9728,
-                     "line_number": 0
-                  },
-                  {
-                     "word": "anything",
-                     "location": {
-                        "width": 301,
-                        "height": 125,
-                        "left": 692,
-                        "top": 0
-                     },
-                     "score": 0.9779,
-                     "line_number": 0
-                  },
-                  {
-                     "word": "from",
-                     "location": {
-                        "width": 147,
-                        "height": 74,
-                        "left": 250,
-                        "top": 138
-                     },
-                     "score": 0.9558,
-                     "line_number": 1
-                  },
-                  {
-                     "word": "video",
-                     "location": {
-                        "width": 192,
-                        "height": 67,
-                        "left": 407,
-                        "top": 134
-                     },
-                     "score": 0.9779,
-                     "line_number": 1
-                  },
-                  {
-                     "word": "games",
-                     "location": {
-                        "width": 256,
-                        "height": 115,
-                        "left": 596,
-                        "top": 124
-                     },
-                     "score": 0.9246,
-                     "line_number": 1
-                  },
-                  {
-                     "word": "it",
-                     "location": {
-                        "width": 35,
-                        "height": 58,
-                        "left": 866,
-                        "top": 147
-                     },
-                     "score": 0.9788,
-                     "line_number": 1
-                  },
-                  {
-                     "word": "is",
-                     "location": {
-                        "width": 53,
-                        "height": 62,
-                        "left": 921,
-                        "top": 144
-                     },
-                     "score": 0.9794,
-                     "line_number": 1
-                  },
-                  {
-                     "word": "that",
-                     "location": {
-                        "width": 120,
-                        "height": 58,
-                        "left": 253,
-                        "top": 260
-                     },
-                     "score": 0.9722,
-                     "line_number": 2
-                  },
-                  {
-                     "word": "when",
-                     "location": {
-                        "width": 192,
-                        "height": 108,
-                        "left": 380,
-                        "top": 238
-                     },
-                     "score": 0.9718,
-                     "line_number": 2
-                  },
-                  {
-                     "word": "you",
-                     "location": {
-                        "width": 116,
-                        "height": 61,
-                        "left": 583,
-                        "top": 272
-                     },
-                     "score": 0.9832,
-                     "line_number": 2
-                  },
-            */
-            convert(base64, option := ""){
-               reply := this.outer.request(base64, this.extension)
-               i := 0, obj := {}
-               while (i++ < reply.maxIndex())
-                  if (reply[i].classifier_id = "text") {
-                     data := reply[i].text
-                     for j, value in reply[i].words {
-                        value.category := value.class
-                        value.score    := value.score
-                        obj.push(value)
-                     }
-                  }
-
-               data := RegExReplace(data, "(?<!\r)\n", "`r`n")
-               data.base.FullData := obj
-               for reference, function in Vis2.Text {
-                  if IsFunc(function)
-                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
-               } ; All of the functions in Vis2.Text can now be called as such: data.google()
-               return data
-            }
-         }
-      }
-
-      class Tesseract {
-
-         static leptonica := A_ScriptDir "\provider\leptonica_util\leptonica_util.exe"
-         static tesseract := A_ScriptDir "\provider\tesseract\tesseract.exe"
-         static tessdata_best := A_ScriptDir "\provider\tesseract\tessdata_best"
-         static tessdata_fast := A_ScriptDir "\provider\tesseract\tessdata_fast"
-
-         ; Vis2.provider.Tesseract.TextRecognize()
-         class TextRecognize extends Vis2.functor {
-            uuid := Vis2.stdlib.CreateUUID()
-            temp1 := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
-            temp2 := A_Temp "\Vis2_preprocess" this.uuid ".tif"
-            temp3 := A_Temp "\Vis2_text" this.uuid ".tsv"
-
-            call(self, image:="", option:="", crop:=""){
-               instance := new this
-               if (image == "")
-                  return Vis2.core.returnData({"provider":instance, "option":option, "tooltip":"Tesseract: Optical Character Recognition Tool", "textPreview":true, "splashImage":true})
-               else
-                  return instance.convert(instance.preprocess(image, crop), option)
-            }
-
-            preprocess(image, crop := ""){
-               process := new Vis2.Graphics.Picture()
-               if !(type := process.DontVerifyImageType(image))
-                  type := process.ImageType(image)
-               if (type = "file" && !process.isScreenshot(crop)) ;POSSIBLY BITMAP ONLY?
-                  return image
-               pBitmap := process.toBitmap(type, image)
-               if process.isScreenshot(crop){
-                  pBitmap2 := process.Gdip_CropBitmap(pBitmap, crop)
-                  if (type != "pBitmap")
-                     Gdip_DisposeImage(pBitmap)
-                  pBitmap := pBitmap2s
-               }
-               Gdip_SaveBitmapToFile(pBitmap, this.temp1, this.compression)
-               if (type != "pBitmap" || process.isScreenshot(crop))
-                  Gdip_DisposeImage(pBitmap)
-               process.Destroy()
-               process := ""
-
-               static ocrPreProcessing := 1
-               static negateArg := 2
-               static performScaleArg := 1
-               static scaleFactor := 3.5
-
-               if !(FileExist(this.outer.leptonica))
-                  throw Exception("Leptonica not found.",, this.outer.leptonica)
-
-               static q := Chr(0x22)
-               _cmd .= q this.outer.leptonica q " " q this.temp1 q " " q this.temp2 q
-               _cmd .= " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
-               _cmd := ComSpec " /C " q _cmd q
-               RunWait, % _cmd,, Hide
-
-               if !(FileExist(this.temp2))
-                  throw Exception("Preprocessing failed.",, _cmd)
-
-               return this.ImageData := this.temp2
-            }
-
-            convert(file, option := "", speed := 0){
-               if !(FileExist(file))
-                  throw Exception("File not found.",, file)
-
-               if !(FileExist(this.outer.tesseract))
-                  throw Exception("Tesseract not found.",, this.outer.tesseract)
-
-               static q := Chr(0x22)
-               _cmd .= q this.outer.tesseract q " --tessdata-dir " q ((speed) ? this.outer.tessdata_fast : this.outer.tessdata_best) q
-               _cmd .= " " q file q " " q SubStr(this.temp3, 1, -4) q
-               _cmd .= (option) ? " -l " q option q : ""
-               _cmd .= " -c tessedit_create_tsv=1 -c tessedit_pageseg_mode=1"
-               _cmd := ComSpec " /C " q _cmd q
-               ;_cmd := "powershell -NoProfile -command "  q  "& " _cmd q
-               RunWait % _cmd,, Hide
-
-               database := FileOpen(this.temp3, "r`n", "UTF-8")
-               tsv := RegExReplace(database.Read(), "^\s*(.*?)\s*+$", "$1")
-               database.Close()
-
-               obj := {}, block := {"paragraphs":[]}, paragraph := {"lines":[]}, line := {"words":[]}, word := {}
-
-               line_num := block_num := par_num := word_num := 0
-               Loop, Parse, tsv, `n
-               {
-                  if (A_Index = 1)
-                     continue ; Skip headers
-
-                  ; 1 = level, 2 = page_num, 3 = block_num, 4 = par_num, 5 = line_num, 6 = word_num
-                  ; 7 = left, 8 = top, 9 = width, 10 = height, 11 = confidence, 12 = text
-                  field := StrSplit(A_LoopField, "`t")
-                  rectangle := {"x":field[7], "y":field[8], "w":field[9], "h":field[10]}
-                  polygon := []
-                  polygon.push({"x":field[7], "y":field[8]})
-                  polygon.push({"x":field[7] + field[9], "y":field[8]})
-                  polygon.push({"x":field[7] + field[9], "y":field[8] + field[10]})
-                  polygon.push({"x":field[7], "y":field[8] + field[10]})
-
-
-                  if (word_num != field[6]) {
-                     if (word_num != 0) {
-                        line.words.push(word)
-                        line.text .= (line.text == "") ? word.text : " " . word.text
-                        line.score := (line.score == "") ? word.score : (1/word_num)*word.score + ((word_num - 1)/word_num)*line.score
-                     }
-                     word_num := field[6]
-                     word := {}
-                     word.word_number := field[6]
-                     word.text := field[12]
-                     word.score := field[11]
-                     word.rectangle := rectangle
-                  }
-
-                  if (line_num != field[5]) {
-                     if (line_num != 0) {
-                        paragraph.lines.push(line)
-                        paragraph.text .= (paragraph.text == "") ? line.text : "`r`n" . line.text
-                        paragraph.score := (paragraph.score == "") ? line.score : (1/line_num)*line.score + ((line_num - 1)/line_num)*paragraph.score
-                     }
-                     line_num := field[5]
-                     line := {"words":[]}
-                     line.line_number := field[5]
-                     line.rectangle := rectangle
-                  }
-
-                  if (par_num != field[4]) {
-                     if (par_num != 0) {
-                        block.paragraphs.push(paragraph)
-                        block.text .= (block.text == "") ? paragraph.text : "`r`n" . paragraph.text
-                        block.score := (block.score == "") ? paragraph.score : (1/par_num)*paragraph.score + ((par_num - 1)/par_num)*block.score
-                     }
-                     par_num := field[4]
-                     paragraph := {"lines":[]}
-                     paragraph.paragraph_number := field[4]
-                     paragraph.rectangle := rectangle
-                  }
-                  if (block_num != field[3]) {
-                     if (block_num != 0) {
-                        text .= (text == "") ? block.text : "`r`n`r`n" . block.text
-                        score := (score == "") ? block.score : (1/block_num)*block.score + ((block_num - 1)/block_num)*score
-                        obj.push(block)
-                     }
-                     block_num := field[3]
-                     block := {"paragraphs":[]}
-                     block.block_number := field[3]
-                     block.rectangle := rectangle
-                     block.polygon := polygon
-                  }
-               }
-
-               ; Append all unfinished blocks when end of tsv is reached.
-               line.words.push(word)
-               line.text .= (line.text == "") ? word.text : " " . word.text
-               line.score := (line.score == "") ? word.score : (1/word_num)*word.score + ((word_num - 1)/word_num)*line.score
-               paragraph.lines.push(line)
-               paragraph.text .= (paragraph.text == "") ? line.text : "`r`n" . line.text
-               paragraph.score := (paragraph.score == "") ? line.score : (1/line_num)*line.score + ((line_num - 1)/line_num)*paragraph.score
-               block.paragraphs.push(paragraph)
-               block.text .= (block.text == "") ? paragraph.text : "`r`n" . paragraph.text
-               block.score := (block.score == "") ? paragraph.score : (1/par_num)*paragraph.score + ((par_num - 1)/par_num)*block.score
-               text .= (text == "") ? block.text : "`r`n`r`n" . block.text
-               score := (score == "") ? block.score : (1/block_num)*block.score + ((block_num - 1)/block_num)*score
-               obj.push(block)
-
-               data := text
-               data.base.FullData := obj
-               for reference, function in Vis2.Text {
-                  if IsFunc(function)
-                     data.base[reference] := ObjBindMethod(Vis2.Text, reference)
-               } ; All of the functions in Vis2.Text can now be called as such: data.google()
-               return data
-            }
-
-            __Delete(){
-               FileDelete, % this.temp1
-               FileDelete, % this.temp2 ; ImageData
-               FileDelete, % this.temp3
-            }
-         }
-      }
-
-      class Wolfram {
-
-         request(binary, filename){
-            static q := Chr(0x22)
-            whr := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-            whr.Open("POST", "https://www.imageidentify.com/objects/user-26a7681f-4b48-4f71-8f9f-93030898d70d/prd/imageapi", true)
-            whr.SetRequestHeader("Accept", "application/json, text/javascript, */*; q=0.01")
-            whr.SetRequestHeader("Origin", "https://www.imageidentify.com")
-            whr.SetRequestHeader("X-Requested-With", "XMLHttpRequest")
-            whr.SetRequestHeader("Content-Disposition", "attachment; filename=" q filename q)
-            whr.SetRequestHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36")
-            whr.SetRequestHeader("Content-Type", "multipart/form-data; boundary=----WebKitFormBoundaryvDFhjAljR458on8O")
-            whr.SetRequestHeader("Referer", "https://www.imageidentify.com/")
-
-            req := {"type":"file", "image_file":"data:image/" extension ";base64," base64}
-
-            whr.Send(JSON.Dump(req))
-            whr.WaitForResponse()
-            return JSON.Load(whr.ResponseText)
-         }
-
-         class ImageIdentify extends Vis2.functor {
-            static extension := "jpg", compression := "75"
-
-            call(self, image, option:="", crop:=""){
-               return this.convert(this.preprocess(image, crop), option)
-            }
-
-            preprocess(image, crop){
-               Vis2.Graphics.Startup()
-               if !(type := Vis2.preprocess.DontVerifyImageType(image))
-                  if !(type := Vis2.preprocess.ImageType(image))
-                     throw Exception("Ensure that the reference to an image is valid.")
-               pBitmap := Vis2.preprocess.toBitmap(type, image)
-               if Vis2.stdlib.isScreenshot(crop){
-                  pBitmap2 := Vis2.stdlib.Gdip_CropBitmap(pBitmap, crop)
-                  if (type != "pBitmap")
-                     Gdip_DisposeImage(pBitmap)
-                  pBitmap := pBitmap2
-               }
-               this.base64 := base64 := Vis2.stdlib.Gdip_EncodeBitmapToBase64(pBitmap, this.extension, this.compression)
-               Gdip_DisposeImage(pBitmap)
-               Vis2.Graphics.Shutdown()
-               return base64
-            }
-
-            convert(base64, option){
-               reply := this.outer.request(base64, this.extension)
-               i := 0, j := 0, obj := {}
-               while (i++ < reply.maxIndex())
-                  if (reply[i].classifier_id = "default")
-                     while (j++ < reply[i].classes.maxIndex())
-                        obj.push({ "category":    reply[i].classes[j].class
-                                 , "score":       reply[i].classes[j].score
-                                 , "hierarchy":   reply[i].classes[j].type_hierarchy})
-
-               obj := Vis2.stdlib.QuickSort(obj)
-               for k, v in obj {
-                  sentence  .= ((A_Index == 1) ? "" : ", ") . v.category
-                  sentence2 .= ((A_Index == 1) ? "" : ", ") . v.category " " v.score
-               }
-               sentence2.base.FullData := obj
-               return sentence2
-            }
-         }
-      }
-   }
-
-   class stdlib {
-
-      isBinaryImageFormat(data){
-         Loop 12
-            bytes .= Chr(NumGet(data, A_Index-1, "uchar"))
-
-         ; Null bytes are not passed, so they have been omitted below
-
-         if (bytes ~= "^BM")
-            return "bmp"
-         if (bytes ~= "^(GIF87a|GIF89a)")
-            return "gif"
-         if (bytes ~= "^ÿØÿÛ")
-            return "jpg"
-         if (bytes ~= "s)^ÿØÿà..\x4A\x46\x49\x46") ;\x00\x01
-            return "jfif"
-         if (bytes ~= "^\x89\x50\x4E\x47\x0D\x0A\x1A\x0A")
-            return "png"
-         if (bytes ~= "^(\x49\x49\x2A|\x4D\x4D\x2A)") ; 49 49 2A 00, 4D 4D 00 2A
-            return "tif"
-         return
-      }
-
-      CreateUUID() {
-         VarSetCapacity(puuid, 16, 0)
-         if !(DllCall("rpcrt4.dll\UuidCreate", "ptr", &puuid))
-            if !(DllCall("rpcrt4.dll\UuidToString", "ptr", &puuid, "uint*", suuid))
-               return StrGet(suuid), DllCall("rpcrt4.dll\RpcStringFree", "uint*", suuid)
-         return ""
-      }
-
-      QuickSort(a){
-         if (a.MaxIndex() <= 1)
-            return a
-         Less := [], Same := [], More := []
-         Pivot := a[1].score
-         for k, v in a
-         {
-            if (v.score > Pivot)
-               less.push(v)
-            else if (v.score < Pivot)
-               more.push(v)
-            else
-               same.push(v)
-         }
-         Less := this.QuickSort(Less)
-         Out := this.QuickSort(More)
-         if (Same.MaxIndex())
-            Out.InsertAt(1, Same*) ; insert all values of same at index 1
-         if (Less.MaxIndex())
-            Out.InsertAt(1, Less*) ; insert all values of less at index 1
-         return Out
-      }
-
-      setSystemCursor(CursorID = "", cx = 0, cy = 0 ) { ; Thanks to Serenity - https://autohotkey.com/board/topic/32608-changing-the-system-cursor/
-         static SystemCursors := "32512,32513,32514,32515,32516,32640,32641,32642,32643,32644,32645,32646,32648,32649,32650,32651"
-
-         Loop, Parse, SystemCursors, `,
-         {
-               Type := "SystemCursor"
-               CursorHandle := DllCall( "LoadCursor", "uInt",0, "Int",CursorID )
-               %Type%%A_Index% := DllCall( "CopyImage", "uInt",CursorHandle, "uInt",0x2, "Int",cx, "Int",cy, "uInt",0 )
-               CursorHandle := DllCall( "CopyImage", "uInt",%Type%%A_Index%, "uInt",0x2, "Int",0, "Int",0, "Int",0 )
-               DllCall( "SetSystemCursor", "uInt",CursorHandle, "Int",A_Loopfield)
          }
       }
    }
@@ -4091,4 +3883,160 @@ class Vis2 {
          return copy
       }
    }
+}
+
+
+/*
+   CreateFormData - Creates "multipart/form-data" for http post
+
+   Usage: CreateFormData(ByRef retData, ByRef retHeader, objParam)
+
+      retData   - (out) Data used for HTTP POST.
+      retHeader - (out) Content-Type header used for HTTP POST.
+      objParam  - (in)  An object defines the form parameters.
+
+                  To specify files, use array as the value. Example:
+                      objParam := { "key1": "value1"
+                                  , "upload[]": ["1.png", "2.png"] }
+
+   Requirement: BinArr.ahk -- https://gist.github.com/tmplinshi/a97d9a99b9aa5a65fd20
+   Version    : 1.20 / 2016-6-17 - Added CreateFormData_WinInet(), which can be used for VxE's HTTPRequest().
+                1.10 / 2015-6-23 - Fixed a bug
+                1.00 / 2015-5-14
+*/
+
+; Used for WinHttp.WinHttpRequest.5.1, Msxml2.XMLHTTP ...
+CreateFormData(ByRef retData, ByRef retHeader, objParam) {
+   New CreateFormData(retData, retHeader, objParam)
+}
+
+; Used for WinInet
+CreateFormData_WinInet(ByRef retData, ByRef retHeader, objParam) {
+   New CreateFormData(safeArr, retHeader, objParam)
+
+   size := safeArr.MaxIndex() + 1
+   VarSetCapacity(retData, size, 1)
+   DllCall("oleaut32\SafeArrayAccessData", "ptr", ComObjValue(safeArr), "ptr*", pdata)
+   DllCall("RtlMoveMemory", "ptr", &retData, "ptr", pdata, "ptr", size)
+   DllCall("oleaut32\SafeArrayUnaccessData", "ptr", ComObjValue(safeArr))
+}
+
+Class CreateFormData {
+
+   __New(ByRef retData, ByRef retHeader, objParam) {
+
+      CRLF := "`r`n"
+
+      Boundary := this.RandomBoundary()
+      BoundaryLine := "------------------------------" . Boundary
+
+      ; Loop input paramters
+      binArrs := []
+      For k, v in objParam
+      {
+         If IsObject(v) {
+            For i, FileName in v
+            {
+               str := BoundaryLine . CRLF
+                    . "Content-Disposition: form-data; name=""" . k . """; filename=""" . FileName . """" . CRLF
+                    . "Content-Type: " . this.MimeType(FileName) . CRLF . CRLF
+               binArrs.Push( BinArr_FromString(str) )
+               binArrs.Push( BinArr_FromFile(FileName) )
+               binArrs.Push( BinArr_FromString(CRLF) )
+            }
+         } Else {
+            str := BoundaryLine . CRLF
+                 . "Content-Disposition: form-data; name=""" . k """" . CRLF . CRLF
+                 . v . CRLF
+            binArrs.Push( BinArr_FromString(str) )
+         }
+      }
+
+      str := BoundaryLine . "--" . CRLF
+      binArrs.Push( BinArr_FromString(str) )
+
+      retData := BinArr_Join(binArrs*)
+      retHeader := "multipart/form-data; boundary=----------------------------" . Boundary
+   }
+
+   RandomBoundary() {
+      str := "0|1|2|3|4|5|6|7|8|9|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z"
+      Sort, str, D| Random
+      str := StrReplace(str, "|")
+      Return SubStr(str, 1, 12)
+   }
+
+   MimeType(FileName) {
+      n := FileOpen(FileName, "r").ReadUInt()
+      Return (n        = 0x474E5089) ? "image/png"
+           : (n        = 0x38464947) ? "image/gif"
+           : (n&0xFFFF = 0x4D42    ) ? "image/bmp"
+           : (n&0xFFFF = 0xD8FF    ) ? "image/jpeg"
+           : (n&0xFFFF = 0x4949    ) ? "image/tiff"
+           : (n&0xFFFF = 0x4D4D    ) ? "image/tiff"
+           : "application/octet-stream"
+   }
+
+}
+
+; Update: 2015-6-4 - Added BinArr_ToFile()
+
+BinArr_FromString(str) {
+	oADO := ComObjCreate("ADODB.Stream")
+
+	oADO.Type := 2 ; adTypeText
+	oADO.Mode := 3 ; adModeReadWrite
+	oADO.Open
+	oADO.Charset := "UTF-8"
+	oADO.WriteText(str)
+
+	oADO.Position := 0
+	oADO.Type := 1 ; adTypeBinary
+	oADO.Position := 3 ; Skip UTF-8 BOM
+	return oADO.Read, oADO.Close
+}
+
+BinArr_FromFile(FileName) {
+	oADO := ComObjCreate("ADODB.Stream")
+
+	oADO.Type := 1 ; adTypeBinary
+	oADO.Open
+	oADO.LoadFromFile(FileName)
+	return oADO.Read, oADO.Close
+}
+
+BinArr_Join(Arrays*) {
+	oADO := ComObjCreate("ADODB.Stream")
+
+	oADO.Type := 1 ; adTypeBinary
+	oADO.Mode := 3 ; adModeReadWrite
+	oADO.Open
+	For i, arr in Arrays
+		oADO.Write(arr)
+	oADO.Position := 0
+	return oADO.Read, oADO.Close
+}
+
+BinArr_ToString(BinArr, Encoding := "UTF-8") {
+	oADO := ComObjCreate("ADODB.Stream")
+
+	oADO.Type := 1 ; adTypeBinary
+	oADO.Mode := 3 ; adModeReadWrite
+	oADO.Open
+	oADO.Write(BinArr)
+
+	oADO.Position := 0
+	oADO.Type := 2 ; adTypeText
+	oADO.Charset  := Encoding
+	return oADO.ReadText, oADO.Close
+}
+
+BinArr_ToFile(BinArr, FileName) {
+	oADO := ComObjCreate("ADODB.Stream")
+
+	oADO.Type := 1 ; adTypeBinary
+	oADO.Open
+	oADO.Write(BinArr)
+	oADO.SaveToFile(FileName, 2)
+	oADO.Close
 }
