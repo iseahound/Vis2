@@ -944,8 +944,6 @@ class Vis2 {
          }
 
          selectImage(obj){
-            Tooltip % A_TickCount
-
             if (GetKeyState("Escape", "P"))
                return Vis2.ux.process.treasureChest(obj, A_ThisFunc, "escape")
 
@@ -1309,7 +1307,109 @@ class Vis2 {
          return this.inner.pToken := (--this.inner.Gdip <= 0) ? ((pToken) ? pToken : Gdip_Shutdown(this.inner.pToken)) : this.inner.pToken
       }
 
+      class shared {
+
+         __Delete() {
+            global pToken
+            if (this.outer.pToken)
+               return this.outer.Shutdown()
+            if (pToken)
+               return
+            if (this.pToken)
+               return Gdip_Shutdown(this.pToken)
+         }
+
+         Rect() {
+            x1 := this.x1(), y1 := this.y1(), x2 := this.x2(), y2 := this.y2()
+            return (x2 > x1 && y2 > y1) ? [x1, y1, x2, y2] : ""
+         }
+
+         Destroy() {
+            this.FreeMemory()
+            DllCall("DestroyWindow", "ptr",this.hwnd)
+            return this
+         }
+
+         isVisible() {
+            return DllCall("IsWindowVisible", "ptr",this.hwnd)
+         }
+
+         Hide() {
+            DllCall("ShowWindow", "ptr",this.hwnd, "int",0)
+            return this
+         }
+
+         Show(i := 8) {
+            DllCall("ShowWindow", "ptr",this.hwnd, "int",i)
+            return this
+         }
+
+         ToggleVisible() {
+            return (this.isVisible()) ? this.Hide() : this.Show()
+         }
+
+         AlwaysOnTop() {
+            _dhw := A_DetectHiddenWindows
+            DetectHiddenWindows On
+            WinSet, AlwaysOnTop, Toggle, % "ahk_id" this.hwnd
+            DetectHiddenWindows %_dhw%
+            return this
+         }
+
+         Bottom() {
+            _dhw := A_DetectHiddenWindows
+            DetectHiddenWindows On
+            WinSet, Bottom,, % "ahk_id" this.hwnd
+            DetectHiddenWindows %_dhw%
+            return this
+         }
+
+         ; NOT WORKING!
+         Caption() {
+            _dhw := A_DetectHiddenWindows
+            DetectHiddenWindows On
+            WinSet, Style, ^0xC00000, % "ahk_id" this.hwnd
+            DetectHiddenWindows %_dhw%
+            return this
+         }
+
+         ClickThrough() {
+            _dhw := A_DetectHiddenWindows
+            DetectHiddenWindows On
+            WinSet, ExStyle, ^0x20, % "ahk_id" this.hwnd
+            DetectHiddenWindows %_dhw%
+            return this
+         }
+
+         Normal() {
+            _dhw := A_DetectHiddenWindows
+            DetectHiddenWindows On
+            WinSet, AlwaysOnTop, Off, % "ahk_id" this.hwnd
+            DetectHiddenWindows %_dhw%
+            return this
+         }
+
+         ToolWindow() {
+            _dhw := A_DetectHiddenWindows
+            DetectHiddenWindows On
+            WinSet, ExStyle, ^0x80, % "ahk_id" this.hwnd
+            DetectHiddenWindows %_dhw%
+            return this
+         }
+      }
+
       class Area {
+
+         base := this.base
+         base.base := (this.outer) ? this.outer.shared : shared
+         outer[] {
+            get {
+               if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
+                  Loop, Parse, _class, .
+                     outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
+               return outer
+            }
+         }
 
          ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight,
          action := ["base"], x := [0], y := [0], w := [1], h := [1], a := ["top left"], q := ["bottom right"]
@@ -1335,42 +1435,12 @@ class Vis2 {
             this.pBrush := Gdip_BrushCreateSolid(this.color)
          }
 
-         __Delete() {
-            global pToken
-            if (this.outer.pToken)
-               return this.outer.Shutdown()
-            if (pToken)
-               return
-            if (this.pToken)
-               return Gdip_Shutdown(this.pToken)
-         }
-
-         Destroy() {
+         FreeMemory() {
             Gdip_DeleteBrush(this.pBrush)
             SelectObject(this.hdc, this.obm)
             DeleteObject(this.hbm)
             DeleteDC(this.hdc)
             Gdip_DeleteGraphics(this.G)
-            DllCall("DestroyWindow", "ptr",this.hwnd)
-            return this
-         }
-
-         Hide() {
-            DllCall("ShowWindow", "ptr",this.hwnd, "int",0)
-            return this
-         }
-
-         Show(i := 8) {
-            DllCall("ShowWindow", "ptr",this.hwnd, "int",i)
-            return this
-         }
-
-         ToggleVisible() {
-            return (this.isVisible()) ? this.Hide() : this.Show()
-         }
-
-         isVisible() {
-            return DllCall("IsWindowVisible", "ptr",this.hwnd)
          }
 
          isDrawable(win := "A") {
@@ -1782,24 +1852,6 @@ class Vis2 {
             return x_mouse == this.x_last && y_mouse == this.y_last
          }
 
-         outer[]
-         {
-            get {
-               ; Determine if there is a parent class. this.__class will retrive the
-               ; current instance's class name. Array notation [] will dereference.
-               ; Returns void if this function is not nested in at least 2 classes.
-               if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
-                  Loop, Parse, _class, .
-                     outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
-               return outer
-            }
-         }
-
-         Rect() {
-            x1 := this.x1(), y1 := this.y1(), x2 := this.x2(), y2 := this.y2()
-            return (x2 > x1 && y2 > y1) ? [x1, y1, x2, y2] : ""
-         }
-
          ScreenshotCoordinates() {
             x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
             return (w > 0 && h > 0) ? (x "|" y "|" w "|" h) : ""
@@ -1832,6 +1884,17 @@ class Vis2 {
 
       class Picture {
 
+         base := this.base
+         base.base := (this.outer) ? this.outer.shared : shared
+         outer[] {
+            get {
+               if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
+                  Loop, Parse, _class, .
+                     outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
+               return outer
+            }
+         }
+
          ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
 
          __New(title := "") {
@@ -1853,72 +1916,11 @@ class Vis2 {
             return this
          }
 
-         __Delete() {
-            global pToken
-            if (this.outer.pToken)
-               return this.outer.Shutdown()
-            if (pToken)
-               return
-            if (this.pToken)
-               return Gdip_Shutdown(this.pToken)
-         }
-
          FreeMemory() {
             SelectObject(this.hdc, this.obm)
             DeleteObject(this.hbm)
             DeleteDC(this.hdc)
             Gdip_DeleteGraphics(this.G)
-            return this
-         }
-
-         Destroy() {
-            this.FreeMemory()
-            DllCall("DestroyWindow", "ptr",this.hwnd)
-            return this
-         }
-
-         Hide() {
-            DllCall("ShowWindow", "ptr",this.hwnd, "int",0)
-            return this
-         }
-
-         Show(i := 8) {
-            DllCall("ShowWindow", "ptr",this.hwnd, "int",i)
-            return this
-         }
-
-         ToggleVisible() {
-            return (this.isVisible()) ? this.Hide() : this.Show()
-         }
-
-         isVisible() {
-            return DllCall("IsWindowVisible", "ptr",this.hwnd)
-         }
-
-         AlwaysOnTop() {
-            WinSet, AlwaysOnTop, Toggle, % "ahk_id" this.hwnd
-            return this
-         }
-
-         Caption() {
-            WinSet, Style, ^0xC00000, % "ahk_id" this.hwnd
-            return this
-         }
-
-         ClickThrough() {
-            _dhw := A_DetectHiddenWindows
-            DetectHiddenWindows On
-            WinGet, ExStyle, ExStyle, % "ahk_id" this.hwnd
-            if (ExStyle & 0x20)
-               WinSet, ExStyle, -0x20, % "ahk_id" this.hwnd
-            else
-               WinSet, ExStyle, +0x20, % "ahk_id" this.hwnd
-            DetectHiddenWindows %_dhw%
-            return this
-         }
-
-         ToolWindow() {
-            WinSet, ExStyle, ^0x80, % "ahk_id" this.hwnd
             return this
          }
 
@@ -2515,24 +2517,6 @@ class Vis2 {
             return (url ~= "i)" regex) ? true : false
          }
 
-         outer[]
-         {
-            get {
-               ; Determine if there is a parent class. this.__class will retrive the
-               ; current instance's class name. Array notation [] will dereference.
-               ; Returns void if this function is not nested in at least 2 classes.
-               if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
-                  Loop, Parse, _class, .
-                     outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
-               return outer
-            }
-         }
-
-         Rect() {
-            x1 := this.x1(), y1 := this.y1(), x2 := this.x2(), y2 := this.y2()
-            return (x2 > x1 && y2 > y1) ? [x1, y1, x2, y2] : ""
-         }
-
          x1() {
             return this.x
          }
@@ -2560,6 +2544,17 @@ class Vis2 {
 
       class Subtitle {
 
+         base := this.base
+         base.base := (this.outer) ? this.outer.shared : shared
+         outer[] {
+            get {
+               if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
+                  Loop, Parse, _class, .
+                     outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
+               return outer
+            }
+         }
+
          layers := {}, ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
 
          __New(title := "") {
@@ -2581,67 +2576,11 @@ class Vis2 {
             return this
          }
 
-         __Delete() {
-            global pToken
-            if (this.outer.pToken)
-               return this.outer.Shutdown()
-            if (pToken)
-               return
-            if (this.pToken)
-               return Gdip_Shutdown(this.pToken)
-         }
-
          FreeMemory() {
             SelectObject(this.hdc, this.obm)
             DeleteObject(this.hbm)
             DeleteDC(this.hdc)
             Gdip_DeleteGraphics(this.G)
-            return this
-         }
-
-         Destroy() {
-            this.FreeMemory()
-            DllCall("DestroyWindow", "ptr",this.hwnd)
-            return this
-         }
-
-         Hide() {
-            DllCall("ShowWindow", "ptr",this.hwnd, "int",0)
-            return this
-         }
-
-         Show(i := 8) {
-            DllCall("ShowWindow", "ptr",this.hwnd, "int",i)
-            return this
-         }
-
-         ToggleVisible() {
-            return (this.isVisible()) ? this.Hide() : this.Show()
-         }
-
-         isVisible() {
-            return DllCall("IsWindowVisible", "ptr",this.hwnd)
-         }
-
-         AlwaysOnTop() {
-            WinSet, AlwaysOnTop, Toggle, % "ahk_id" this.hwnd
-            return this
-         }
-
-         Bottom() {
-            WinSet, Bottom,, % "ahk_id" this.hwnd
-            return this
-         }
-
-         ClickThrough() {
-            _dhw := A_DetectHiddenWindows
-            DetectHiddenWindows On
-            WinGet, ExStyle, ExStyle, % "ahk_id" this.hwnd
-            if (ExStyle & 0x20)
-               WinSet, ExStyle, -0x20, % "ahk_id" this.hwnd
-            else
-               WinSet, ExStyle, +0x20, % "ahk_id" this.hwnd
-            DetectHiddenWindows %_dhw%
             return this
          }
 
@@ -2676,11 +2615,6 @@ class Vis2 {
             this.FreeMemory()
             DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",0)
             DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",1)
-            return this
-         }
-
-         Normal() {
-            WinSet, AlwaysOnTop, Off, % "ahk_id" this.hwnd
             return this
          }
 
@@ -3698,23 +3632,6 @@ class Vis2 {
             return value
          }
 
-         outer[]
-         {
-            get {
-               ; Determine if there is a parent class. this.__class will retrive the
-               ; current instance's class name. Array notation [] will dereference.
-               ; Returns void if this function is not nested in at least 2 classes.
-               if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
-                  Loop, Parse, _class, .
-                     outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
-               return outer
-            }
-         }
-
-         Rect() {
-            x1 := this.x1(), y1 := this.y1(), x2 := this.x2(), y2 := this.y2()
-            return (x2 > x1 && y2 > y1) ? [x1, y1, x2, y2] : ""
-         }
 
          x1() {
             return this.x
