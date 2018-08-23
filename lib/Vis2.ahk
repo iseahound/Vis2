@@ -8,28 +8,28 @@
 
 
 ; Describe() - Creates a phrase that best captions the image.
-Describe(image:="", option:="", crop:=""){
-   return Vis2.Finding(A_ThisFunc, image, option, crop)
+Describe(image:="", option:="", crop:="", toClipboard:=true){
+   return Vis2.Finding(A_ThisFunc, image, option, crop, toClipboard)
 }
 
 ; ExplicitContent() - Detect offensive or inappropriate content.
-ExplicitContent(image:="", option:="", crop:=""){
-   return Vis2.Finding(A_ThisFunc, image, option, crop)
+ExplicitContent(image:="", option:="", crop:="", toClipboard:=true){
+   return Vis2.Finding(A_ThisFunc, image, option, crop, toClipboard)
 }
 
 ; FindFaces() - Detect faces in images.
-FindFaces(image:="", option="", crop:=""){
-   return Vis2.Finding(A_ThisFunc, image, option, crop)
+FindFaces(image:="", option="", crop:="", toClipboard:=true){
+   return Vis2.Finding(A_ThisFunc, image, option, crop, toClipboard)
 }
 
 ; ImageIdentify() - Name and identify objects in images.
-ImageIdentify(image:="", option:="", crop:=""){
-   return Vis2.Finding(A_ThisFunc, image, option, crop)
+ImageIdentify(image:="", option:="", crop:="", toClipboard:=true){
+   return Vis2.Finding(A_ThisFunc, image, option, crop, toClipboard)
 }
 
 ; TextRecognize() - Convert pictures of text into text.
-TextRecognize(image:="", option:="", crop:=""){
-   return Vis2.Finding(A_ThisFunc, image, option, crop)
+TextRecognize(image:="", option:="", crop:="", toClipboard:=true){
+   return Vis2.Finding(A_ThisFunc, image, option, crop, toClipboard)
 }
 ; Alias for TextRecognize()
 OCR(terms*){
@@ -93,10 +93,10 @@ class Vis2 {
       class shared extends Vis2.service.functor {
 
          ; Flow 03 - The below code is inherited by all subclasses of service providers.
-         call(self, image:="", option:="", crop:=""){
+         call(self, image:="", option:="", crop:="", toClipboard:=true){
             if (image == "")
-               return Vis2.ux.returnData({"service":new this, "option":option, "tooltip":this.tooltip
-                  , "alert":this.alert, "splashImage":this.splashImage, "textPreview":this.textPreview})
+               return Vis2.ux.returnData({"service":new this, "option":option, "tooltip":this.tooltip, "alert":this.alert
+               , "splashImage":this.splashImage, "textPreview":this.textPreview, "toClipboard":toClipboard})
             else
                return (new this).convert(image, crop, option)
          }
@@ -876,7 +876,7 @@ class Vis2 {
             return error
          while !(Vis2.ux.io.status)
             Sleep 10
-         return (Vis2.ux.io.status > 0) ? Vis2.ux.io.data : Vis2.ux.io.status
+         return Vis2.ux.io.data
       }
 
       ; start() is the function that launches the user interface.
@@ -905,7 +905,7 @@ class Vis2 {
          Vis2.Graphics.Startup()
          obj.selectMode := "Quick"
          obj.area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
-         obj.picture := new Vis2.Graphics.Picture("Vis2_Kitsune").Hide()
+         obj.picture := new Vis2.Graphics.Picture("Vis2_Kitsune")
          obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
 
          obj.style1_back := {"x":"center", "y":"83.33vh", "padding":"1.35vh", "color":"DD000000", "radius":8}
@@ -974,7 +974,7 @@ class Vis2 {
                   obj.area.draw()
             }
             else
-               Vis2.ux.process.treasureChest(obj, A_ThisFunc)
+               return Vis2.ux.process.treasureChest(obj, A_ThisFunc)
             return
          }
 
@@ -998,7 +998,8 @@ class Vis2 {
          static void := ObjBindMethod({}, {})
 
             if ((obj.area.width() < -25 || obj.area.height() < -25) && !obj.note_02)
-               obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen", "time: 6250, x: center, y: 67%, p1.35vh, c: FCF9AF, r8", "c000000 s2.23%")
+               obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen"
+                  , "time: 6250, x: center, y: 67%, p1.35vh, c: FCF9AF, r8", "c000000 s2.23%")
 
             obj.key.LButton := GetKeyState("LButton", "P") ? 1 : 0
             obj.key.RButton := GetKeyState("RButton", "P") ? 1 : 0
@@ -1032,18 +1033,6 @@ class Vis2 {
             obj.action.Space := (obj.key.Space && !obj.key.Control && !obj.key.Alt && !obj.key.Shift)
                ? ((!obj.action.Space) ? 1 : -1) : 0
 
-            ; Space Hotkeys
-            if (obj.action.Control_Space = 1) {
-               obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
-               obj.picture.toggleVisible()
-            } else if (obj.action.Alt_Space = 1) {
-               obj.area.toggleCoordinates()
-            } else if (obj.action.Shift_Space = 1) {
-
-            } else if (obj.action.Space = 1) {
-               Vis2.ux.process.treasureChest(obj, A_ThisFunc) ; Exit function.
-            }
-
             ; Mouse Hotkeys
             if (obj.action.Control_LButton)
                obj.area.resizeCorners()
@@ -1065,6 +1054,18 @@ class Vis2 {
                   Hotkey, RButton, % void, Off
                }
             }
+
+            ; Space Hotkeys
+            if (obj.action.Control_Space = 1) {
+               if (obj.imagePreview := !obj.imagePreview) ; Toggle our new imagePreview flag!
+                  obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
+            } else if (obj.action.Alt_Space = 1) {
+               obj.area.toggleCoordinates()
+            } else if (obj.action.Shift_Space = 1) {
+
+            } else if (obj.action.Space = 1) {
+               return Vis2.ux.process.treasureChest(obj, A_ThisFunc) ; return this!
+            }
             return
          }
 
@@ -1079,14 +1080,31 @@ class Vis2 {
                ;obj.area.changeColor(0x7FDDDDDD) ; Lighten Area object, but do not hide or delete it until key up.
                (overlap) ? obj.subtitle.show() : ""
 
+               if (!obj.picture.isBitmapEqual(pBitmap, obj.pBitmap)) {
+                  (overlap2 := Vis2.ux.process.overlap(obj.area.rect(), obj.picture.rect())) ? obj.picture.hide() : ""
+                  Gdip_DisposeImage(pBitmap)
+                  pBitmap := Gdip_BitmapFromScreen(coordinates)
+                  (overlap2) ? obj.picture.show() : ""
+               }
+
                ; If any x,y,w,h coordinates are different, or the image has changed (like video), proceed.
                if (bypass || coordinates != obj.coordinates || !obj.picture.isBitmapEqual(pBitmap, obj.pBitmap)) {
 
                   try {
                      ; Declare type as pBitmap
-                     Vis2.ux.io.data := obj.service.convert({"pBitmap":pBitmap},, obj.option, 100)
-                     if (obj.picture.isVisible() == true)
-                        obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
+                     data := obj.service.convert({"pBitmap":pBitmap},, obj.option, 100)
+
+                     if (Vis2.ux.io.status == 0)
+                        Vis2.ux.io.data := data ; Eliminate race condition.
+
+                     if (!bypass) {
+                        if (obj.imagePreview)
+                           obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
+                        else {
+                           xywh := StrSplit(coordinates, "|")
+                           obj.picture.render(, {"size":0.2857, "x":xywh.1, "y":xywh.2, "w":xywh.3, "h":xywh.4}, Vis2.ux.io.data.FullData)
+                        }
+                     }
                   }
                   catch e {
                      MsgBox, 16,, % "Exception thrown!`n`nwhat: " e.what "`nfile: " e.file
@@ -1100,7 +1118,13 @@ class Vis2 {
                   obj.coordinates := coordinates
                   obj.pBitmap := pBitmap
 
-                  if !(bypass)
+                  if (!bypass && !obj.imagePreview) {
+                     Gdip_DisposeImage(pBitmap)
+                     obj.pBitmap := Gdip_BitmapFromScreen(coordinates)
+                  }
+
+
+                  if (!bypass)
                      Vis2.ux.process.display(obj, (Vis2.ux.io.data.maxLines(3)) ? Vis2.ux.io.data.maxLines(3) : obj.service.alert)
 
                }
@@ -1123,8 +1147,10 @@ class Vis2 {
             (IsObject(obj.unlock) && key != obj.unlock.1) ? obj.unlock.push(key) : (obj.unlock := [key])
 
             ; Immediately escape when called by SelectImage.
-            if (escape)
+            if (escape) {
+               Vis2.ux.io.data := "" ; race condition in ConvertImage!
                return Vis2.ux.escape(obj, -1)
+            }
 
             ; ConvertImage will do nothing when escaped via SelectImage.
             if (Vis2.ux.io.status != 0)
@@ -1156,22 +1182,28 @@ class Vis2 {
          }
 
          finale(obj){
-            if (Vis2.ux.io.data == "")
-               return Vis2.ux.escape(obj, -2) ; Error: No Text Data Found
-
-            if (obj.noCopy != true) {
-               clipboard := Vis2.ux.io.data
-               t := 1250
-               t += 8*Vis2.ux.io.data.maxLines(3).characters() ; Each character adds 8 milliseconds to base.
-               if (obj.splashImage) {
-                  t += 1250                                    ; BUGFIX: Separate it, objects bug out occasionally.
-                  t += 75*Vis2.ux.io.data.FullData.maxIndex()  ; Each category adds 75 milliseconds to base.
-                  Vis2.Graphics.Picture.Render(obj.service.coimage, "time:" t " a:center x:center y:40.99vh margin:0.926vmin size:auto width:100vw height:80.13vh", Vis2.ux.io.data.FullData).FreeMemory()
-               }
-               obj.subtitle.hide()
-               Vis2.Graphics.Subtitle.Render(Vis2.ux.io.data.maxLines(3), "time:" t " x:center y:83.33vh padding:1.35vh c:Black radius:8", "size:2.23% f:(Arial) z:(Arial Narrow) j:left c:White")
-               Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: " t ", x: center, y: 75%, p: 1.35vh, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial")
+            if (Vis2.ux.io.data == "") {
+               if (!obj.textPreview)
+                  Vis2.Graphics.Subtitle.Render(obj.service.alert,  "time:1500 x:center y:83.33vh margin:1.35vh c:FFB1AC radius:8", "f:(Arial) s2.23% c:Black")
+               return Vis2.ux.escape(obj, -2) ; blank data
             }
+
+            t := 1250
+            t += 8*Vis2.ux.io.data.maxLines(3).characters() ; Each character adds 8 milliseconds to base.
+            if (obj.splashImage) {
+               t += 1250                                    ; BUGFIX: Separate it, objects bug out occasionally.
+               t += 75*Vis2.ux.io.data.FullData.maxIndex()  ; Each category adds 75 milliseconds to base.
+            }
+
+            if (obj.toClipboard)
+               clipboard := Vis2.ux.io.data
+
+            obj.subtitle.hide()
+            Vis2.Graphics.Subtitle.Render(Vis2.ux.io.data.maxLines(3), "time:" t " x:center y:83.33vh padding:1.35vh c:Black radius:8", "size:2.23% f:(Arial) z:(Arial Narrow) j:left c:White")
+            (obj.toClipboard) ? Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: " t ", x: center, y: 75%, p: 1.35vh, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial") : ""
+            (obj.splashImage) ? Vis2.Graphics.Picture.Render(obj.service.coimage
+               , "time:" t " a:center x:center y:40.99vh margin:0.926vmin size:auto width:100vw height:80.13vh", Vis2.ux.io.data.FullData).FreeMemory() : ""
+
             return Vis2.ux.escape(obj, 1)  ; Success.
          }
 
@@ -2130,7 +2162,7 @@ class Vis2 {
          ; If a service implements this, it should return file/base64/binary.
          ; The service should also implement a bypass if there is no crop array,
          ; and the input and output types are the same.
-         Render(image, style := "", polygons := "") {
+         Render(image := "", style := "", polygons := "") {
             if !(this.hwnd) {
                _picture := (this.outer) ? new this.outer.Picture() : new Picture()
                return _picture.Render(image, style, polygons)
@@ -2149,13 +2181,15 @@ class Vis2 {
             }
          }
 
-         Draw(image, style := "", polygons := "", pGraphics := "") {
+         Draw(image := "", style := "", polygons := "", pGraphics := "") {
             if (pGraphics == "")
                pGraphics := this.G
 
-            if !(type := this.DontVerifyImageType(image))
-               type := this.ImageType(image)
-            pBitmap := this.toBitmap(type, image)
+            if (image != "") {
+               if !(type := this.DontVerifyImageType(image))
+                  type := this.ImageType(image)
+               pBitmap := this.toBitmap(type, image)
+            }
 
             style := !IsObject(style) ? RegExReplace(style, "\s+", " ") : style
 
@@ -2299,13 +2333,15 @@ class Vis2 {
             this.w := _w
             this.h := _h
 
-            ; Draw border.
-            c := this.color(c, 0xFF000000) ; Default color is black.
-            pBrush := Gdip_BrushCreateSolid(c)
-            Gdip_FillRectangle(pGraphics, pBrush, _x, _y, _w, _h)
-            Gdip_DeleteBrush(pBrush)
-
-            Gdip_DrawImage(pGraphics, pBitmap, x, y, w, h, 0, 0, width, height)
+            if (image != "") {
+               ; Draw border.
+               c := this.color(c, 0xFF000000) ; Default color is black.
+               pBrush := Gdip_BrushCreateSolid(c)
+               Gdip_FillRectangle(pGraphics, pBrush, _x, _y, _w, _h)
+               Gdip_DeleteBrush(pBrush)
+               ; Draw image.
+               Gdip_DrawImage(pGraphics, pBitmap, x, y, w, h, 0, 0, width, height)
+            }
 
             ; POINTF
             Gdip_SetSmoothingMode(pGraphics, 4)  ; None = 3, AntiAlias = 4
@@ -3765,6 +3801,8 @@ class Vis2 {
       }
 
       google(data) {
+         if (data == "")
+            return
          copy := data
          if not RegExMatch(data, "^(http|ftp|telnet)")
             copy := "https://www.google.com/search?&q=" . RegExReplace(data, "\s", "+")
