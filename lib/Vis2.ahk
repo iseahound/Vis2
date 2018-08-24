@@ -95,8 +95,7 @@ class Vis2 {
          ; Flow 03 - The below code is inherited by all subclasses of service providers.
          call(self, image:="", option:="", crop:="", toClipboard:=true){
             if (image == "")
-               return Vis2.ux.returnData({"service":new this, "option":option, "tooltip":this.tooltip, "alert":this.alert
-               , "splashImage":this.splashImage, "textPreview":this.textPreview, "toClipboard":toClipboard})
+               return Vis2.ux.returnData({"service":new this, "option":option, "toClipboard":toClipboard})
             else
                return (new this).convert(image, crop, option)
          }
@@ -655,8 +654,7 @@ class Vis2 {
 
          static leptonica := A_ScriptDir "\service\leptonica_util\leptonica_util.exe"
          static tesseract := A_ScriptDir "\service\tesseract\tesseract.exe"
-         static tessdata_best := A_ScriptDir "\service\tesseract\tessdata_best"
-         static tessdata_fast := A_ScriptDir "\service\tesseract\tessdata_fast"
+         static tessdata := A_ScriptDir "\service\tesseract\tessdata" ; https://github.com/tesseract-ocr/tessdata
 
          ; Vis2.service.Tesseract.TextRecognize()
          class TextRecognize extends Vis2.service.shared {
@@ -665,6 +663,7 @@ class Vis2 {
             static alert := "ERROR: No text data found."
             static splashImage := false
             static textPreview := 500
+            static upscale := 3.5
 
             uuid := this.CreateUUID()
             temp1 := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
@@ -672,20 +671,19 @@ class Vis2 {
             temp3 := A_Temp "\Vis2_text" this.uuid ".tsv"
 
             ; Flow 04 B - FINAL. If an image was provided, the GUI for image selection does not launch.
-            convert(image, crop := "", option := "", speed := 0){
+            convert(image, crop := "", option := ""){
                this.coimage := Vis2.Graphics.Picture.Preprocess("file", image, crop, this.temp1, this.compression)
 
                static ocrPreProcessing := 1
                static negateArg := 2
                static performScaleArg := 1
-               static scaleFactor := 3.5
 
                if !(FileExist(this.outer.leptonica))
                   throw Exception("Leptonica not found.",, this.outer.leptonica)
 
                static q := Chr(0x22)
                _cmd := q this.outer.leptonica q " " q this.coimage q " " q this.temp2 q
-               _cmd .= " " negateArg " 0.5 " performScaleArg " " scaleFactor " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
+               _cmd .= " " negateArg " 0.5 " performScaleArg " " this.upscale " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
                _cmd := ComSpec " /C " q _cmd q
                RunWait, % _cmd,, Hide
 
@@ -700,7 +698,7 @@ class Vis2 {
                if !(FileExist(this.outer.tesseract))
                   throw Exception("Tesseract not found.",, this.outer.tesseract)
 
-               _cmd := q this.outer.tesseract q " --tessdata-dir " q ((speed) ? this.outer.tessdata_fast : this.outer.tessdata_best) q
+               _cmd := q this.outer.tesseract q " --tessdata-dir " q this.outer.tessdata q
                _cmd .= " " q this.coimage q " " q SubStr(this.temp3, 1, -4) q
                _cmd .= (option) ? " -l " q option q : ""
                _cmd .= " -c tessedit_create_tsv=1 -c tessedit_pageseg_mode=1"
@@ -912,7 +910,7 @@ class Vis2 {
          obj.style1_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"White"}
          obj.style2_back := {"x":"center", "y":"83.33vh", "padding":"1.35vh", "color":"FF88EAB6", "radius":8}
          obj.style2_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"Black"}
-         Vis2.ux.process.display(obj, obj.tooltip, obj.style1_back, obj.style1_text)
+         Vis2.ux.process.display(obj, obj.service.tooltip, obj.style1_back, obj.style1_text)
 
          Vis2.ux.process.waitForUserInput(obj) ; Ensure this is run once.
          return
@@ -927,7 +925,7 @@ class Vis2 {
             if (GetKeyState("LButton", "P")) {
                selectImage := ObjBindMethod(Vis2.ux.process, "selectImage", obj)
                SetTimer, % selectImage, -10
-               if (obj.textPreview) {
+               if (obj.service.textPreview) {
                   Vis2.ux.process.display(obj, "Searching for data...", obj.style1_back, obj.style1_text)
                   convertImage := ObjBindMethod(Vis2.ux.process, "convertImage", obj)
                   SetTimer, % convertImage, -250
@@ -1057,8 +1055,10 @@ class Vis2 {
 
             ; Space Hotkeys
             if (obj.action.Control_Space = 1) {
-               if (obj.imagePreview := !obj.imagePreview) ; Toggle our new imagePreview flag!
-                  obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
+               if (obj.service.imagePreview := !obj.service.imagePreview) ; Toggle our new imagePreview flag!
+                  obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData).show()
+               else
+                  obj.picture.hide()
             } else if (obj.action.Alt_Space = 1) {
                obj.area.toggleCoordinates()
             } else if (obj.action.Shift_Space = 1) {
@@ -1074,42 +1074,31 @@ class Vis2 {
             ; Check for valid coordinates, returns "" if invalid.
             if (coordinates := obj.area.screenshotCoordinates()) {
                ; Sometimes a user will make the subtitle blink from top to bottom. If so, hide subtitle temporarily.
-               (overlap := Vis2.ux.process.overlap(obj.area.rect(), obj.subtitle.rect())) ? obj.subtitle.hide() : ""
+               (overlap1 := Vis2.ux.process.overlap(obj.area.rect(), obj.subtitle.rect())) ? obj.subtitle.hide() : ""
+               (overlap2 := Vis2.ux.process.overlap(obj.area.rect(), obj.picture.rect())) ? obj.picture.hide() : ""
+               (overlap3 := Vis2.ux.process.overlap(obj.area.rect(), obj.polygon.rect())) ? obj.polygon.hide() : ""
                ;obj.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
                pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
                ;obj.area.changeColor(0x7FDDDDDD) ; Lighten Area object, but do not hide or delete it until key up.
-               (overlap) ? obj.subtitle.show() : ""
-
-               if (!obj.picture.isBitmapEqual(pBitmap, obj.pBitmap)) {
-                  (overlap2 := Vis2.ux.process.overlap(obj.area.rect(), obj.picture.rect())) ? obj.picture.hide() : ""
-                  Gdip_DisposeImage(pBitmap)
-                  pBitmap := Gdip_BitmapFromScreen(coordinates)
-                  (overlap2) ? obj.picture.show() : ""
-               }
+               (overlap2) ? obj.picture.show() : ""
+               (overlap1) ? obj.subtitle.show() : ""
+               (overlap1 || overlap2) ? obj.area.show() : "" ; Assert Topmost position in z-order.
+               (overlap3) ? obj.polygon.show() : ""
 
                ; If any x,y,w,h coordinates are different, or the image has changed (like video), proceed.
                if (bypass || coordinates != obj.coordinates || !obj.picture.isBitmapEqual(pBitmap, obj.pBitmap)) {
 
-                  try {
-                     ; Declare type as pBitmap
-                     data := obj.service.convert({"pBitmap":pBitmap},, obj.option, 100)
-
-                     if (Vis2.ux.io.status == 0)
-                        Vis2.ux.io.data := data ; Eliminate race condition.
-
-                     if (!bypass) {
-                        if (obj.imagePreview)
-                           obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
-                        else {
-                           xywh := StrSplit(coordinates, "|")
-                           obj.picture.render(, {"size":0.2857, "x":xywh.1, "y":xywh.2, "w":xywh.3, "h":xywh.4}, Vis2.ux.io.data.FullData)
-                        }
-                     }
-                  }
+                  ; Declare type as pBitmap
+                  try data := obj.service.convert({"pBitmap":pBitmap},, obj.option, 100)
                   catch e {
                      MsgBox, 16,, % "Exception thrown!`n`nwhat: " e.what "`nfile: " e.file
                         . "`nline: " e.line "`nmessage: " e.message "`nextra: " e.extra "`ncoordinates: " coordinates
                   }
+
+                  if (Vis2.ux.io.status == 0)
+                     Vis2.ux.io.data := data ; Eliminate race condition.
+                  else
+                     return Gdip_DisposeImage(pBitmap) ; If selectImage exited while convert, destroy the pBitmap.
 
                   ; Do not update last coordinates (space) and last pBitmap (time) until conversion finishes.
                   ; In Vis2.ux.process.treasureChest(), obj.coordinates will be compared to user's mouse release.
@@ -1118,15 +1107,18 @@ class Vis2 {
                   obj.coordinates := coordinates
                   obj.pBitmap := pBitmap
 
-                  if (!bypass && !obj.imagePreview) {
-                     Gdip_DisposeImage(pBitmap)
-                     obj.pBitmap := Gdip_BitmapFromScreen(coordinates)
-                  }
-
-
-                  if (!bypass)
+                  ; Visual Effects
+                  if (!bypass) {
+                     if (obj.service.imagePreview)
+                        obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
+                     if (obj.service.overlayPoly) {
+                        if (!obj.polygon)
+                           obj.polygon := new Vis2.Graphics.Picture()
+                        xywh := StrSplit(coordinates, "|")
+                        obj.polygon.render(, {"size":1/obj.service.upscale, "x":xywh.1, "y":xywh.2, "w":xywh.3, "h":xywh.4}, Vis2.ux.io.data.FullData)
+                     }
                      Vis2.ux.process.display(obj, (Vis2.ux.io.data.maxLines(3)) ? Vis2.ux.io.data.maxLines(3) : obj.service.alert)
-
+                  }
                }
                else { ; This is an identical image, so delete it.
                   Gdip_DisposeImage(pBitmap)
@@ -1159,7 +1151,7 @@ class Vis2 {
             ; SelectImage returns. If ConvertImage was not started, start it now.
             if (key ~= "^Vis2.ux.process.selectImage") {
                obj.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
-               if (!obj.textPreview) {
+               if (!obj.service.textPreview) {
                   Vis2.ux.process.display(obj, "Processing using " RegExReplace(obj.service.__class, ".*\.(.*)\.(.*)$", "$1's $2()..."), obj.style2_back, obj.style2_text)
                   return Vis2.ux.process.convertImage(obj, "bypass")
                } else {
@@ -1183,14 +1175,14 @@ class Vis2 {
 
          finale(obj){
             if (Vis2.ux.io.data == "") {
-               if (!obj.textPreview)
+               if (!obj.service.textPreview)
                   Vis2.Graphics.Subtitle.Render(obj.service.alert,  "time:1500 x:center y:83.33vh margin:1.35vh c:FFB1AC radius:8", "f:(Arial) s2.23% c:Black")
                return Vis2.ux.escape(obj, -2) ; blank data
             }
 
             t := 1250
             t += 8*Vis2.ux.io.data.maxLines(3).characters() ; Each character adds 8 milliseconds to base.
-            if (obj.splashImage) {
+            if (obj.service.splashImage) {
                t += 1250                                    ; BUGFIX: Separate it, objects bug out occasionally.
                t += 75*Vis2.ux.io.data.FullData.maxIndex()  ; Each category adds 75 milliseconds to base.
             }
@@ -1201,7 +1193,7 @@ class Vis2 {
             obj.subtitle.hide()
             Vis2.Graphics.Subtitle.Render(Vis2.ux.io.data.maxLines(3), "time:" t " x:center y:83.33vh padding:1.35vh c:Black radius:8", "size:2.23% f:(Arial) z:(Arial Narrow) j:left c:White")
             (obj.toClipboard) ? Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: " t ", x: center, y: 75%, p: 1.35vh, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial") : ""
-            (obj.splashImage) ? Vis2.Graphics.Picture.Render(obj.service.coimage
+            (obj.service.splashImage) ? Vis2.Graphics.Picture.Render(obj.service.coimage
                , "time:" t " a:center x:center y:40.99vh margin:0.926vmin size:auto width:100vw height:80.13vh", Vis2.ux.io.data.FullData).FreeMemory() : ""
 
             return Vis2.ux.escape(obj, 1)  ; Success.
@@ -1250,6 +1242,7 @@ class Vis2 {
 
          obj.area.destroy()
          obj.picture.destroy()
+         obj.polygon.destroy()
          obj.subtitle.destroy()
          obj.note_01.hide() ; Let them time out instead of Destroy()
          obj.note_02.destroy()
