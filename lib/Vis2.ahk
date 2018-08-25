@@ -902,7 +902,7 @@ class Vis2 {
 
          Vis2.Graphics.Startup()
          obj.selectMode := "Quick"
-         obj.area := new Vis2.Graphics.Area("Vis2_Aries", "0x7FDDDDDD")
+         obj.area := new Vis2.Graphics.Area("Vis2_Aries", 1, 0x7FDDDDDD)
          obj.picture := new Vis2.Graphics.Picture("Vis2_Kitsune")
          obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
 
@@ -1060,7 +1060,7 @@ class Vis2 {
                else
                   obj.picture.hide()
             } else if (obj.action.Alt_Space = 1) {
-               obj.area.toggleCoordinates()
+               obj.area.toggleCoordinates() ; BROKEN!!
             } else if (obj.action.Shift_Space = 1) {
 
             } else if (obj.action.Space = 1) {
@@ -1113,7 +1113,7 @@ class Vis2 {
                         obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
                      if (obj.service.overlayPoly) {
                         if (!obj.polygon)
-                           obj.polygon := new Vis2.Graphics.Picture()
+                           obj.polygon := new Vis2.Graphics.Picture("Vis2_Polygon")
                         xywh := StrSplit(coordinates, "|")
                         obj.polygon.render(, {"size":1/obj.service.upscale, "x":xywh.1, "y":xywh.2, "w":xywh.3, "h":xywh.4}, Vis2.ux.io.data.FullData)
                      }
@@ -1332,7 +1332,53 @@ class Vis2 {
          return this.inner.pToken := (--this.inner.Gdip <= 0) ? ((pToken) ? pToken : Gdip_Shutdown(this.inner.pToken)) : this.inner.pToken
       }
 
+      inner[] {
+         get {
+            if (_class := this.__class)
+               Loop, Parse, _class, .
+                  inner := (A_Index=1) ? %A_LoopField% : inner[A_LoopField]
+            return inner
+         }
+      }
+
       class shared {
+
+         ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
+
+         __New(title := "", showWindow := 8, terms*) {
+            global pToken
+            if !(this.outer.Startup())
+               if !(pToken)
+                  if !(this.pToken := Gdip_Startup())
+                     throw Exception("Gdiplus failed to start. Please ensure you have gdiplus on your system.")
+
+            Gui, New, +LastFound +AlwaysOnTop -Caption -DPIScale +E0x80000 +ToolWindow +hwndhwnd
+            DllCall("ShowWindow", "ptr",hwnd, "int", (showWindow = -1) ? ((this.isDrawable()) ? 8 : 1) : showWindow)
+            this.hwnd := hwnd
+            this.title := (title != "") ? title : RegExReplace(this.__class, "(.*\.)*(.*)$", "$2") "_" this.hwnd
+            DllCall("SetWindowText", "ptr",this.hwnd, "str",this.title)
+            this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
+            this.hdc := CreateCompatibleDC()
+            this.obm := SelectObject(this.hdc, this.hbm)
+            this.G := Gdip_GraphicsFromHDC(this.hdc)
+            this.Additional(terms*)
+            return this
+         }
+
+         isDrawable(win := "A") {
+             static WM_KEYDOWN := 0x100
+             static WM_KEYUP := 0x101
+             static vk_to_use := 7
+             ; Test whether we can send keystrokes to this window.
+             ; Use a virtual keycode which is unlikely to do anything:
+             PostMessage, WM_KEYDOWN, vk_to_use, 0,, % win
+             if !ErrorLevel
+             {   ; Seems best to post key-up, in case the window is keeping track.
+                 PostMessage, WM_KEYUP, vk_to_use, 0xC0000000,, % win
+                 return true
+             }
+             return false
+         }
 
          __Delete() {
             global pToken
@@ -1347,6 +1393,33 @@ class Vis2 {
          Rect() {
             x1 := this.x1(), y1 := this.y1(), x2 := this.x2(), y2 := this.y2()
             return (x2 > x1 && y2 > y1) ? [x1, y1, x2, y2] : ""
+         }
+
+         DetectScreenResolutionChange(width := "", height := "") {
+            width := (width) ? width : A_ScreenWidth
+            height := (height) ? height : A_ScreenHeight
+            if (width != this.ScreenWidth || height != this.ScreenHeight) {
+               this.ScreenWidth := width, this.ScreenHeight := height
+               SelectObject(this.hdc, this.obm)
+               DeleteObject(this.hbm)
+               DeleteDC(this.hdc)
+               Gdip_DeleteGraphics(this.G)
+               this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
+               this.hdc := CreateCompatibleDC()
+               this.obm := SelectObject(this.hdc, this.hbm)
+               this.G := Gdip_GraphicsFromHDC(this.hdc)
+               this.Recover()
+            }
+            return this
+         }
+
+         FreeMemory() {
+            this.Before()
+            SelectObject(this.hdc, this.obm)
+            DeleteObject(this.hbm)
+            DeleteDC(this.hdc)
+            Gdip_DeleteGraphics(this.G)
+            return this
          }
 
          Destroy() {
@@ -1421,6 +1494,338 @@ class Vis2 {
             DetectHiddenWindows %_dhw%
             return this
          }
+
+         Desktop() {
+            ; Based on: https://www.codeproject.com/Articles/856020/Draw-Behind-Desktop-Icons-in-Windows-plus?msg=5478543#xx5478543xx
+            DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",0)
+            DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",1) ; Post-Creator's Update Windows 10.
+            WinGet, windows, List, ahk_class WorkerW
+            Loop, %windows%
+               if (DllCall("FindWindowEx", "ptr",windows%A_Index%, "ptr",0, "str","SHELLDLL_DefView", "ptr",0) != 0)
+                  WorkerW := DllCall("FindWindowEx", "ptr",0, "ptr",windows%A_Index%, "str","WorkerW", "ptr",0)
+
+            if (WorkerW) {
+               this.Destroy()
+               this.hwnd := WorkerW
+               DllCall("SetWindowPos", "uint",WorkerW, "uint",1, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight, "uint",0)
+               this.base.FreeMemory := ObjBindMethod(this, "DesktopFreeMemory")
+               this.base.Destroy := ObjBindMethod(this, "DesktopDestroy")
+               this.hdc := DllCall("GetDCEx", "ptr",WorkerW, "ptr",0, "int",0x403)
+               this.G := Gdip_GraphicsFromHDC(this.hdc)
+            }
+            return this
+         }
+
+         DesktopFreeMemory() {
+            ReleaseDC(this.hdc)
+            Gdip_DeleteGraphics(this.G)
+            return this
+         }
+
+         DesktopDestroy() {
+            this.FreeMemory()
+            DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",0)
+            DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",1)
+            return this
+         }
+
+         color(c, default := 0xDD424242) {
+            static colorRGB  := "^0x([0-9A-Fa-f]{6})$"
+            static colorARGB := "^0x([0-9A-Fa-f]{8})$"
+            static hex6      :=   "^([0-9A-Fa-f]{6})$"
+            static hex8      :=   "^([0-9A-Fa-f]{8})$"
+
+            if ObjGetCapacity([c], 1) {
+               c  := (c ~= "^#") ? SubStr(c, 2) : c
+               c  := ((___ := this.colorMap(c)) != "") ? ___ : c
+               c  := (c ~= colorRGB) ? "0xFF" RegExReplace(c, colorRGB, "$1") : (c ~= hex8) ? "0x" c : (c ~= hex6) ? "0xFF" c : c
+               c  := (c ~= colorARGB) ? c : default
+            }
+            return (c != "") ? c : default
+         }
+
+         colorMap(c) {
+            static map
+
+            if !(map) {
+            color := [] ; 73 LINES MAX
+            color["Clear"] := color["Off"] := color["None"] := color["Transparent"] := "0x00000000"
+
+               color["AliceBlue"]             := "0xFFF0F8FF"
+            ,  color["AntiqueWhite"]          := "0xFFFAEBD7"
+            ,  color["Aqua"]                  := "0xFF00FFFF"
+            ,  color["Aquamarine"]            := "0xFF7FFFD4"
+            ,  color["Azure"]                 := "0xFFF0FFFF"
+            ,  color["Beige"]                 := "0xFFF5F5DC"
+            ,  color["Bisque"]                := "0xFFFFE4C4"
+            ,  color["Black"]                 := "0xFF000000"
+            ,  color["BlanchedAlmond"]        := "0xFFFFEBCD"
+            ,  color["Blue"]                  := "0xFF0000FF"
+            ,  color["BlueViolet"]            := "0xFF8A2BE2"
+            ,  color["Brown"]                 := "0xFFA52A2A"
+            ,  color["BurlyWood"]             := "0xFFDEB887"
+            ,  color["CadetBlue"]             := "0xFF5F9EA0"
+            ,  color["Chartreuse"]            := "0xFF7FFF00"
+            ,  color["Chocolate"]             := "0xFFD2691E"
+            ,  color["Coral"]                 := "0xFFFF7F50"
+            ,  color["CornflowerBlue"]        := "0xFF6495ED"
+            ,  color["Cornsilk"]              := "0xFFFFF8DC"
+            ,  color["Crimson"]               := "0xFFDC143C"
+            ,  color["Cyan"]                  := "0xFF00FFFF"
+            ,  color["DarkBlue"]              := "0xFF00008B"
+            ,  color["DarkCyan"]              := "0xFF008B8B"
+            ,  color["DarkGoldenRod"]         := "0xFFB8860B"
+            ,  color["DarkGray"]              := "0xFFA9A9A9"
+            ,  color["DarkGrey"]              := "0xFFA9A9A9"
+            ,  color["DarkGreen"]             := "0xFF006400"
+            ,  color["DarkKhaki"]             := "0xFFBDB76B"
+            ,  color["DarkMagenta"]           := "0xFF8B008B"
+            ,  color["DarkOliveGreen"]        := "0xFF556B2F"
+            ,  color["DarkOrange"]            := "0xFFFF8C00"
+            ,  color["DarkOrchid"]            := "0xFF9932CC"
+            ,  color["DarkRed"]               := "0xFF8B0000"
+            ,  color["DarkSalmon"]            := "0xFFE9967A"
+            ,  color["DarkSeaGreen"]          := "0xFF8FBC8F"
+            ,  color["DarkSlateBlue"]         := "0xFF483D8B"
+            ,  color["DarkSlateGray"]         := "0xFF2F4F4F"
+            ,  color["DarkSlateGrey"]         := "0xFF2F4F4F"
+            ,  color["DarkTurquoise"]         := "0xFF00CED1"
+            ,  color["DarkViolet"]            := "0xFF9400D3"
+            ,  color["DeepPink"]              := "0xFFFF1493"
+            ,  color["DeepSkyBlue"]           := "0xFF00BFFF"
+            ,  color["DimGray"]               := "0xFF696969"
+            ,  color["DimGrey"]               := "0xFF696969"
+            ,  color["DodgerBlue"]            := "0xFF1E90FF"
+            ,  color["FireBrick"]             := "0xFFB22222"
+            ,  color["FloralWhite"]           := "0xFFFFFAF0"
+            ,  color["ForestGreen"]           := "0xFF228B22"
+            ,  color["Fuchsia"]               := "0xFFFF00FF"
+            ,  color["Gainsboro"]             := "0xFFDCDCDC"
+            ,  color["GhostWhite"]            := "0xFFF8F8FF"
+            ,  color["Gold"]                  := "0xFFFFD700"
+            ,  color["GoldenRod"]             := "0xFFDAA520"
+            ,  color["Gray"]                  := "0xFF808080"
+            ,  color["Grey"]                  := "0xFF808080"
+            ,  color["Green"]                 := "0xFF008000"
+            ,  color["GreenYellow"]           := "0xFFADFF2F"
+            ,  color["HoneyDew"]              := "0xFFF0FFF0"
+            ,  color["HotPink"]               := "0xFFFF69B4"
+            ,  color["IndianRed"]             := "0xFFCD5C5C"
+            ,  color["Indigo"]                := "0xFF4B0082"
+            ,  color["Ivory"]                 := "0xFFFFFFF0"
+            ,  color["Khaki"]                 := "0xFFF0E68C"
+            ,  color["Lavender"]              := "0xFFE6E6FA"
+            ,  color["LavenderBlush"]         := "0xFFFFF0F5"
+            ,  color["LawnGreen"]             := "0xFF7CFC00"
+            ,  color["LemonChiffon"]          := "0xFFFFFACD"
+            ,  color["LightBlue"]             := "0xFFADD8E6"
+            ,  color["LightCoral"]            := "0xFFF08080"
+            ,  color["LightCyan"]             := "0xFFE0FFFF"
+            ,  color["LightGoldenRodYellow"]  := "0xFFFAFAD2"
+            ,  color["LightGray"]             := "0xFFD3D3D3"
+            ,  color["LightGrey"]             := "0xFFD3D3D3"
+               color["LightGreen"]            := "0xFF90EE90"
+            ,  color["LightPink"]             := "0xFFFFB6C1"
+            ,  color["LightSalmon"]           := "0xFFFFA07A"
+            ,  color["LightSeaGreen"]         := "0xFF20B2AA"
+            ,  color["LightSkyBlue"]          := "0xFF87CEFA"
+            ,  color["LightSlateGray"]        := "0xFF778899"
+            ,  color["LightSlateGrey"]        := "0xFF778899"
+            ,  color["LightSteelBlue"]        := "0xFFB0C4DE"
+            ,  color["LightYellow"]           := "0xFFFFFFE0"
+            ,  color["Lime"]                  := "0xFF00FF00"
+            ,  color["LimeGreen"]             := "0xFF32CD32"
+            ,  color["Linen"]                 := "0xFFFAF0E6"
+            ,  color["Magenta"]               := "0xFFFF00FF"
+            ,  color["Maroon"]                := "0xFF800000"
+            ,  color["MediumAquaMarine"]      := "0xFF66CDAA"
+            ,  color["MediumBlue"]            := "0xFF0000CD"
+            ,  color["MediumOrchid"]          := "0xFFBA55D3"
+            ,  color["MediumPurple"]          := "0xFF9370DB"
+            ,  color["MediumSeaGreen"]        := "0xFF3CB371"
+            ,  color["MediumSlateBlue"]       := "0xFF7B68EE"
+            ,  color["MediumSpringGreen"]     := "0xFF00FA9A"
+            ,  color["MediumTurquoise"]       := "0xFF48D1CC"
+            ,  color["MediumVioletRed"]       := "0xFFC71585"
+            ,  color["MidnightBlue"]          := "0xFF191970"
+            ,  color["MintCream"]             := "0xFFF5FFFA"
+            ,  color["MistyRose"]             := "0xFFFFE4E1"
+            ,  color["Moccasin"]              := "0xFFFFE4B5"
+            ,  color["NavajoWhite"]           := "0xFFFFDEAD"
+            ,  color["Navy"]                  := "0xFF000080"
+            ,  color["OldLace"]               := "0xFFFDF5E6"
+            ,  color["Olive"]                 := "0xFF808000"
+            ,  color["OliveDrab"]             := "0xFF6B8E23"
+            ,  color["Orange"]                := "0xFFFFA500"
+            ,  color["OrangeRed"]             := "0xFFFF4500"
+            ,  color["Orchid"]                := "0xFFDA70D6"
+            ,  color["PaleGoldenRod"]         := "0xFFEEE8AA"
+            ,  color["PaleGreen"]             := "0xFF98FB98"
+            ,  color["PaleTurquoise"]         := "0xFFAFEEEE"
+            ,  color["PaleVioletRed"]         := "0xFFDB7093"
+            ,  color["PapayaWhip"]            := "0xFFFFEFD5"
+            ,  color["PeachPuff"]             := "0xFFFFDAB9"
+            ,  color["Peru"]                  := "0xFFCD853F"
+            ,  color["Pink"]                  := "0xFFFFC0CB"
+            ,  color["Plum"]                  := "0xFFDDA0DD"
+            ,  color["PowderBlue"]            := "0xFFB0E0E6"
+            ,  color["Purple"]                := "0xFF800080"
+            ,  color["RebeccaPurple"]         := "0xFF663399"
+            ,  color["Red"]                   := "0xFFFF0000"
+            ,  color["RosyBrown"]             := "0xFFBC8F8F"
+            ,  color["RoyalBlue"]             := "0xFF4169E1"
+            ,  color["SaddleBrown"]           := "0xFF8B4513"
+            ,  color["Salmon"]                := "0xFFFA8072"
+            ,  color["SandyBrown"]            := "0xFFF4A460"
+            ,  color["SeaGreen"]              := "0xFF2E8B57"
+            ,  color["SeaShell"]              := "0xFFFFF5EE"
+            ,  color["Sienna"]                := "0xFFA0522D"
+            ,  color["Silver"]                := "0xFFC0C0C0"
+            ,  color["SkyBlue"]               := "0xFF87CEEB"
+            ,  color["SlateBlue"]             := "0xFF6A5ACD"
+            ,  color["SlateGray"]             := "0xFF708090"
+            ,  color["SlateGrey"]             := "0xFF708090"
+            ,  color["Snow"]                  := "0xFFFFFAFA"
+            ,  color["SpringGreen"]           := "0xFF00FF7F"
+            ,  color["SteelBlue"]             := "0xFF4682B4"
+            ,  color["Tan"]                   := "0xFFD2B48C"
+            ,  color["Teal"]                  := "0xFF008080"
+            ,  color["Thistle"]               := "0xFFD8BFD8"
+            ,  color["Tomato"]                := "0xFFFF6347"
+            ,  color["Turquoise"]             := "0xFF40E0D0"
+            ,  color["Violet"]                := "0xFFEE82EE"
+            ,  color["Wheat"]                 := "0xFFF5DEB3"
+            ,  color["White"]                 := "0xFFFFFFFF"
+            ,  color["WhiteSmoke"]            := "0xFFF5F5F5"
+               color["Yellow"]                := "0xFFFFFF00"
+            ,  color["YellowGreen"]           := "0xFF9ACD32"
+            map := color
+            }
+
+            return map[c]
+         }
+
+         margin_and_padding(m, default := 0) {
+            static valid := "^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
+            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
+
+            if IsObject(m) {
+               m.1 := (m.top    != "") ? m.top    : m.t
+               m.2 := (m.right  != "") ? m.right  : m.r
+               m.3 := (m.bottom != "") ? m.bottom : m.b
+               m.4 := (m.left   != "") ? m.left   : m.l
+            } else if (m != "") {
+               _ := RegExReplace(m, ":\s+", ":")
+               _ := RegExReplace(_, "\s+", " ")
+               _ := StrSplit(_, " ")
+               _.1 := ((___ := RegExReplace(m, q1    "(t(op)?)"           q2, "${value}")) != m) ? ___ : _.1
+               _.2 := ((___ := RegExReplace(m, q1    "(r(ight)?)"         q2, "${value}")) != m) ? ___ : _.2
+               _.3 := ((___ := RegExReplace(m, q1    "(b(ottom)?)"        q2, "${value}")) != m) ? ___ : _.3
+               _.4 := ((___ := RegExReplace(m, q1    "(l(eft)?)"          q2, "${value}")) != m) ? ___ : _.4
+               m := _
+            }
+            else return {1:default, 2:default, 3:default, 4:default}
+
+            ; Follow CSS guidelines for margin!
+            if (m.2 == "" && m.3 == "" && m.4 == "")
+               m.4 := m.3 := m.2 := m.1, exception := true
+            if (m.3 == "" && m.4 == "")
+               m.4 := m.2, m.3 := m.1
+            if (m.4 == "")
+               m.4 := m.2
+
+            for key, value in m {
+               m[key] := (m[key] ~= valid) ? RegExReplace(m[key], "\s", "") : default
+               m[key] := (m[key] ~= "(pt|px)$") ? SubStr(m[key], 1, -2) : m[key]
+               m[key] := (m[key] ~= "vw$") ? RegExReplace(m[key], "vw$", "") * this.vw : m[key]
+               m[key] := (m[key] ~= "vh$") ? RegExReplace(m[key], "vh$", "") * this.vh : m[key]
+               m[key] := (m[key] ~= "vmin$") ? RegExReplace(m[key], "vmin$", "") * this.vmin : m[key]
+            }
+            m.1 := (m.1 ~= "%$") ? SubStr(m.1, 1, -1) * this.vh : m.1
+            m.2 := (m.2 ~= "%$") ? SubStr(m.2, 1, -1) * (exception ? this.vh : this.vw) : m.2
+            m.3 := (m.3 ~= "%$") ? SubStr(m.3, 1, -1) * this.vh : m.3
+            m.4 := (m.4 ~= "%$") ? SubStr(m.4, 1, -1) * (exception ? this.vh : this.vw) : m.4
+            return m
+         }
+
+         GaussianBlur(ByRef pBitmap, radius, opacity := 1) {
+            static x86 := "
+            (LTrim
+            VYnlV1ZTg+xci0Uci30c2UUgx0WsAwAAAI1EAAGJRdiLRRAPr0UYicOJRdSLRRwP
+            r/sPr0UYiX2ki30UiUWoi0UQjVf/i30YSA+vRRgDRQgPr9ONPL0SAAAAiUWci0Uc
+            iX3Eg2XE8ECJVbCJRcCLRcSJZbToAAAAACnEi0XEiWXk6AAAAAApxItFxIllzOgA
+            AAAAKcSLRaiJZcjHRdwAAAAAx0W8AAAAAIlF0ItFvDtFFA+NcAEAAItV3DHAi12c
+            i3XQiVXgAdOLfQiLVdw7RRiNDDp9IQ+2FAGLTcyLfciJFIEPtgwDD69VwIkMh4tN
+            5IkUgUDr0THSO1UcfBKLXdwDXQzHRbgAAAAAK13Q6yAxwDtFGH0Ni33kD7YcAQEc
+            h0Dr7kIDTRjrz/9FuAN1GItF3CtF0AHwiceLRbg7RRx/LDHJO00YfeGLRQiLfcwB
+            8A+2BAgrBI+LfeQDBI+ZiQSPjTwz933YiAQPQevWi0UIK0Xci03AAfCJRbiLXRCJ
+            /itdHCt13AN14DnZfAgDdQwrdeDrSot1DDHbK3XcAf4DdeA7XRh9KItV4ItFuAHQ
+            A1UID7YEGA+2FBop0ItV5AMEmokEmpn3fdiIBB5D69OLRRhBAUXg66OLRRhDAUXg
+            O10QfTIxyTtNGH3ti33Ii0XgA0UID7YUCIsEjynQi1XkAwSKiQSKi1XgjTwWmfd9
+            2IgED0Hr0ItF1P9FvAFF3AFF0OmE/v//i0Wkx0XcAAAAAMdFvAAAAACJRdCLRbAD
+            RQyJRaCLRbw7RRAPjXABAACLTdwxwItdoIt10IlN4AHLi30Mi1XcO0UYjQw6fSEP
+            thQBi33MD7YMA4kUh4t9yA+vVcCJDIeLTeSJFIFA69Ex0jtVHHwSi13cA10Ix0W4
+            AAAAACtd0OsgMcA7RRh9DYt95A+2HAEBHIdA6+5CA03U68//RbgDddSLRdwrRdAB
+            8InHi0W4O0UcfywxyTtNGH3hi0UMi33MAfAPtgQIKwSPi33kAwSPmYkEj408M/d9
+            2IgED0Hr1otFDCtF3ItNwAHwiUW4i10Uif4rXRwrddwDdeA52XwIA3UIK3Xg60qL
+            dQgx2yt13AH+A3XgO10YfSiLVeCLRbgB0ANVDA+2BBgPthQaKdCLVeQDBJqJBJqZ
+            933YiAQeQ+vTi0XUQQFF4Ouji0XUQwFF4DtdFH0yMck7TRh97Yt9yItF4ANFDA+2
+            FAiLBI+LfeQp0ItV4AMEj4kEj408Fpn3fdiIBA9B69CLRRj/RbwBRdwBRdDphP7/
+            //9NrItltA+Fofz//9no3+l2PzHJMds7XRR9OotFGIt9CA+vwY1EBwMx/zt9EH0c
+            D7Yw2cBHVtoMJFrZXeTzDyx15InyiBADRRjr30MDTRDrxd3Y6wLd2I1l9DHAW15f
+            XcM=
+            )"
+            static x64 := "
+            (LTrim
+            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
+            )"
+            width := Gdip_GetImageWidth(pBitmap)
+            height := Gdip_GetImageHeight(pBitmap)
+            clone := Gdip_CloneBitmapArea(pBitmap, 0, 0, width, height)
+            E1 := Gdip_LockBits(pBitmap, 0, 0, width, height, Stride1, Scan01, BitmapData1)
+            E2 := Gdip_LockBits(clone, 0, 0, width, height, Stride2, Scan02, BitmapData2)
+
+            DllCall("crypt32\CryptStringToBinary", "str",(A_PtrSize == 8) ? x64 : x86, "uint",0, "uint",0x1, "ptr",0, "uint*",s, "ptr",0, "ptr",0)
+            p := DllCall("GlobalAlloc", "uint",0, "ptr",s, "ptr")
+            if (A_PtrSize == 8)
+               DllCall("VirtualProtect", "ptr",p, "ptr",s, "uint",0x40, "uint*",op)
+            DllCall("crypt32\CryptStringToBinary", "str",(A_PtrSize == 8) ? x64 : x86, "uint",0, "uint",0x1, "ptr",p, "uint*",s, "ptr",0, "ptr",0)
+            value := DllCall(p, "ptr",Scan01, "ptr",Scan02, "uint",width, "uint",height, "uint",4, "uint",radius, "float",opacity)
+            DllCall("GlobalFree", "ptr", p)
+
+            Gdip_UnlockBits(pBitmap, BitmapData1)
+            Gdip_UnlockBits(clone, BitmapData2)
+            Gdip_DisposeImage(clone)
+            return value
+         }
       }
 
       class Area {
@@ -1436,111 +1841,20 @@ class Vis2 {
             }
          }
 
-         ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight,
          action := ["base"], x := [0], y := [0], w := [1], h := [1], a := ["top left"], q := ["bottom right"]
 
-         __New(title := "", color := "0x7FDDDDDD") {
-            global pToken
-            if !(this.outer.Startup())
-               if !(pToken)
-                  if !(this.pToken := Gdip_Startup())
-                     throw Exception("Gdiplus failed to start. Please ensure you have gdiplus on your system.")
-
-            Gui, New, +LastFound +AlwaysOnTop -Caption -DPIScale +E0x80000 +ToolWindow +hwndhwnd
-            this.color := color
-            this.hwnd := hwnd
-            this.title := (title != "") ? title : "Area_" this.hwnd
-            DllCall("ShowWindow", "ptr",this.hwnd, "int", (this.isDrawable()) ? 8 : 1)
-            DllCall("SetWindowText", "ptr",this.hwnd, "str",this.title)
-            this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
-            this.hdc := CreateCompatibleDC()
-            this.obm := SelectObject(this.hdc, this.hbm)
-            this.G := Gdip_GraphicsFromHDC(this.hdc)
+         Additional(terms*) {
+            this.color := (terms.1) ? terms.1 : "0x7FDDDDDD"
             Gdip_SetSmoothingMode(this.G, 4) ;Adds one clickable pixel to the edge.
             this.pBrush := Gdip_BrushCreateSolid(this.color)
          }
 
-         FreeMemory() {
+         Before() {
             Gdip_DeleteBrush(this.pBrush)
-            SelectObject(this.hdc, this.obm)
-            DeleteObject(this.hbm)
-            DeleteDC(this.hdc)
-            Gdip_DeleteGraphics(this.G)
          }
 
-         isDrawable(win := "A") {
-             static WM_KEYDOWN := 0x100
-             static WM_KEYUP := 0x101
-             static vk_to_use := 7
-             ; Test whether we can send keystrokes to this window.
-             ; Use a virtual keycode which is unlikely to do anything:
-             PostMessage, WM_KEYDOWN, vk_to_use, 0,, % win
-             if !ErrorLevel
-             {   ; Seems best to post key-up, in case the window is keeping track.
-                 PostMessage, WM_KEYUP, vk_to_use, 0xC0000000,, % win
-                 return true
-             }
-             return false
-         }
-
-         DetectScreenResolutionChange() {
-            if (this.ScreenWidth != A_ScreenWidth || this.ScreenHeight != A_ScreenHeight) {
-               this.ScreenWidth := A_ScreenWidth, this.ScreenHeight := A_ScreenHeight
-               SelectObject(this.hdc, this.obm)
-               DeleteObject(this.hbm)
-               DeleteDC(this.hdc)
-               Gdip_DeleteGraphics(this.G)
-               this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
-               this.hdc := CreateCompatibleDC()
-               this.obm := SelectObject(this.hdc, this.hbm)
-               this.G := Gdip_GraphicsFromHDC(this.hdc)
-               Gdip_SetSmoothingMode(this.G, 4)
-            }
-         }
-
-         Render(shape, style := "", polygons := "") {
-            if !(this.hwnd) {
-               _area := (this.outer) ? new this.outer.Area() : new Area()
-               return _area.Render(shape, style, polygons)
-            } else {
-               Critical On
-               this.Draw2(shape, style, polygons)
-               UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-               Critical Off
-               return this
-            }
-         }
-
-         ; Takes an array of (x,y) coodinates.
-         Draw2(shape, style := "", polygons := "", pGraphics := "") {
-            if (pGraphics == "")
-               pGraphics := this.G
-
-            style := !IsObject(style) ? RegExReplace(style, "\s+", " ") : style
-
-            if (style == "")
-               style := this.style
-            else
-               this.style := style
-
-            ; POINTF
-            Gdip_SetSmoothingMode(pGraphics, 4)  ; None = 3, AntiAlias = 4
-            pPen := Gdip_CreatePen(0xFFFF0000, 1)
-
-            for i, polygon in polygons {
-               DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
-               VarSetCapacity(pointf, 8*polygons[i].polygon.maxIndex(), 0)
-               for j, point in polygons[i].polygon {
-                  NumPut(point.x + x, pointf, 8*(A_Index-1) + 0, "float")
-                  NumPut(point.y + y, pointf, 8*(A_Index-1) + 4, "float")
-               }
-               DllCall("gdiplus\GdipAddPathPolygon", "ptr",pPath, "ptr",&pointf, "uint",polygons[i].polygon.maxIndex())
-               DllCall("gdiplus\GdipDrawPath", "ptr",pGraphics, "ptr",pPen, "ptr",pPath) ; DRAWING!
-            }
-
-            Gdip_DeletePen(pPen)
-
-            return (pGraphics == "") ? this : ""
+         Recover() {
+            Gdip_SetSmoothingMode(this.G, 4)
          }
 
          Redraw(x, y, w, h) {
@@ -1548,10 +1862,6 @@ class Vis2 {
             this.DetectScreenResolutionChange()
             Gdip_GraphicsClear(this.G)
             Gdip_FillRectangle(this.G, this.pBrush, x, y, w, h)
-            if (this.coordinates == true) {
-               ; BROKEN!!!!!
-               this.outer.Subtitle.Draw("x: " x " │ y: " y " │ w: " w " │ h: " h, {"a":"top_right", "x":"right", "y":"top", "color":"Black"}, {"font":"Lucida Sans Typewriter", "size":"1.67%"}, this.G)
-            }
             UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
             Critical Off
          }
@@ -1560,21 +1870,6 @@ class Vis2 {
             this.color := color
             Gdip_DeleteBrush(this.pBrush)
             this.pBrush := Gdip_BrushCreateSolid(this.color)
-            this.Redraw(this.x[this.x.maxIndex()], this.y[this.y.maxIndex()], this.w[this.w.maxIndex()], this.h[this.h.maxIndex()])
-         }
-
-         ShowCoordinates() {
-            this.coordinates := true
-            this.Redraw(this.x[this.x.maxIndex()], this.y[this.y.maxIndex()], this.w[this.w.maxIndex()], this.h[this.h.maxIndex()])
-         }
-
-         HideCoordinates() {
-            this.coodinates := false
-            this.Redraw(this.x[this.x.maxIndex()], this.y[this.y.maxIndex()], this.w[this.w.maxIndex()], this.h[this.h.maxIndex()])
-         }
-
-         ToggleCoordinates() {
-            this.coordinates := !this.coordinates
             this.Redraw(this.x[this.x.maxIndex()], this.y[this.y.maxIndex()], this.w[this.w.maxIndex()], this.h[this.h.maxIndex()])
          }
 
@@ -1920,57 +2215,12 @@ class Vis2 {
             }
          }
 
-         ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
-
-         __New(title := "") {
-            global pToken
-            if !(this.outer.Startup())
-               if !(pToken)
-                  if !(this.pToken := Gdip_Startup())
-                     throw Exception("Gdiplus failed to start. Please ensure you have gdiplus on your system.")
-
-            Gui, New, +LastFound +AlwaysOnTop -Caption -DPIScale +E0x80000 +ToolWindow +hwndhwnd
-            this.hwnd := hwnd
-            this.title := (title != "") ? title : "Picture_" this.hwnd
-            DllCall("ShowWindow", "ptr",this.hwnd, "int",8)
-            DllCall("SetWindowText", "ptr",this.hwnd, "str",this.title)
-            this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
-            this.hdc := CreateCompatibleDC()
-            this.obm := SelectObject(this.hdc, this.hbm)
-            this.G := Gdip_GraphicsFromHDC(this.hdc)
-            return this
-         }
-
-         FreeMemory() {
-            SelectObject(this.hdc, this.obm)
-            DeleteObject(this.hbm)
-            DeleteDC(this.hdc)
-            Gdip_DeleteGraphics(this.G)
-            return this
-         }
-
-         DetectScreenResolutionChange(w:="", h:="") {
-            w := (w) ? w : A_ScreenWidth
-            h := (h) ? h : A_ScreenHeight
-            if (this.ScreenWidth != w || this.ScreenHeight != h) {
-               this.ScreenWidth := w, this.ScreenHeight := h
-               SelectObject(this.hdc, this.obm)
-               DeleteObject(this.hbm)
-               DeleteDC(this.hdc)
-               Gdip_DeleteGraphics(this.G)
-               this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
-               this.hdc := CreateCompatibleDC()
-               this.obm := SelectObject(this.hdc, this.hbm)
-               this.G := Gdip_GraphicsFromHDC(this.hdc)
-            }
-         }
-
          ; Preprocess() - Modifies an input image and returns a Bitmap.
          ; Example: Preprocess("base64", "https://goo.gl/BWUygC")
          ;          The image is downloaded from the URL and is converted to base64.
          Preprocess(cotype, image, crop := "", terms*) {
             if !(this.hwnd) {
-               _picture := (this.outer) ? new this.outer.Picture() : new Picture()
+               _picture := (this.outer) ? new this.outer.Picture("Picture.Preprocess") : new Picture("Picture.Preprocess")
                coimage := _picture.Preprocess(cotype, image, crop, terms*)
                _picture.FreeMemory()
                _picture := ""
@@ -2359,65 +2609,6 @@ class Vis2 {
             return (pGraphics == "") ? this : ""
          }
 
-         color(c, default := 0xDD424242) {
-            static colorRGB  := "^0x([0-9A-Fa-f]{6})$"
-            static colorARGB := "^0x([0-9A-Fa-f]{8})$"
-            static hex6      :=   "^([0-9A-Fa-f]{6})$"
-            static hex8      :=   "^([0-9A-Fa-f]{8})$"
-
-            if ObjGetCapacity([c], 1) {
-               c  := (c ~= "^#") ? SubStr(c, 2) : c
-               c  := ((___ := this.outer.Subtitle.colorMap(c)) != "") ? ___ : c ; BORROW
-               c  := (c ~= colorRGB) ? "0xFF" RegExReplace(c, colorRGB, "$1") : (c ~= hex8) ? "0x" c : (c ~= hex6) ? "0xFF" c : c
-               c  := (c ~= colorARGB) ? c : default
-            }
-            return (c != "") ? c : default
-         }
-
-         margin_and_padding(m, default := 0) {
-            static valid := "^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
-            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
-
-            if IsObject(m) {
-               m.1 := (m.top    != "") ? m.top    : m.t
-               m.2 := (m.right  != "") ? m.right  : m.r
-               m.3 := (m.bottom != "") ? m.bottom : m.b
-               m.4 := (m.left   != "") ? m.left   : m.l
-            } else if (m != "") {
-               _ := RegExReplace(m, ":\s+", ":")
-               _ := RegExReplace(_, "\s+", " ")
-               _ := StrSplit(_, " ")
-               _.1 := ((___ := RegExReplace(m, q1    "(t(op)?)"           q2, "${value}")) != m) ? ___ : _.1
-               _.2 := ((___ := RegExReplace(m, q1    "(r(ight)?)"         q2, "${value}")) != m) ? ___ : _.2
-               _.3 := ((___ := RegExReplace(m, q1    "(b(ottom)?)"        q2, "${value}")) != m) ? ___ : _.3
-               _.4 := ((___ := RegExReplace(m, q1    "(l(eft)?)"          q2, "${value}")) != m) ? ___ : _.4
-               m := _
-            }
-            else return {1:default, 2:default, 3:default, 4:default}
-
-            ; Follow CSS guidelines for margin!
-            if (m.2 == "" && m.3 == "" && m.4 == "")
-               m.4 := m.3 := m.2 := m.1, exception := true
-            if (m.3 == "" && m.4 == "")
-               m.4 := m.2, m.3 := m.1
-            if (m.4 == "")
-               m.4 := m.2
-
-            for key, value in m {
-               m[key] := (m[key] ~= valid) ? RegExReplace(m[key], "\s", "") : default
-               m[key] := (m[key] ~= "(pt|px)$") ? SubStr(m[key], 1, -2) : m[key]
-               m[key] := (m[key] ~= "vw$") ? RegExReplace(m[key], "vw$", "") * this.vw : m[key]
-               m[key] := (m[key] ~= "vh$") ? RegExReplace(m[key], "vh$", "") * this.vh : m[key]
-               m[key] := (m[key] ~= "vmin$") ? RegExReplace(m[key], "vmin$", "") * this.vmin : m[key]
-            }
-            m.1 := (m.1 ~= "%$") ? SubStr(m.1, 1, -1) * this.vh : m.1
-            m.2 := (m.2 ~= "%$") ? SubStr(m.2, 1, -1) * (exception ? this.vh : this.vw) : m.2
-            m.3 := (m.3 ~= "%$") ? SubStr(m.3, 1, -1) * this.vh : m.3
-            m.4 := (m.4 ~= "%$") ? SubStr(m.4, 1, -1) * (exception ? this.vh : this.vw) : m.4
-            return m
-         }
-
          Gdip_BitmapFromClientHWND(hwnd) {
             VarSetCapacity(rc, 16)
             DllCall("GetClientRect", "ptr", hwnd, "ptr", &rc)
@@ -2584,85 +2775,11 @@ class Vis2 {
             }
          }
 
-         layers := {}, ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
+         layers := {}
 
-         __New(title := "") {
-            global pToken
-            if !(this.outer.Startup())
-               if !(pToken)
-                  if !(this.pToken := Gdip_Startup())
-                     throw Exception("Gdiplus failed to start. Please ensure you have gdiplus on your system.")
-
-            Gui, New, +LastFound +AlwaysOnTop -Caption -DPIScale +E0x80000 +ToolWindow +hwndhwnd
-            this.hwnd := hwnd
-            this.title := (title != "") ? title : "Subtitle_" this.hwnd
-            DllCall("ShowWindow", "ptr",this.hwnd, "int",8)
-            DllCall("SetWindowText", "ptr",this.hwnd, "str",this.title)
-            this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
-            this.hdc := CreateCompatibleDC()
-            this.obm := SelectObject(this.hdc, this.hbm)
-            this.G := Gdip_GraphicsFromHDC(this.hdc)
-            return this
-         }
-
-         FreeMemory() {
-            SelectObject(this.hdc, this.obm)
-            DeleteObject(this.hbm)
-            DeleteDC(this.hdc)
-            Gdip_DeleteGraphics(this.G)
-            return this
-         }
-
-         Desktop() {
-            ; Based on: https://www.codeproject.com/Articles/856020/Draw-Behind-Desktop-Icons-in-Windows-plus?msg=5478543#xx5478543xx
-            DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",0)
-            DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",1) ; Post-Creator's Update Windows 10.
-            WinGet, windows, List, ahk_class WorkerW
-            Loop, %windows%
-               if (DllCall("FindWindowEx", "ptr",windows%A_Index%, "ptr",0, "str","SHELLDLL_DefView", "ptr",0) != 0)
-                  WorkerW := DllCall("FindWindowEx", "ptr",0, "ptr",windows%A_Index%, "str","WorkerW", "ptr",0)
-
-            if (WorkerW) {
-               this.Destroy()
-               this.hwnd := WorkerW
-               DllCall("SetWindowPos", "uint",WorkerW, "uint",1, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight, "uint",0)
-               this.base.FreeMemory := ObjBindMethod(this, "DesktopFreeMemory")
-               this.base.Destroy := ObjBindMethod(this, "DesktopDestroy")
-               this.hdc := DllCall("GetDCEx", "ptr",WorkerW, "ptr",0, "int",0x403)
-               this.G := Gdip_GraphicsFromHDC(this.hdc)
-            }
-            return this
-         }
-
-         DesktopFreeMemory() {
-            ReleaseDC(this.hdc)
-            Gdip_DeleteGraphics(this.G)
-            return this
-         }
-
-         DesktopDestroy() {
-            this.FreeMemory()
-            DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",0)
-            DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",1)
-            return this
-         }
-
-         DetectScreenResolutionChange(width := "", height := "") {
-            width := (width) ? width : A_ScreenWidth
-            height := (height) ? height : A_ScreenHeight
-            if (width != this.ScreenWidth || height != this.ScreenHeight) {
-               this.ScreenWidth := width, this.ScreenHeight := height
-               SelectObject(this.hdc, this.obm)
-               DeleteObject(this.hbm)
-               DeleteDC(this.hdc)
-               Gdip_DeleteGraphics(this.G)
-               this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
-               this.hdc := CreateCompatibleDC()
-               this.obm := SelectObject(this.hdc, this.hbm)
-               this.G := Gdip_GraphicsFromHDC(this.hdc)
-               loop % this.layers.maxIndex()
-                  this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
-            }
+         Recover() {
+            loop % this.layers.maxIndex()
+               this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
          }
 
          Bitmap(x := "", y := "", w := "", h := "") {
@@ -2673,8 +2790,7 @@ class Vis2 {
 
             pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
             pGraphics := Gdip_GraphicsFromImage(pBitmap)
-            loop % this.layers.maxIndex()
-               this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
+            this.Recover()
             Gdip_DeleteGraphics(pGraphics)
             pBitmapCopy := Gdip_CloneBitmapArea(pBitmap, x, y, w, h)
             Gdip_DisposeImage(pBitmap)
@@ -3274,21 +3390,6 @@ class Vis2 {
             return (pGraphics == "") ? this : ""
          }
 
-         color(c, default := 0xDD424242) {
-            static colorRGB  := "^0x([0-9A-Fa-f]{6})$"
-            static colorARGB := "^0x([0-9A-Fa-f]{8})$"
-            static hex6      :=   "^([0-9A-Fa-f]{6})$"
-            static hex8      :=   "^([0-9A-Fa-f]{8})$"
-
-            if ObjGetCapacity([c], 1) {
-               c  := (c ~= "^#") ? SubStr(c, 2) : c
-               c  := ((___ := this.colorMap(c)) != "") ? ___ : c
-               c  := (c ~= colorRGB) ? "0xFF" RegExReplace(c, colorRGB, "$1") : (c ~= hex8) ? "0x" c : (c ~= hex6) ? "0xFF" c : c
-               c  := (c ~= colorARGB) ? c : default
-            }
-            return (c != "") ? c : default
-         }
-
          dropShadow(d, x_simulated, y_simulated, font_size) {
             static valid := "^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
             static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
@@ -3339,50 +3440,6 @@ class Vis2 {
 
          }
 
-         margin_and_padding(m, default := 0) {
-            static valid := "^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
-            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
-
-            if IsObject(m) {
-               m.1 := (m.top    != "") ? m.top    : m.t
-               m.2 := (m.right  != "") ? m.right  : m.r
-               m.3 := (m.bottom != "") ? m.bottom : m.b
-               m.4 := (m.left   != "") ? m.left   : m.l
-            } else if (m != "") {
-               _ := RegExReplace(m, ":\s+", ":")
-               _ := RegExReplace(_, "\s+", " ")
-               _ := StrSplit(_, " ")
-               _.1 := ((___ := RegExReplace(m, q1    "(t(op)?)"           q2, "${value}")) != m) ? ___ : _.1
-               _.2 := ((___ := RegExReplace(m, q1    "(r(ight)?)"         q2, "${value}")) != m) ? ___ : _.2
-               _.3 := ((___ := RegExReplace(m, q1    "(b(ottom)?)"        q2, "${value}")) != m) ? ___ : _.3
-               _.4 := ((___ := RegExReplace(m, q1    "(l(eft)?)"          q2, "${value}")) != m) ? ___ : _.4
-               m := _
-            }
-            else return {1:default, 2:default, 3:default, 4:default}
-
-            ; Follow CSS guidelines for margin!
-            if (m.2 == "" && m.3 == "" && m.4 == "")
-               m.4 := m.3 := m.2 := m.1, exception := true
-            if (m.3 == "" && m.4 == "")
-               m.4 := m.2, m.3 := m.1
-            if (m.4 == "")
-               m.4 := m.2
-
-            for key, value in m {
-               m[key] := (m[key] ~= valid) ? RegExReplace(m[key], "\s", "") : default
-               m[key] := (m[key] ~= "(pt|px)$") ? SubStr(m[key], 1, -2) : m[key]
-               m[key] := (m[key] ~= "vw$") ? RegExReplace(m[key], "vw$", "") * this.vw : m[key]
-               m[key] := (m[key] ~= "vh$") ? RegExReplace(m[key], "vh$", "") * this.vh : m[key]
-               m[key] := (m[key] ~= "vmin$") ? RegExReplace(m[key], "vmin$", "") * this.vmin : m[key]
-            }
-            m.1 := (m.1 ~= "%$") ? SubStr(m.1, 1, -1) * this.vh : m.1
-            m.2 := (m.2 ~= "%$") ? SubStr(m.2, 1, -1) * (exception ? this.vh : this.vw) : m.2
-            m.3 := (m.3 ~= "%$") ? SubStr(m.3, 1, -1) * this.vh : m.3
-            m.4 := (m.4 ~= "%$") ? SubStr(m.4, 1, -1) * (exception ? this.vh : this.vw) : m.4
-            return m
-         }
-
          outline(o, font_size, font_color) {
             static valid_positive := "^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
             static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
@@ -3422,246 +3479,6 @@ class Vis2 {
             return o
          }
 
-         colorMap(c) {
-            static map
-
-            if !(map) {
-            color := [] ; 73 LINES MAX
-            color["Clear"] := color["Off"] := color["None"] := color["Transparent"] := "0x00000000"
-
-               color["AliceBlue"]             := "0xFFF0F8FF"
-            ,  color["AntiqueWhite"]          := "0xFFFAEBD7"
-            ,  color["Aqua"]                  := "0xFF00FFFF"
-            ,  color["Aquamarine"]            := "0xFF7FFFD4"
-            ,  color["Azure"]                 := "0xFFF0FFFF"
-            ,  color["Beige"]                 := "0xFFF5F5DC"
-            ,  color["Bisque"]                := "0xFFFFE4C4"
-            ,  color["Black"]                 := "0xFF000000"
-            ,  color["BlanchedAlmond"]        := "0xFFFFEBCD"
-            ,  color["Blue"]                  := "0xFF0000FF"
-            ,  color["BlueViolet"]            := "0xFF8A2BE2"
-            ,  color["Brown"]                 := "0xFFA52A2A"
-            ,  color["BurlyWood"]             := "0xFFDEB887"
-            ,  color["CadetBlue"]             := "0xFF5F9EA0"
-            ,  color["Chartreuse"]            := "0xFF7FFF00"
-            ,  color["Chocolate"]             := "0xFFD2691E"
-            ,  color["Coral"]                 := "0xFFFF7F50"
-            ,  color["CornflowerBlue"]        := "0xFF6495ED"
-            ,  color["Cornsilk"]              := "0xFFFFF8DC"
-            ,  color["Crimson"]               := "0xFFDC143C"
-            ,  color["Cyan"]                  := "0xFF00FFFF"
-            ,  color["DarkBlue"]              := "0xFF00008B"
-            ,  color["DarkCyan"]              := "0xFF008B8B"
-            ,  color["DarkGoldenRod"]         := "0xFFB8860B"
-            ,  color["DarkGray"]              := "0xFFA9A9A9"
-            ,  color["DarkGrey"]              := "0xFFA9A9A9"
-            ,  color["DarkGreen"]             := "0xFF006400"
-            ,  color["DarkKhaki"]             := "0xFFBDB76B"
-            ,  color["DarkMagenta"]           := "0xFF8B008B"
-            ,  color["DarkOliveGreen"]        := "0xFF556B2F"
-            ,  color["DarkOrange"]            := "0xFFFF8C00"
-            ,  color["DarkOrchid"]            := "0xFF9932CC"
-            ,  color["DarkRed"]               := "0xFF8B0000"
-            ,  color["DarkSalmon"]            := "0xFFE9967A"
-            ,  color["DarkSeaGreen"]          := "0xFF8FBC8F"
-            ,  color["DarkSlateBlue"]         := "0xFF483D8B"
-            ,  color["DarkSlateGray"]         := "0xFF2F4F4F"
-            ,  color["DarkSlateGrey"]         := "0xFF2F4F4F"
-            ,  color["DarkTurquoise"]         := "0xFF00CED1"
-            ,  color["DarkViolet"]            := "0xFF9400D3"
-            ,  color["DeepPink"]              := "0xFFFF1493"
-            ,  color["DeepSkyBlue"]           := "0xFF00BFFF"
-            ,  color["DimGray"]               := "0xFF696969"
-            ,  color["DimGrey"]               := "0xFF696969"
-            ,  color["DodgerBlue"]            := "0xFF1E90FF"
-            ,  color["FireBrick"]             := "0xFFB22222"
-            ,  color["FloralWhite"]           := "0xFFFFFAF0"
-            ,  color["ForestGreen"]           := "0xFF228B22"
-            ,  color["Fuchsia"]               := "0xFFFF00FF"
-            ,  color["Gainsboro"]             := "0xFFDCDCDC"
-            ,  color["GhostWhite"]            := "0xFFF8F8FF"
-            ,  color["Gold"]                  := "0xFFFFD700"
-            ,  color["GoldenRod"]             := "0xFFDAA520"
-            ,  color["Gray"]                  := "0xFF808080"
-            ,  color["Grey"]                  := "0xFF808080"
-            ,  color["Green"]                 := "0xFF008000"
-            ,  color["GreenYellow"]           := "0xFFADFF2F"
-            ,  color["HoneyDew"]              := "0xFFF0FFF0"
-            ,  color["HotPink"]               := "0xFFFF69B4"
-            ,  color["IndianRed"]             := "0xFFCD5C5C"
-            ,  color["Indigo"]                := "0xFF4B0082"
-            ,  color["Ivory"]                 := "0xFFFFFFF0"
-            ,  color["Khaki"]                 := "0xFFF0E68C"
-            ,  color["Lavender"]              := "0xFFE6E6FA"
-            ,  color["LavenderBlush"]         := "0xFFFFF0F5"
-            ,  color["LawnGreen"]             := "0xFF7CFC00"
-            ,  color["LemonChiffon"]          := "0xFFFFFACD"
-            ,  color["LightBlue"]             := "0xFFADD8E6"
-            ,  color["LightCoral"]            := "0xFFF08080"
-            ,  color["LightCyan"]             := "0xFFE0FFFF"
-            ,  color["LightGoldenRodYellow"]  := "0xFFFAFAD2"
-            ,  color["LightGray"]             := "0xFFD3D3D3"
-            ,  color["LightGrey"]             := "0xFFD3D3D3"
-               color["LightGreen"]            := "0xFF90EE90"
-            ,  color["LightPink"]             := "0xFFFFB6C1"
-            ,  color["LightSalmon"]           := "0xFFFFA07A"
-            ,  color["LightSeaGreen"]         := "0xFF20B2AA"
-            ,  color["LightSkyBlue"]          := "0xFF87CEFA"
-            ,  color["LightSlateGray"]        := "0xFF778899"
-            ,  color["LightSlateGrey"]        := "0xFF778899"
-            ,  color["LightSteelBlue"]        := "0xFFB0C4DE"
-            ,  color["LightYellow"]           := "0xFFFFFFE0"
-            ,  color["Lime"]                  := "0xFF00FF00"
-            ,  color["LimeGreen"]             := "0xFF32CD32"
-            ,  color["Linen"]                 := "0xFFFAF0E6"
-            ,  color["Magenta"]               := "0xFFFF00FF"
-            ,  color["Maroon"]                := "0xFF800000"
-            ,  color["MediumAquaMarine"]      := "0xFF66CDAA"
-            ,  color["MediumBlue"]            := "0xFF0000CD"
-            ,  color["MediumOrchid"]          := "0xFFBA55D3"
-            ,  color["MediumPurple"]          := "0xFF9370DB"
-            ,  color["MediumSeaGreen"]        := "0xFF3CB371"
-            ,  color["MediumSlateBlue"]       := "0xFF7B68EE"
-            ,  color["MediumSpringGreen"]     := "0xFF00FA9A"
-            ,  color["MediumTurquoise"]       := "0xFF48D1CC"
-            ,  color["MediumVioletRed"]       := "0xFFC71585"
-            ,  color["MidnightBlue"]          := "0xFF191970"
-            ,  color["MintCream"]             := "0xFFF5FFFA"
-            ,  color["MistyRose"]             := "0xFFFFE4E1"
-            ,  color["Moccasin"]              := "0xFFFFE4B5"
-            ,  color["NavajoWhite"]           := "0xFFFFDEAD"
-            ,  color["Navy"]                  := "0xFF000080"
-            ,  color["OldLace"]               := "0xFFFDF5E6"
-            ,  color["Olive"]                 := "0xFF808000"
-            ,  color["OliveDrab"]             := "0xFF6B8E23"
-            ,  color["Orange"]                := "0xFFFFA500"
-            ,  color["OrangeRed"]             := "0xFFFF4500"
-            ,  color["Orchid"]                := "0xFFDA70D6"
-            ,  color["PaleGoldenRod"]         := "0xFFEEE8AA"
-            ,  color["PaleGreen"]             := "0xFF98FB98"
-            ,  color["PaleTurquoise"]         := "0xFFAFEEEE"
-            ,  color["PaleVioletRed"]         := "0xFFDB7093"
-            ,  color["PapayaWhip"]            := "0xFFFFEFD5"
-            ,  color["PeachPuff"]             := "0xFFFFDAB9"
-            ,  color["Peru"]                  := "0xFFCD853F"
-            ,  color["Pink"]                  := "0xFFFFC0CB"
-            ,  color["Plum"]                  := "0xFFDDA0DD"
-            ,  color["PowderBlue"]            := "0xFFB0E0E6"
-            ,  color["Purple"]                := "0xFF800080"
-            ,  color["RebeccaPurple"]         := "0xFF663399"
-            ,  color["Red"]                   := "0xFFFF0000"
-            ,  color["RosyBrown"]             := "0xFFBC8F8F"
-            ,  color["RoyalBlue"]             := "0xFF4169E1"
-            ,  color["SaddleBrown"]           := "0xFF8B4513"
-            ,  color["Salmon"]                := "0xFFFA8072"
-            ,  color["SandyBrown"]            := "0xFFF4A460"
-            ,  color["SeaGreen"]              := "0xFF2E8B57"
-            ,  color["SeaShell"]              := "0xFFFFF5EE"
-            ,  color["Sienna"]                := "0xFFA0522D"
-            ,  color["Silver"]                := "0xFFC0C0C0"
-            ,  color["SkyBlue"]               := "0xFF87CEEB"
-            ,  color["SlateBlue"]             := "0xFF6A5ACD"
-            ,  color["SlateGray"]             := "0xFF708090"
-            ,  color["SlateGrey"]             := "0xFF708090"
-            ,  color["Snow"]                  := "0xFFFFFAFA"
-            ,  color["SpringGreen"]           := "0xFF00FF7F"
-            ,  color["SteelBlue"]             := "0xFF4682B4"
-            ,  color["Tan"]                   := "0xFFD2B48C"
-            ,  color["Teal"]                  := "0xFF008080"
-            ,  color["Thistle"]               := "0xFFD8BFD8"
-            ,  color["Tomato"]                := "0xFFFF6347"
-            ,  color["Turquoise"]             := "0xFF40E0D0"
-            ,  color["Violet"]                := "0xFFEE82EE"
-            ,  color["Wheat"]                 := "0xFFF5DEB3"
-            ,  color["White"]                 := "0xFFFFFFFF"
-            ,  color["WhiteSmoke"]            := "0xFFF5F5F5"
-               color["Yellow"]                := "0xFFFFFF00"
-            ,  color["YellowGreen"]           := "0xFF9ACD32"
-            map := color
-            }
-
-            return map[c]
-         }
-
-         GaussianBlur(ByRef pBitmap, radius, opacity := 1) {
-            static x86 := "
-            (LTrim
-            VYnlV1ZTg+xci0Uci30c2UUgx0WsAwAAAI1EAAGJRdiLRRAPr0UYicOJRdSLRRwP
-            r/sPr0UYiX2ki30UiUWoi0UQjVf/i30YSA+vRRgDRQgPr9ONPL0SAAAAiUWci0Uc
-            iX3Eg2XE8ECJVbCJRcCLRcSJZbToAAAAACnEi0XEiWXk6AAAAAApxItFxIllzOgA
-            AAAAKcSLRaiJZcjHRdwAAAAAx0W8AAAAAIlF0ItFvDtFFA+NcAEAAItV3DHAi12c
-            i3XQiVXgAdOLfQiLVdw7RRiNDDp9IQ+2FAGLTcyLfciJFIEPtgwDD69VwIkMh4tN
-            5IkUgUDr0THSO1UcfBKLXdwDXQzHRbgAAAAAK13Q6yAxwDtFGH0Ni33kD7YcAQEc
-            h0Dr7kIDTRjrz/9FuAN1GItF3CtF0AHwiceLRbg7RRx/LDHJO00YfeGLRQiLfcwB
-            8A+2BAgrBI+LfeQDBI+ZiQSPjTwz933YiAQPQevWi0UIK0Xci03AAfCJRbiLXRCJ
-            /itdHCt13AN14DnZfAgDdQwrdeDrSot1DDHbK3XcAf4DdeA7XRh9KItV4ItFuAHQ
-            A1UID7YEGA+2FBop0ItV5AMEmokEmpn3fdiIBB5D69OLRRhBAUXg66OLRRhDAUXg
-            O10QfTIxyTtNGH3ti33Ii0XgA0UID7YUCIsEjynQi1XkAwSKiQSKi1XgjTwWmfd9
-            2IgED0Hr0ItF1P9FvAFF3AFF0OmE/v//i0Wkx0XcAAAAAMdFvAAAAACJRdCLRbAD
-            RQyJRaCLRbw7RRAPjXABAACLTdwxwItdoIt10IlN4AHLi30Mi1XcO0UYjQw6fSEP
-            thQBi33MD7YMA4kUh4t9yA+vVcCJDIeLTeSJFIFA69Ex0jtVHHwSi13cA10Ix0W4
-            AAAAACtd0OsgMcA7RRh9DYt95A+2HAEBHIdA6+5CA03U68//RbgDddSLRdwrRdAB
-            8InHi0W4O0UcfywxyTtNGH3hi0UMi33MAfAPtgQIKwSPi33kAwSPmYkEj408M/d9
-            2IgED0Hr1otFDCtF3ItNwAHwiUW4i10Uif4rXRwrddwDdeA52XwIA3UIK3Xg60qL
-            dQgx2yt13AH+A3XgO10YfSiLVeCLRbgB0ANVDA+2BBgPthQaKdCLVeQDBJqJBJqZ
-            933YiAQeQ+vTi0XUQQFF4Ouji0XUQwFF4DtdFH0yMck7TRh97Yt9yItF4ANFDA+2
-            FAiLBI+LfeQp0ItV4AMEj4kEj408Fpn3fdiIBA9B69CLRRj/RbwBRdwBRdDphP7/
-            //9NrItltA+Fofz//9no3+l2PzHJMds7XRR9OotFGIt9CA+vwY1EBwMx/zt9EH0c
-            D7Yw2cBHVtoMJFrZXeTzDyx15InyiBADRRjr30MDTRDrxd3Y6wLd2I1l9DHAW15f
-            XcM=
-            )"
-            static x64 := "
-            (LTrim
-            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
-            )"
-            width := Gdip_GetImageWidth(pBitmap)
-            height := Gdip_GetImageHeight(pBitmap)
-            clone := Gdip_CloneBitmapArea(pBitmap, 0, 0, width, height)
-            E1 := Gdip_LockBits(pBitmap, 0, 0, width, height, Stride1, Scan01, BitmapData1)
-            E2 := Gdip_LockBits(clone, 0, 0, width, height, Stride2, Scan02, BitmapData2)
-
-            DllCall("crypt32\CryptStringToBinary", "str",(A_PtrSize == 8) ? x64 : x86, "uint",0, "uint",0x1, "ptr",0, "uint*",s, "ptr",0, "ptr",0)
-            p := DllCall("GlobalAlloc", "uint",0, "ptr",s, "ptr")
-            if (A_PtrSize == 8)
-               DllCall("VirtualProtect", "ptr",p, "ptr",s, "uint",0x40, "uint*",op)
-            DllCall("crypt32\CryptStringToBinary", "str",(A_PtrSize == 8) ? x64 : x86, "uint",0, "uint",0x1, "ptr",p, "uint*",s, "ptr",0, "ptr",0)
-            value := DllCall(p, "ptr",Scan01, "ptr",Scan02, "uint",width, "uint",height, "uint",4, "uint",radius, "float",opacity)
-            DllCall("GlobalFree", "ptr", p)
-
-            Gdip_UnlockBits(pBitmap, BitmapData1)
-            Gdip_UnlockBits(clone, BitmapData2)
-            Gdip_DisposeImage(clone)
-            return value
-         }
-
-
          x1() {
             return this.x
          }
@@ -3686,18 +3503,6 @@ class Vis2 {
             return this.yy - this.y
          }
       } ; End of Subtitle class.
-
-      inner[]
-      {
-         get {
-            ; Gets a reference to the current class.
-            ; Returns void if this function is not nested in a class.
-            if (_class := this.__class)
-               Loop, Parse, _class, .
-                  inner := (A_Index=1) ? %A_LoopField% : inner[A_LoopField]
-            return inner
-         }
-      }
    }
 
    class Text {
