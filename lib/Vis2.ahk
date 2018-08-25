@@ -902,16 +902,17 @@ class Vis2 {
 
          Vis2.Graphics.Startup()
          obj.selectMode := "Quick"
-         obj.area := new Vis2.Graphics.Area("Vis2_Aries", 1, 0x7FDDDDDD)
+         obj.area := new Vis2.Graphics.Area("Vis2_Aries", 0x7FDDDDDD)
          obj.picture := new Vis2.Graphics.Picture("Vis2_Kitsune")
+         obj.polygon := new Vis2.Graphics.Picture("Vis2_Polygon")
          obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
+         obj.information := new Vis2.Graphics.Subtitle("Vis2_Information")
 
          obj.style1_back := {"x":"center", "y":"83.33vh", "padding":"1.35vh", "color":"DD000000", "radius":8}
          obj.style1_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"White"}
          obj.style2_back := {"x":"center", "y":"83.33vh", "padding":"1.35vh", "color":"FF88EAB6", "radius":8}
          obj.style2_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"Black"}
          Vis2.ux.process.display(obj, obj.service.tooltip, obj.style1_back, obj.style1_text)
-
          Vis2.ux.process.waitForUserInput(obj) ; Ensure this is run once.
          return
       }
@@ -934,6 +935,9 @@ class Vis2 {
                   Vis2.ux.process.display(obj, "Waiting for user selection...", obj.style2_back, obj.style2_text, "Still patiently waiting for user selection...")
                return
             }
+
+            if (A_Cursor == "Unknown" && WinExist("A") != obj.area.hwnd) ; BUGFIX: Flickering on custom cursor
+               obj.area.clickThrough(1)
 
             obj.area.origin()
             waitForUserInput := ObjBindMethod(Vis2.ux.process, "waitForUserInput", obj)
@@ -960,9 +964,12 @@ class Vis2 {
          }
 
          selectImageQuick(obj){
+            if (A_Cursor == "Unknown" && WinExist("A") != obj.area.hwnd) ; BUGFIX: Flickering on custom cursor
+               obj.area.clickThrough(1)
+
             if (GetKeyState("LButton", "P")) {
                if (GetKeyState("Control", "P") || GetKeyState("Alt", "P") || GetKeyState("Shift", "P"))
-                  Vis2.ux.process.selectImageTransition(obj)
+                  Vis2.ux.process.selectImageTransition(obj) ; Must be last thing to happen.
                else if (GetKeyState("RButton", "P")) {
                   obj.area.move()
                   if (!obj.area.isMouseOnCorner() && obj.area.isMouseStopped())
@@ -979,16 +986,17 @@ class Vis2 {
          selectImageTransition(obj){
          static void := ObjBindMethod({}, {})
 
-            DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
+            DllCall("SystemParametersInfo", "uint", SPI_SETCURSORS := 0x57, "uint",0, "uint",0, "uint",0) ; RestoreCursor()
             Hotkey, Space, % void, On
             Hotkey, ^Space, % void, On
             Hotkey, !Space, % void, On
             Hotkey, +Space, % void, On
-            obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35vh cFFB1AC r8", "fArial c000000 s2.23%")
+            obj.area.clickThrough(0) ; Allow the cursor to change again.
             obj.tokenMousePressed := 1
-            obj.selectMode := "Advanced" ; Exit selectImageQuick.
             obj.key := {}
             obj.action := {}
+            obj.selectMode := "Advanced" ; Exit selectImageQuick.
+            obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35vh cFFB1AC r8", "fArial c000000 s2.23%")
             return
          }
 
@@ -1060,7 +1068,10 @@ class Vis2 {
                else
                   obj.picture.hide()
             } else if (obj.action.Alt_Space = 1) {
-               obj.area.toggleCoordinates() ; BROKEN!!
+               if (obj.service.showCoordinates := !obj.service.showCoordinates)
+                  obj.information.render(obj.coordinates).show()
+               else
+                  obj.information.hide()
             } else if (obj.action.Shift_Space = 1) {
 
             } else if (obj.action.Space = 1) {
@@ -1109,11 +1120,11 @@ class Vis2 {
 
                   ; Visual Effects
                   if (!bypass) {
+                     if (obj.service.showCoordinates)
+                        obj.information.render(obj.coordinates)
                      if (obj.service.imagePreview)
                         obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
                      if (obj.service.overlayPoly) {
-                        if (!obj.polygon)
-                           obj.polygon := new Vis2.Graphics.Picture("Vis2_Polygon")
                         xywh := StrSplit(coordinates, "|")
                         obj.polygon.render(, {"size":1/obj.service.upscale, "x":xywh.1, "y":xywh.2, "w":xywh.3, "h":xywh.4}, Vis2.ux.io.data.FullData)
                      }
@@ -1260,7 +1271,7 @@ class Vis2 {
          Hotkey, ^Space, % void, Off
          Hotkey, !Space, % void, Off
          Hotkey, +Space, % void, Off
-         DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor()
+         DllCall("SystemParametersInfo", "uint", SPI_SETCURSORS := 0x57, "uint",0, "uint",0, "uint",0) ; RestoreCursor()
 
          Vis2.ux.io.status := status
          return
@@ -1278,7 +1289,7 @@ class Vis2 {
          Hotkey, ^Space, % void, Off
          Hotkey, !Space, % void, Off
          Hotkey, +Space, % void, Off
-         DllCall("SystemParametersInfo", "uInt",0x57, "uInt",0, "uInt",0, "uInt",0) ; RestoreCursor
+         DllCall("SystemParametersInfo", "uint", SPI_SETCURSORS := 0x57, "uint",0, "uint",0, "uint",0) ; RestoreCursor
          obj.area.hide()
          return
       }
@@ -1310,10 +1321,10 @@ class Vis2 {
          Loop, Parse, SystemCursors, `,
          {
                Type := "SystemCursor"
-               CursorHandle := DllCall( "LoadCursor", "uInt",0, "Int",CursorID )
-               %Type%%A_Index% := DllCall( "CopyImage", "uInt",CursorHandle, "uInt",0x2, "Int",cx, "Int",cy, "uInt",0 )
-               CursorHandle := DllCall( "CopyImage", "uInt",%Type%%A_Index%, "uInt",0x2, "Int",0, "Int",0, "Int",0 )
-               DllCall( "SetSystemCursor", "uInt",CursorHandle, "Int",A_Loopfield)
+               CursorHandle := DllCall("LoadCursor", "uint",0, "int",CursorID)
+               %Type%%A_Index% := DllCall("CopyImage", "uint",CursorHandle, "uint",0x2, "int",cx, "int",cy, "uint",0)
+               CursorHandle := DllCall("CopyImage", "uint",%Type%%A_Index%, "uint",0x2, "int",0, "int",0, "int",0 )
+               DllCall("SetSystemCursor", "uint",CursorHandle, "int",A_Loopfield) ; Destroys CursorHandle
          }
       }
    }
@@ -1343,9 +1354,7 @@ class Vis2 {
 
       class shared {
 
-         ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
-
-         __New(title := "", showWindow := 8, terms*) {
+         __New(title := "", terms*) {
             global pToken
             if !(this.outer.Startup())
                if !(pToken)
@@ -1353,7 +1362,7 @@ class Vis2 {
                      throw Exception("Gdiplus failed to start. Please ensure you have gdiplus on your system.")
 
             Gui, New, +LastFound +AlwaysOnTop -Caption -DPIScale +E0x80000 +ToolWindow +hwndhwnd
-            DllCall("ShowWindow", "ptr",hwnd, "int", (showWindow = -1) ? ((this.isDrawable()) ? 8 : 1) : showWindow)
+            Gui, Show, % (this.activateOnAdmin && !this.isDrawable()) ? "" : "NoActivate"
             this.hwnd := hwnd
             this.title := (title != "") ? title : RegExReplace(this.__class, "(.*\.)*(.*)$", "$2") "_" this.hwnd
             DllCall("SetWindowText", "ptr",this.hwnd, "str",this.title)
@@ -1446,10 +1455,10 @@ class Vis2 {
             return (this.isVisible()) ? this.Hide() : this.Show()
          }
 
-         AlwaysOnTop() {
+         AlwaysOnTop(s := -1) {
             _dhw := A_DetectHiddenWindows
             DetectHiddenWindows On
-            WinSet, AlwaysOnTop, Toggle, % "ahk_id" this.hwnd
+            WinSet, AlwaysOnTop, % s, % "ahk_id" this.hwnd
             DetectHiddenWindows %_dhw%
             return this
          }
@@ -1463,18 +1472,20 @@ class Vis2 {
          }
 
          ; NOT WORKING!
-         Caption() {
+         Caption(s := -1) {
+            s := (s = -1) ? "^" : (s = 0) ? "-" : "+"
             _dhw := A_DetectHiddenWindows
             DetectHiddenWindows On
-            WinSet, Style, ^0xC00000, % "ahk_id" this.hwnd
+            WinSet, Style, % s "0xC00000", % "ahk_id" this.hwnd
             DetectHiddenWindows %_dhw%
             return this
          }
 
-         ClickThrough() {
+         ClickThrough(s := -1) {
+            s := (s = -1) ? "^" : (s = 0) ? "-" : "+"
             _dhw := A_DetectHiddenWindows
             DetectHiddenWindows On
-            WinSet, ExStyle, ^0x20, % "ahk_id" this.hwnd
+            WinSet, ExStyle, % s "0x20", % "ahk_id" this.hwnd
             DetectHiddenWindows %_dhw%
             return this
          }
@@ -1487,10 +1498,11 @@ class Vis2 {
             return this
          }
 
-         ToolWindow() {
+         ToolWindow(s := -1) {
+            s := (s = -1) ? "^" : (s = 0) ? "-" : "+"
             _dhw := A_DetectHiddenWindows
             DetectHiddenWindows On
-            WinSet, ExStyle, ^0x80, % "ahk_id" this.hwnd
+            WinSet, ExStyle, % s "0x80", % "ahk_id" this.hwnd
             DetectHiddenWindows %_dhw%
             return this
          }
@@ -1841,6 +1853,8 @@ class Vis2 {
             }
          }
 
+         activateOnAdmin := true
+         ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
          action := ["base"], x := [0], y := [0], w := [1], h := [1], a := ["top left"], q := ["bottom right"]
 
          Additional(terms*) {
@@ -2214,6 +2228,8 @@ class Vis2 {
                return outer
             }
          }
+
+         ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
 
          ; Preprocess() - Modifies an input image and returns a Bitmap.
          ; Example: Preprocess("base64", "https://goo.gl/BWUygC")
@@ -2775,7 +2791,7 @@ class Vis2 {
             }
          }
 
-         layers := {}
+         layers := {}, ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
 
          Recover() {
             loop % this.layers.maxIndex()
