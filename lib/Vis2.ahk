@@ -41,9 +41,10 @@ class Vis2 {
 
    ; Flow 01 - Search for the word Flow to follow the function calls.
    Finding(name, terms*){
-      for index, service in Vis2.service
-         if IsObject(service[name])
-            return service[name].call(self, terms*)
+      static rank := ["Tesseract", "Google", "Wolfram", "IBM"]
+      for i, index in rank
+         if IsObject(Vis2.service[index][name])
+            return Vis2.service[index][name].call(self, terms*)
    }
 
    class service {
@@ -52,8 +53,7 @@ class Vis2 {
 
       class functor {
 
-         ; SKIPPED!!
-         ; Flow 02 - Boilerplate code that redirects to a .call() function.
+         ; Flow 01b - Calling a service directly redirects the __call() to call() then convert().
          __Call(method, args*) {
             ; When casting to Call(), use a new instance of the "function object"
             ; so as to avoid directly storing the properties(used across sub-methods)
@@ -92,7 +92,7 @@ class Vis2 {
 
       class shared extends Vis2.service.functor {
 
-         ; Flow 03 - The below code is inherited by all subclasses of service providers.
+         ; Flow 02 - Launches ux if image is blank. Creates a object that includes a service.
          call(self, image:="", option:="", crop:="", toClipboard:=true){
             if (image == "")
                return Vis2.ux.returnData({"service":new this, "option":option, "toClipboard":toClipboard})
@@ -106,6 +106,14 @@ class Vis2 {
                if !(DllCall("rpcrt4.dll\UuidToString", "ptr", &puuid, "uint*", suuid))
                   return StrGet(suuid), DllCall("rpcrt4.dll\RpcStringFree", "uint*", suuid)
             return
+         }
+
+         InternetConnected(url := "http://208.67.222.222") {
+            if !DllCall("Wininet.dll\InternetGetConnectedState", "str","", "int",0)
+               return 0
+            if !DllCall("Wininet.dll\InternetCheckConnection", "str",url, "uint",1,"uint",0)
+               return 0
+            return 1
          }
 
          QuickSort(a){
@@ -672,7 +680,7 @@ class Vis2 {
 
             ; Flow 04 B - FINAL. If an image was provided, the GUI for image selection does not launch.
             convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("file", image, crop, this.temp1, this.compression)
+               this.temp1 := Vis2.Graphics.Picture.Preprocess("file", image, crop, this.temp1, this.compression)
 
                static ocrPreProcessing := 1
                static negateArg := 2
@@ -682,7 +690,7 @@ class Vis2 {
                   throw Exception("Leptonica not found.",, this.outer.leptonica)
 
                static q := Chr(0x22)
-               _cmd := q this.outer.leptonica q " " q this.coimage q " " q this.temp2 q
+               _cmd := q this.outer.leptonica q " " q this.temp1 q " " q this.temp2 q
                _cmd .= " " negateArg " 0.5 " performScaleArg " " this.upscale " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
                _cmd := ComSpec " /C " q _cmd q
                RunWait, % _cmd,, Hide
@@ -905,8 +913,8 @@ class Vis2 {
          obj.area := new Vis2.Graphics.Area("Vis2_Aries", 0x7FDDDDDD)
          obj.picture := new Vis2.Graphics.Picture("Vis2_Kitsune")
          obj.polygon := new Vis2.Graphics.Picture("Vis2_Polygon")
-         obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
          obj.information := new Vis2.Graphics.Subtitle("Vis2_Information")
+         obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
 
          obj.style1_back := {"x":"center", "y":"83.33vh", "padding":"1.35vh", "color":"DD000000", "radius":8}
          obj.style1_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"White"}
@@ -972,8 +980,9 @@ class Vis2 {
                   Vis2.ux.process.selectImageTransition(obj) ; Must be last thing to happen.
                else if (GetKeyState("RButton", "P")) {
                   obj.area.move()
-                  if (!obj.area.isMouseOnCorner() && obj.area.isMouseStopped())
+                  if (!obj.area.isMouseOnCorner() && obj.area.isMouseStopped()) {
                      obj.area.draw() ; Error Correction of Offset
+                  }
                }
                else
                   obj.area.draw()
@@ -996,7 +1005,7 @@ class Vis2 {
             obj.key := {}
             obj.action := {}
             obj.selectMode := "Advanced" ; Exit selectImageQuick.
-            obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode", "time: 2500, xCenter y75% p1.35vh cFFB1AC r8", "fArial c000000 s2.23%")
+            obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode - Press spacebar to select.", "time:2500; x:Center; y75%; p1.35vh; c: FFB1AC; r8", "fArial c000000 s2.23%")
             return
          }
 
@@ -1004,8 +1013,8 @@ class Vis2 {
          static void := ObjBindMethod({}, {})
 
             if ((obj.area.width() < -25 || obj.area.height() < -25) && !obj.note_02)
-               obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen"
-                  , "time: 6250, x: center, y: 67%, p1.35vh, c: FCF9AF, r8", "c000000 s2.23%")
+               obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen."
+                  , "time: 6250, x: center, y: 67%, p1.35vh, c: FCF9AF, r8", "f(Arial) c000000 s2.23%")
 
             obj.key.LButton := GetKeyState("LButton", "P") ? 1 : 0
             obj.key.RButton := GetKeyState("RButton", "P") ? 1 : 0
@@ -1068,9 +1077,10 @@ class Vis2 {
                else
                   obj.picture.hide()
             } else if (obj.action.Alt_Space = 1) {
-               if (obj.service.showCoordinates := !obj.service.showCoordinates)
-                  obj.information.render(obj.coordinates).show()
-               else
+               if (obj.service.showCoordinates := !obj.service.showCoordinates) {
+                  c2 := RegExReplace((obj.coordinates) ? obj.coordinates : obj.area.screenshotCoordinates(), "^(\d+)\|(\d+)\|(\d+)\|(\d+)$", "x`n$1`n`ny`n$2`n`nw`n$3`n`nh`n$4")
+                  obj.information.render(c2, "a:centerright x:99vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000", "f:(Arial) j:center y:center s:2.23% c:White").show()
+               } else
                   obj.information.hide()
             } else if (obj.action.Shift_Space = 1) {
 
@@ -1087,14 +1097,16 @@ class Vis2 {
                ; Sometimes a user will make the subtitle blink from top to bottom. If so, hide subtitle temporarily.
                (overlap1 := Vis2.ux.process.overlap(obj.area.rect(), obj.subtitle.rect())) ? obj.subtitle.hide() : ""
                (overlap2 := Vis2.ux.process.overlap(obj.area.rect(), obj.picture.rect())) ? obj.picture.hide() : ""
-               (overlap3 := Vis2.ux.process.overlap(obj.area.rect(), obj.polygon.rect())) ? obj.polygon.hide() : ""
+               (overlap3 := Vis2.ux.process.overlap(obj.area.rect(), obj.information.rect())) ? obj.information.hide() : ""
+               (overlap4 := Vis2.ux.process.overlap(obj.area.rect(), obj.polygon.rect())) ? obj.polygon.hide() : ""
                ;obj.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
                pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
                ;obj.area.changeColor(0x7FDDDDDD) ; Lighten Area object, but do not hide or delete it until key up.
-               (overlap2) ? obj.picture.show() : ""
+               (overlap3 && obj.service.showCoordinates) ? obj.information.show() : ""
+               (overlap2 && obj.service.imagePreview) ? obj.picture.show() : ""
                (overlap1) ? obj.subtitle.show() : ""
-               (overlap1 || overlap2) ? obj.area.show() : "" ; Assert Topmost position in z-order.
-               (overlap3) ? obj.polygon.show() : ""
+               (overlap1 || overlap2 || overlap3) ? obj.area.show() : ""
+               (overlap4) ? obj.polygon.show() : "" ; Assert Topmost position in z-order.
 
                ; If any x,y,w,h coordinates are different, or the image has changed (like video), proceed.
                if (bypass || coordinates != obj.coordinates || !obj.picture.isBitmapEqual(pBitmap, obj.pBitmap)) {
@@ -1120,11 +1132,13 @@ class Vis2 {
 
                   ; Visual Effects
                   if (!bypass) {
-                     if (obj.service.showCoordinates)
-                        obj.information.render(obj.coordinates)
+                     if (obj.service.showCoordinates) {
+                        c2 := RegExReplace(obj.coordinates, "^(\d+)\|(\d+)\|(\d+)\|(\d+)$", "x`n$1`n`ny`n$2`n`nw`n$3`n`nh`n$4")
+                        obj.information.render(c2, "a:centerright x:99vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000", "f:(Arial) j:center y:center s:2.23% c:White")
+                     }
                      if (obj.service.imagePreview)
                         obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
-                     if (obj.service.overlayPoly) {
+                     if (obj.service.overlayPolygon) {
                         xywh := StrSplit(coordinates, "|")
                         obj.polygon.render(, {"size":1/obj.service.upscale, "x":xywh.1, "y":xywh.2, "w":xywh.3, "h":xywh.4}, Vis2.ux.io.data.FullData)
                      }
@@ -1223,9 +1237,8 @@ class Vis2 {
                obj.displayOverlapText := overlapText
 
             ; Render text on screen.
-            if (overlap || text != "") {
+            if (overlap || text != "")
                obj.subtitle.render((overlap && obj.displayOverlapText) ? obj.displayOverlapText : obj.displayText, backgroundStyle, textStyle)
-            }
          }
 
          overlap(rect1, rect2) {
@@ -1254,6 +1267,7 @@ class Vis2 {
          obj.area.destroy()
          obj.picture.destroy()
          obj.polygon.destroy()
+         obj.information.destroy()
          obj.subtitle.destroy()
          obj.note_01.hide() ; Let them time out instead of Destroy()
          obj.note_02.destroy()
@@ -1374,6 +1388,16 @@ class Vis2 {
             return this
          }
 
+         __Delete() {
+            global pToken
+            if (this.outer.pToken)
+               return this.outer.Shutdown()
+            if (pToken)
+               return
+            if (this.pToken)
+               return Gdip_Shutdown(this.pToken)
+         }
+
          isDrawable(win := "A") {
              static WM_KEYDOWN := 0x100
              static WM_KEYUP := 0x101
@@ -1387,16 +1411,6 @@ class Vis2 {
                  return true
              }
              return false
-         }
-
-         __Delete() {
-            global pToken
-            if (this.outer.pToken)
-               return this.outer.Shutdown()
-            if (pToken)
-               return
-            if (this.pToken)
-               return Gdip_Shutdown(this.pToken)
          }
 
          Rect() {
@@ -1417,7 +1431,7 @@ class Vis2 {
                this.hdc := CreateCompatibleDC()
                this.obm := SelectObject(this.hdc, this.hbm)
                this.G := Gdip_GraphicsFromHDC(this.hdc)
-               this.Recover()
+               this.Recover(this.G)
             }
             return this
          }
@@ -1838,12 +1852,165 @@ class Vis2 {
             Gdip_DisposeImage(clone)
             return value
          }
+
+         inner[] {
+            get {
+               if (_class := this.__class)
+                  Loop, Parse, _class, .
+                     inner := (A_Index=1) ? %A_LoopField% : inner[A_LoopField]
+               return inner
+            }
+         }
+
+         class BoundedQueue {
+
+            fn := []
+            x := []
+            y := []
+            w := []
+            h := []
+            xx := []
+            yy := []
+            mx := []
+            my := []
+            x_mouse := ""
+            y_mouse := ""
+
+            new(function, x_mouse, y_mouse){
+               if (function == this.fn.2)
+                  return
+
+               if (this.fn.2 != "" && this.lacuna(2))
+                  return
+
+               this.shift()
+               this.fn.2 := function
+               this.x_mouse := x_mouse
+               this.y_mouse := y_mouse
+               return true ; useful for allowing a new function to execute when x,y coordinates have remained the same.
+            }
+
+            ; This function takes any number of inputs, from zero to 8. It will populate the inputs with their
+            ; last known values if omitted. In the case of w & h it will check for a xx & yy input. In the case of
+            ; xx & yy, it will check for a w & h input AND check w & h last known value. This means that if w, h, xx, yy
+            ; are omitted, the width and height will remain constant, and the right and bottom values will change.
+            queue(ByRef x:="", ByRef y:="", ByRef w:="", ByRef h:="", ByRef xx:="", ByRef yy:="", ByRef mx:="", ByRef my:=""){
+               if (x != "")
+                  this.x.2 := x
+               else if (this.x.2 == "" && this.x.1 != "")
+                  this.x.2 := this.x.1
+               else if (this.x.2 == "")
+                  throw Exception("x coordinate is a mandatory parameter.")
+
+               if (y != "")
+                  this.y.2 := y
+               else if (this.y.2 == "" && this.y.1 != "")
+                  this.y.2 := this.y.1
+               else if (this.y.2 == "")
+                  throw Exception("y coordinate is a mandatory parameter.")
+
+               ; w & h are dependent on this.x.2 and this.y.2
+               if (w != "")
+                  this.w.2 := w
+               else if (xx != "")
+                  this.w.2 := xx - this.x.2
+               else if (this.w.2 == "" && this.w.1 != "")
+                  this.w.2 := this.w.1
+
+               if (h != "")
+                  this.h.2 := h
+               else if (yy != "")
+                  this.h.2 := yy - this.y.2
+               else if (this.h.2 == "" && this.h.1 != "")
+                  this.h.2 := this.h.1
+
+               ; xx & yy are dependent on this.x.2, this.y.2, this.w.2, and this.h.2
+               if (xx != "")
+                  this.xx.2 := xx
+               else if (x != "")
+                  this.xx.2 := this.w.2 + x
+               else if (w != "")
+                  this.xx.2 := this.x.2 + w
+               else if (this.xx.2 == "" && this.xx.1 != "")
+                  this.xx.2 := this.xx.1
+
+               if (yy != "")
+                  this.yy.2 := yy
+               else if (y != "")
+                  this.yy.2 := this.h.2 + y
+               else if (h != "")
+                  this.yy.2 := this.y.2 + h
+               else if (this.yy.2 == "" && this.y.1 != "")
+                  this.yy.2 := this.yy.1
+
+               if (mx != "")
+                  this.mx.2 := mx
+               else if (this.mx.2 == "" && this.mx.1 != "")
+                  this.mx.2 := this.mx.1
+
+               if (my != "")
+                  this.my.2 := my
+               else if (this.my.2 == "" && this.my.1 != "")
+                  this.my.2 := this.my.1
+
+               if (this.xx.2 - this.x.2 != this.w.2)
+                  throw Exception("Inconsistent width or x2.")
+
+               if (this.yy.2 - this.y.2 != this.h.2)
+                  throw Exception("Inconsistent height or y2.")
+
+               ; Return coordinate values by reference.
+               x := this.x.2, w := this.w.2, xx := this.xx.2, mx := this.mx.2
+               y := this.y.2, h := this.h.2, yy := this.yy.2, my := this.my.2
+            }
+
+            shift(){
+               this.fn.RemoveAt(1)
+               this.x.RemoveAt(1)
+               this.y.RemoveAt(1)
+               this.w.RemoveAt(1)
+               this.h.RemoveAt(1)
+               this.xx.RemoveAt(1)
+               this.yy.RemoveAt(1)
+               this.mx.RemoveAt(1)
+               this.my.RemoveAt(1)
+            }
+
+            lacuna(n := 2){
+               return (this.x[n] == "" || this.y[n] == "" || this.xx[n] == ""
+                  || this.yy[n] == "" || this.w[n] == "" || this.h[n] == "")
+            }
+
+            debug(){
+               Tooltip % "function: " this.fn.2
+                  . "`nx: " this.x.2 "`ty: " this.y.2
+                  . "`nw: " this.w.2 "`th: " this.h.2
+                  . "`nx2: " this.xx.2 "`ty2: " this.yy.2
+                  . "`nmx: " this.mx.2 "`tmy: " this.my.2
+
+                  . "`nfunction: " this.fn.1
+                  . "`nx: " this.x.1 "`ty: " this.y.1
+                  . "`nw: " this.w.1 "`th: " this.h.1
+                  . "`nx2: " this.xx.1 "`ty2: " this.yy.1
+                  . "`nmx: " this.mx.1 "`tmy: " this.my.1
+            }
+         }
       }
 
       class Area {
-
-         base := this.base
-         base.base := (this.outer) ? this.outer.shared : shared
+         static extends := "shared"
+         init := this._init(true)
+         _init(endofunctor := "") {
+            extends := this.extends
+            under := ((this.outer)[extends])
+               ? ((___ := (this.outer)[extends]._init()) ? ___ : (this.outer)[extends])
+               : ((___ := %extends%._init()) ? ___ : %extends%)
+            if (endofunctor)
+               this.base.base := under
+            else
+               this.base := under
+            return this
+         }
          outer[] {
             get {
                if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
@@ -1861,6 +2028,106 @@ class Vis2 {
             this.color := (terms.1) ? terms.1 : "0x7FDDDDDD"
             Gdip_SetSmoothingMode(this.G, 4) ;Adds one clickable pixel to the edge.
             this.pBrush := Gdip_BrushCreateSolid(this.color)
+
+            this.state := new this.inner.BoundedQueue()
+         }
+
+
+         /*
+         safe_x := (0 + dx <= 0) ? 0 : 0 + dx
+         safe_y := (0 + dy <= 0) ? 0 : 0 + dy
+         safe_w := (0 + this.ScreenWidth + dx >= this.ScreenWidth) ? this.ScreenWidth : 0 + this.ScreenWidth + dx
+         safe_h := (0 + this.ScreenHeight + dy >= this.ScreenHeight) ? this.ScreenHeight : 0 + this.ScreenHeight + dy
+         source_x := (dx < 0) ? -dx : 0
+         source_y := (dy < 0) ? -dy : 0
+         */
+
+         /*
+         Gdip_GraphicsClear(this.G)
+         BitBlt(this.hdc, x, y, w, h, this.hdc2, 0, 0)
+         UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+         */
+
+
+         Cache() {
+            if (!this._cache) {
+               this._cache := true
+               this.hbm2 := CreateDIBSection(this.width(), this.height())
+               this.hdc2 := CreateCompatibleDC()
+               this.obm2 := SelectObject(this.hdc2, this.hbm2)
+               BitBlt(this.hdc2, 0, 0, this.width(), this.height(), this.hdc, this.x1(), this.y1())
+            }
+            return this
+         }
+
+         MouseGetPos(ByRef x_mouse, ByRef y_mouse) {
+            _cmm := A_CoordModeMouse
+            CoordMode, Mouse, Screen
+            MouseGetPos, x_mouse, y_mouse
+            CoordMode, Mouse, %_cmm%
+         }
+
+         Origin() {
+            this.MouseGetPos(x_mouse, y_mouse)
+            new_state := this.state.new(A_ThisFunc, x_mouse, y_mouse)
+            if (new_state = 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
+               this.x_last := x_mouse, this.y_last := y_mouse
+
+               x := x_mouse
+               y := y_mouse
+               w := 1
+               h := 1
+               ;stabilize x/y corrdinates in window spy.
+
+               this.state.queue(x, y, w, h, xx, yy, mx, my)
+               this.Redraw(x, y, w, h)
+            }
+         }
+
+         Draw() {
+            this.MouseGetPos(x_mouse, y_mouse)
+            new_state := this.state.new(A_ThisFunc, x_mouse, y_mouse)
+            if (new_state = 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
+               this.x_last := x_mouse, this.y_last := y_mouse
+
+               x_origin := (this.state.mx.1) ? this.state.x.1 : this.state.xx.1
+               y_origin := (this.state.my.1) ? this.state.y.1 : this.state.yy.1
+
+               mx := (x_mouse > x_origin) ? true : false
+               my := (y_mouse > y_origin) ? true : false
+
+               x := (mx) ? x_origin : x_mouse
+               y := (my) ? y_origin : y_mouse
+               xx := (mx) ? x_mouse : x_origin
+               yy := (my) ? y_mouse : y_origin
+               ;a := (xr && yr) ? "top left" : (xr && !yr) ? "bottom left" : (!xr && yr) ? "top right" : "bottom right"
+               ;q := (xr && yr) ? "bottom right" : (xr && !yr) ? "top right" : (!xr && yr) ? "bottom left" : "top left"
+
+               this.state.queue(x, y, w, h, xx, yy, mx, my)
+               this.Redraw(x, y, w, h)
+            }
+         }
+
+         Move() {
+            this.MouseGetPos(x_mouse, y_mouse)
+            new_state := this.state.new(A_ThisFunc, x_mouse, y_mouse)
+            if (new_state = 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
+               this.x_last := x_mouse, this.y_last := y_mouse
+
+               dx := x_mouse - this.state.x_mouse
+               dy := y_mouse - this.state.y_mouse
+               x := this.state.x.1 + dx
+               y := this.state.y.1 + dy
+
+               this.state.queue(x, y, w, h, xx, yy, mx, my)
+               this.Redraw(x, y, w, h)
+            }
+         }
+
+         Hover() {
+            this.MouseGetPos(x_mouse, y_mouse)
+            new_state := this.state.new(A_ThisFunc, x_mouse, y_mouse)
+            this.state.queue()
          }
 
          Before() {
@@ -1884,225 +2151,51 @@ class Vis2 {
             this.color := color
             Gdip_DeleteBrush(this.pBrush)
             this.pBrush := Gdip_BrushCreateSolid(this.color)
-            this.Redraw(this.x[this.x.maxIndex()], this.y[this.y.maxIndex()], this.w[this.w.maxIndex()], this.h[this.h.maxIndex()])
+            this.Redraw(this.state.x.2, this.state.y.2, this.state.w.2, this.state.h.2)
          }
 
-         Propagate(v) {
-            this.a[v] := (this.a[v] == "") ? this.a[v-1] : this.a[v]
-            this.q[v] := (this.q[v] == "") ? this.q[v-1] : this.q[v]
-            this.x[v] := (this.x[v] == "") ? this.x[v-1] : this.x[v]
-            this.y[v] := (this.y[v] == "") ? this.y[v-1] : this.y[v]
-            this.w[v] := (this.w[v] == "") ? this.w[v-1] : this.w[v]
-            this.h[v] := (this.h[v] == "") ? this.h[v-1] : this.h[v]
-         }
-
-         BackPropagate(pasts) {
-            action := this.action.pop()
-            a := this.a.pop()
-            q := this.q.pop()
-            x := this.x.pop()
-            y := this.y.pop()
-            w := this.w.pop()
-            h := this.h.pop()
-
-            dx := x - this.x[pasts-1]
-            dy := y - this.y[pasts-1]
-            dw := w - this.w[pasts-1]
-            dh := h - this.h[pasts-1]
-
-            i := pasts-1
-            while (i >= 1) {
-               this.x[i] += dx
-               this.y[i] += dy
-               this.w[i] += dw
-               this.h[i] += dh
-               i--
-            }
-         }
-
-         Converge(v := "") {
-            v := (v) ? v : this.action.maxIndex()
-
-            if (v > 2) {
-               this.action := [this.action[v-1], this.action[v]]
-               this.a := [this.a[v-1], this.a[v]]
-               this.q := [this.q[v-1], this.q[v]]
-               this.x := [this.x[v-1], this.x[v]]
-               this.y := [this.y[v-1], this.y[v]]
-               this.w := [this.w[v-1], this.w[v]]
-               this.h := [this.h[v-1], this.h[v]]
-            }
-         }
-
-         Debug(function) {
-            v := (v) ? v : this.action.maxIndex()
-            Tooltip % function "`t" v . "`n" v-1 ": " this.action[v-1]
-               . "`n" this.x[v-2] ", " this.y[v-2] ", " this.w[v-2] ", " this.h[v-2]
-               . "`n" this.x[v-1] ", " this.y[v-1] ", " this.w[v-1] ", " this.h[v-1]
-               . "`n" this.x[v] ", " this.y[v] ", " this.w[v] ", " this.h[v]
-               . "`nAnchor:`t" this.a[v] "`nMouse:`t" this.q[v] "`t" this.isMouseInside()
-         }
-
-         Hover() {
-            CoordMode, Mouse, Screen
-            MouseGetPos, x_hover, y_hover
-            this.x_hover := x_hover
-            this.y_hover := y_hover
-
-            ; Resets the stack to 1.
-            if (A_ThisFunc != this.action[this.action.maxIndex()]){
-               this.action := [A_ThisFunc]
-               this.a := [this.a.pop()]
-               this.q := [this.q.pop()]
-               this.x := [this.x.pop()]
-               this.y := [this.y.pop()]
-               this.w := [this.w.pop()]
-               this.h := [this.h.pop()]
-            }
-         }
-
-         Origin(v := "") {
-            CoordMode, Mouse, Screen
-            MouseGetPos, x_mouse, y_mouse
-
-            if (A_ThisFunc != this.action[this.action.maxIndex()]){
-               this.action.push(A_ThisFunc)
-               this.x_hover := x_mouse
-               this.y_hover := y_mouse
-            }
-
-            v := (v) ? v : this.action.maxIndex()
-
-            if (x_mouse != this.x_last || y_mouse != this.y_last) {
+         ResizeCorners() {
+            this.MouseGetPos(x_mouse, y_mouse)
+            new_state := this.state.new(A_ThisFunc, x_mouse, y_mouse)
+            if (new_state = 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
                this.x_last := x_mouse, this.y_last := y_mouse
 
-               this.x[v] := x_mouse
-               this.y[v] := y_mouse
-
-               this.Propagate(v)
-               this.Redraw(x_mouse, y_mouse, 1, 1) ;stabilize x/y corrdinates in window spy.
-            }
-         }
-
-         Draw(v := "") {
-            CoordMode, Mouse, Screen
-            MouseGetPos, x_mouse, y_mouse
-
-            if (A_ThisFunc == this.action[this.action.maxIndex()-1]){
-               this.BackPropagate(this.action.maxIndex())
-               this.x_hover := x_mouse
-               this.y_hover := y_mouse
-               pass := 1
-            }
-            if (A_ThisFunc != this.action[this.action.maxIndex()]){
-               this.Converge()
-               this.action.push(A_ThisFunc)
-               this.x_hover := x_mouse
-               this.y_hover := y_mouse
-               pass := 1
-            }
-
-            v := (v) ? v : this.action.maxIndex()
-            dx := x_mouse - this.x_hover
-            dy := y_mouse - this.y_hover
-            xr := (x_mouse > this.x[v-1]) ? 1 : 0
-            yr := (y_mouse > this.y[v-1]) ? 1 : 0
-
-            if (pass == 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
-               this.x_last := x_mouse, this.y_last := y_mouse
-
-               this.x[v] := (xr) ? this.x[v-1] : x_mouse
-               this.y[v] := (yr) ? this.y[v-1] : y_mouse
-               this.w[v] := (xr) ? x_mouse - this.x[v-1] : this.x[v-1] - x_mouse
-               this.h[v] := (yr) ? y_mouse - this.y[v-1] : this.y[v-1] - y_mouse
-
-               this.a[v] := (xr && yr) ? "top left" : (xr && !yr) ? "bottom left" : (!xr && yr) ? "top right" : "bottom right"
-               this.q[v] := (xr && yr) ? "bottom right" : (xr && !yr) ? "top right" : (!xr && yr) ? "bottom left" : "top left"
-
-               this.Propagate(v)
-               this.Redraw(this.x[v], this.y[v], this.w[v], this.h[v])
-            }
-         }
-
-         Move(v := "") {
-            CoordMode, Mouse, Screen
-            MouseGetPos, x_mouse, y_mouse
-
-            if (A_ThisFunc != this.action[this.action.maxIndex()]){
-               this.Converge()
-               this.action.push(A_ThisFunc)
-               this.x_hover := x_mouse
-               this.y_hover := y_mouse
-               pass := 1
-            }
-
-            v := (v) ? v : this.action.maxIndex()
-            dx := x_mouse - this.x_hover
-            dy := y_mouse - this.y_hover
-
-            if (pass == 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
-               this.x_last := x_mouse, this.y_last := y_mouse
-
-               this.x[v] := this.x[v-1] + dx
-               this.y[v] := this.y[v-1] + dy
-
-               this.Propagate(v)
-               this.Redraw(this.x[v], this.y[v], this.w[v], this.h[v])
-            }
-         }
-
-         ResizeCorners(v := "") {
-            CoordMode, Mouse, Screen
-            MouseGetPos, x_mouse, y_mouse
-
-            if (A_ThisFunc != this.action[this.action.maxIndex()]){
-               this.Converge()
-               this.action.push(A_ThisFunc)
-               this.x_hover := x_mouse
-               this.y_hover := y_mouse
-               pass := 1
-            }
-
-            v := (v) ? v : this.action.maxIndex()
-            xr := this.x_hover - this.x[v-1] - (this.w[v-1] / 2)
-            yr := this.y[v-1] - this.y_hover + (this.h[v-1] / 2) ; Keep Change Change
-            dx := x_mouse - this.x_hover
-            dy := y_mouse - this.y_hover
-
-            if (pass == 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
-               this.x_last := x_mouse, this.y_last := y_mouse
+               xr := this.state.x_mouse - this.state.x.1 - (this.state.w.1 / 2)
+               yr := this.state.y.1 - this.state.y_mouse + (this.state.h.1 / 2) ; Keep Change Change
+               dx := x_mouse - this.state.x_mouse
+               dy := y_mouse - this.state.y_mouse
 
                if (xr < -1 && yr > 1) {
                   r := "top left"
-                  this.x[v] := this.x[v-1] + dx
-                  this.y[v] := this.y[v-1] + dy
-                  this.w[v] := this.w[v-1] - dx
-                  this.h[v] := this.h[v-1] - dy
+                  x := this.state.x.1 + dx
+                  y := this.state.y.1 + dy
+                  w := this.state.w.1 - dx
+                  h := this.state.h.1 - dy
                }
                if (xr >= -1 && yr > 1) {
                   r := "top right"
-                  this.x[v] := this.x[v-1]
-                  this.y[v] := this.y[v-1] + dy
-                  this.w[v] := this.w[v-1] + dx
-                  this.h[v] := this.h[v-1] - dy
+                  x := this.state.x.1
+                  y := this.state.y.1 + dy
+                  w := this.state.w.1 + dx
+                  h := this.state.h.1 - dy
                }
                if (xr < -1 && yr <= 1) {
                   r := "bottom left"
-                  this.x[v] := this.x[v-1] + dx
-                  this.y[v] := this.y[v-1]
-                  this.w[v] := this.w[v-1] - dx
-                  this.h[v] := this.h[v-1] + dy
+                  x := this.state.x.1 + dx
+                  y := this.state.y.1
+                  w := this.state.w.1 - dx
+                  h := this.state.h.1 + dy
                }
                if (xr >= -1 && yr <= 1) {
                   r := "bottom right"
-                  this.x[v] := this.x[v-1]
-                  this.y[v] := this.y[v-1]
-                  this.w[v] := this.w[v-1] + dx
-                  this.h[v] := this.h[v-1] + dy
+                  x := this.state.x.1
+                  y := this.state.y.1
+                  w := this.state.w.1 + dx
+                  h := this.state.h.1 + dy
                }
 
-               this.Propagate(v)
-               this.Redraw(this.x[v], this.y[v], this.w[v], this.h[v])
+               this.state.queue(x, y, w, h, xx, yy, mx, my)
+               this.Redraw(x, y, w, h)
             }
          }
 
@@ -2115,49 +2208,36 @@ class Vis2 {
          ; Safety features include checking for past values to prevent flickering
          ; Sleep statements are required in every while loop.
 
-         ResizeEdges(v := "") {
-            CoordMode, Mouse, Screen
-            MouseGetPos, x_mouse, y_mouse
-
-            if (A_ThisFunc != this.action[this.action.maxIndex()]){
-               this.Converge()
-               this.action.push(A_ThisFunc)
-               this.x_hover := x_mouse
-               this.y_hover := y_mouse
-               pass := 1
-            }
-
-            v := (v) ? v : this.action.maxIndex()
-            m := -(this.h[v-1] / this.w[v-1])                              ; slope (dy/dx)
-            xr := this.x_hover - this.x[v-1] - (this.w[v-1] / 2)           ; draw a line across the center
-            yr := this.y[v-1] - this.y_hover + (this.h[v-1] / 2)           ; draw a vertical line halfing it
-            dx := x_mouse - this.x_hover
-            dy := y_mouse - this.y_hover
-
-            if (pass == 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
+         ResizeEdges() {
+            this.MouseGetPos(x_mouse, y_mouse)
+            new_state := this.state.new(A_ThisFunc, x_mouse, y_mouse)
+            if (new_state = 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
                this.x_last := x_mouse, this.y_last := y_mouse
 
-               if (m * xr >= yr && yr > -m * xr)
-                  r := "left",                this.x[v] := this.x[v-1] + dx,               this.w[v] := this.w[v-1] - dx
-               if (m * xr < yr && yr > -m * xr)
-                  r := "top",                 this.y[v] := this.y[v-1] + dy,               this.h[v] := this.h[v-1] - dy
-               if (m * xr < yr && yr <= -m * xr)
-                  r := "right",   this.w[v] := this.w[v-1] + dx
-               if (m * xr >= yr && yr <= -m * xr)
-                  r := "bottom",  this.h[v] := this.h[v-1] + dy
+               m := -(this.state.h.1 / this.state.w.1)                              ; slope (dy/dx)
+               xr := this.state.x_mouse - this.state.x.1 - (this.state.w.1 / 2)           ; draw a line across the center
+               yr := this.state.y.1 - this.state.y_mouse + (this.state.h.1 / 2)           ; draw a vertical line halfing it
+               dx := x_mouse - this.state.x_mouse
+               dy := y_mouse - this.state.y_mouse
 
-               this.Propagate(v)
-               this.Redraw(this.x[v], this.y[v], this.w[v], this.h[v])
+               if (m * xr >= yr && yr > -m * xr)
+                  r := "left",   x := this.state.x.1 + dx, w := this.state.w.1 - dx
+               if (m * xr < yr && yr > -m * xr)
+                  r := "top",    y := this.state.y.1 + dy, h := this.state.h.1 - dy
+               if (m * xr < yr && yr <= -m * xr)
+                  r := "right",  w := this.state.w.1 + dx
+               if (m * xr >= yr && yr <= -m * xr)
+                  r := "bottom", h := this.state.h.1 + dy
+
+               this.state.queue(x, y, w, h, xx, yy, mx, my)
+               this.Redraw(x, y, w, h)
             }
          }
 
          isMouseInside() {
-            CoordMode, Mouse, Screen
-            MouseGetPos, x_mouse, y_mouse
-            return (x_mouse >= this.x[this.x.maxIndex()]
-               && x_mouse <= this.x[this.x.maxIndex()] + this.w[this.w.maxIndex()]
-               && y_mouse >= this.y[this.y.maxIndex()]
-               && y_mouse <= this.y[this.y.maxIndex()] + this.h[this.h.maxIndex()])
+            this.MouseGetPos(x_mouse, y_mouse)
+            return (x_mouse >= this.state.x.2 && x_mouse <= this.state.xx.2
+               && y_mouse >= this.state.y.2 && y_mouse <= this.state.yy.2)
          }
 
          isMouseOutside() {
@@ -2165,24 +2245,21 @@ class Vis2 {
          }
 
          isMouseOnCorner() {
-            CoordMode, Mouse, Screen
-            MouseGetPos, x_mouse, y_mouse
-            return (x_mouse == this.x[this.x.maxIndex()] || x_mouse == this.x[this.x.maxIndex()] + this.w[this.w.maxIndex()])
-               && (y_mouse == this.y[this.y.maxIndex()] || y_mouse == this.y[this.y.maxIndex()] + this.h[this.h.maxIndex()])
+            this.MouseGetPos(x_mouse, y_mouse)
+            return (x_mouse == this.state.x.2 || x_mouse == this.state.xx.2)
+               && (y_mouse == this.state.y.2 || y_mouse == this.state.yy.2)
          }
 
          isMouseOnEdge() {
-            CoordMode, Mouse, Screen
-            MouseGetPos, x_mouse, y_mouse
-            return ((x_mouse >= this.x[this.x.maxIndex()] && x_mouse <= this.x[this.x.maxIndex()] + this.w[this.w.maxIndex()])
-               && (y_mouse == this.y[this.y.maxIndex()] || y_mouse == this.y[this.y.maxIndex()] + this.h[this.h.maxIndex()]))
-               OR ((y_mouse >= this.y[this.y.maxIndex()] && y_mouse <= this.y[this.y.maxIndex()] + this.h[this.h.maxIndex()])
-               && (x_mouse == this.x[this.x.maxIndex()] || x_mouse == this.x[this.x.maxIndex()] + this.w[this.w.maxIndex()]))
+            this.MouseGetPos(x_mouse, y_mouse)
+            return ((x_mouse >= this.state.x.2 && x_mouse <= this.state.xx.2)
+               && (y_mouse == this.state.y.2 || y_mouse == this.state.yy.2))
+               OR ((y_mouse >= this.state.y.2 && y_mouse <= this.state.yy.2)
+               && (x_mouse == this.state.x.2 || x_mouse == this.state.xx.2))
          }
 
          isMouseStopped() {
-            CoordMode, Mouse, Screen
-            MouseGetPos, x_mouse, y_mouse
+            this.MouseGetPos(x_mouse, y_mouse)
             return x_mouse == this.x_last && y_mouse == this.y_last
          }
 
@@ -2192,34 +2269,44 @@ class Vis2 {
          }
 
          x1() {
-            return this.x[this.x.maxIndex()]
-         }
-
-         x2() {
-            return this.x[this.x.maxIndex()] + this.w[this.w.maxIndex()]
+            return this.state.x.2
          }
 
          y1() {
-            return this.y[this.y.maxIndex()]
+            return this.state.y.2
+         }
+
+         x2() {
+            return this.state.xx.2
          }
 
          y2() {
-            return this.y[this.y.maxIndex()] + this.h[this.h.maxIndex()]
+            return this.state.yy.2
          }
 
          width() {
-            return this.w[this.w.maxIndex()]
+            return this.state.w.2
          }
 
          height() {
-            return this.h[this.h.maxIndex()]
+            return this.state.h.2
          }
       } ; End of Area class.
 
       class Picture {
-
-         base := this.base
-         base.base := (this.outer) ? this.outer.shared : shared
+         static extends := "shared"
+         init := this._init(true)
+         _init(endofunctor := "") {
+            extends := this.extends
+            under := ((this.outer)[extends])
+               ? ((___ := (this.outer)[extends]._init()) ? ___ : (this.outer)[extends])
+               : ((___ := %extends%._init()) ? ___ : %extends%)
+            if (endofunctor)
+               this.base.base := under
+            else
+               this.base := under
+            return this
+         }
          outer[] {
             get {
                if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
@@ -2235,34 +2322,34 @@ class Vis2 {
          ; Example: Preprocess("base64", "https://goo.gl/BWUygC")
          ;          The image is downloaded from the URL and is converted to base64.
          Preprocess(cotype, image, crop := "", terms*) {
-            if !(this.hwnd) {
-               _picture := (this.outer) ? new this.outer.Picture("Picture.Preprocess") : new Picture("Picture.Preprocess")
+            if (!this.hwnd) {
+               _picture := new this("Picture.Preprocess")
                coimage := _picture.Preprocess(cotype, image, crop, terms*)
                _picture.FreeMemory()
                _picture := ""
                return coimage
-            } else {
-               ; Determine the representation (type) of the input image.
-               if !(type := this.DontVerifyImageType(image))
-                  type := this.ImageType(image)
-               ; If the type and cotype match, return the image as-is.
-               if (type = cotype && !this.isRectangle(crop))
-                  return image
-               ; Or else crop the image via pBitmap as a intermediate type.
-               pBitmap := this.toBitmap(type, image)
-               if this.isRectangle(crop){
-                  pBitmap2 := this.Gdip_CropBitmap(pBitmap, image)
-                  if (type != "pBitmap")
-                     Gdip_DisposeImage(pBitmap)
-                  pBitmap := pBitmap2
-               }
-               ; Convert from pBitmap intermediate to the cotype representation.
-               coimage := this.toCotype(cotype, pBitmap, terms*)
-               ; Delete the pBitmap representation, unless originally was pBitmap typed.
-               if (type != "pBitmap" || this.isRectangle(crop))
-                  Gdip_DisposeImage(pBitmap)
-               return coimage
             }
+
+            ; Determine the representation (type) of the input image.
+            if !(type := this.DontVerifyImageType(image))
+               type := this.ImageType(image)
+            ; If the type and cotype match, do nothing.
+            if (type = cotype && !this.isRectangle(crop))
+               return image
+            ; Convert the image to a pBitmap (byte array) and crop the image.
+            pBitmap := this.toBitmap(type, image)
+            if this.isRectangle(crop){
+               pBitmap2 := this.Gdip_CropBitmap(pBitmap, image)
+               if (type != "pBitmap")
+                  Gdip_DisposeImage(pBitmap)
+               pBitmap := pBitmap2
+            }
+            ; Convert from the pBitmap intermediate to the desired representation.
+            coimage := this.toCotype(cotype, pBitmap, terms*)
+            ; Delete the pBitmap intermediate, unless the input was originally pBitmap.
+            if (type != "pBitmap" || this.isRectangle(crop))
+               Gdip_DisposeImage(pBitmap)
+            return coimage
          }
 
          ; DontVerifyImageType() - The user should declare exactly what type it is.
@@ -2380,8 +2467,9 @@ class Vis2 {
          }
 
          toCotype(cotype, pBitmap, terms*) {
-            if (cotype = "screenshot")
+            if (cotype = "screenshot") {
                return this.Render({"pBitmap":pBitmap})
+            }
                ; Place it on the screen.
 
             if (cotype = "file") {
@@ -2422,22 +2510,20 @@ class Vis2 {
          ; The service should also implement a bypass if there is no crop array,
          ; and the input and output types are the same.
          Render(image := "", style := "", polygons := "") {
-            if !(this.hwnd) {
-               _picture := (this.outer) ? new this.outer.Picture() : new Picture()
-               return _picture.Render(image, style, polygons)
-            } else {
-               Critical On
-               this.DetectScreenResolutionChange()
-               Gdip_GraphicsClear(this.G)
-               this.Draw(image, style, polygons)
-               UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-               Critical Off
-               if (this.time) {
-                  self_destruct := ObjBindMethod(this, "Destroy")
-                  SetTimer, % self_destruct, % -1 * this.time
-               }
-               return this
+            if (!this.hwnd)
+               return (new this).Render(image, style, polygons)
+
+            Critical On
+            this.DetectScreenResolutionChange()
+            Gdip_GraphicsClear(this.G)
+            this.Draw(image, style, polygons)
+            UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+            Critical Off
+            if (this.time) {
+               self_destruct := ObjBindMethod(this, "Destroy")
+               SetTimer, % self_destruct, % -1 * this.time
             }
+            return this
          }
 
          Draw(image := "", style := "", polygons := "", pGraphics := "") {
@@ -2545,10 +2631,10 @@ class Vis2 {
             a  := RegExReplace( a, "\s", "")
             a  := (a = "top") ? 2 : (a = "left") ? 4 : (a = "right") ? 6 : (a = "bottom") ? 8
                : (a ~= "i)top" && a ~= "i)left") ? 1 : (a ~= "i)top" && a ~= "i)cent(er|re)") ? 2
-               : (a ~= "i)top" && a ~= "i)bottom") ? 3 : (a ~= "i)cent(er|re)" && a ~= "i)left") ? 4
-               : (a ~= "i)cent(er|re)") ? 5 : (a ~= "i)cent(er|re)" && a ~= "i)bottom") ? 6
-               : (a ~= "i)bottom" && a ~= "i)left") ? 7 : (a ~= "i)bottom" && a ~= "i)cent(er|re)") ? 8
-               : (a ~= "i)bottom" && a ~= "i)right") ? 9 : (a ~= "^[1-9]$") ? a : 1 ; Default anchor is top-left.
+               : (a ~= "i)top" && a ~= "i)right") ? 3 : (a ~= "i)cent(er|re)" && a ~= "i)left") ? 4
+               : (a ~= "i)cent(er|re)" && a ~= "i)right") ? 6 : (a ~= "i)bottom" && a ~= "i)left") ? 7
+               : (a ~= "i)bottom" && a ~= "i)cent(er|re)") ? 8 : (a ~= "i)bottom" && a ~= "i)right") ? 9
+               : (a ~= "i)cent(er|re)") ? 5 : (a ~= "^[1-9]$") ? a : 1 ; Default anchor is top-left.
 
             a  := ( x ~= "i)left") ? 1+((( a-1)//3)*3) : ( x ~= "i)cent(er|re)") ? 2+((( a-1)//3)*3) : ( x ~= "i)right") ? 3+((( a-1)//3)*3) :  a
             a  := ( y ~= "i)top") ? 1+(mod( a-1,3)) : ( y ~= "i)cent(er|re)") ? 4+(mod( a-1,3)) : ( y ~= "i)bottom") ? 7+(mod( a-1,3)) :  a
@@ -2779,9 +2865,19 @@ class Vis2 {
       } ; End of Image class.
 
       class Subtitle {
-
-         base := this.base
-         base.base := (this.outer) ? this.outer.shared : shared
+         static extends := "shared"
+         init := this._init(true)
+         _init(endofunctor := "") {
+            extends := this.extends
+            under := ((this.outer)[extends])
+               ? ((___ := (this.outer)[extends]._init()) ? ___ : (this.outer)[extends])
+               : ((___ := %extends%._init()) ? ___ : %extends%)
+            if (endofunctor)
+               this.base.base := under
+            else
+               this.base := under
+            return this
+         }
          outer[] {
             get {
                if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
@@ -2793,7 +2889,7 @@ class Vis2 {
 
          layers := {}, ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
 
-         Recover() {
+         Recover(pGraphics) {
             loop % this.layers.maxIndex()
                this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
          }
@@ -2806,7 +2902,8 @@ class Vis2 {
 
             pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
             pGraphics := Gdip_GraphicsFromImage(pBitmap)
-            this.Recover()
+            loop % this.layers.maxIndex()
+               this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
             Gdip_DeleteGraphics(pGraphics)
             pBitmapCopy := Gdip_CloneBitmapArea(pBitmap, x, y, w, h)
             Gdip_DisposeImage(pBitmap)
@@ -2842,47 +2939,40 @@ class Vis2 {
          }
 
          Render(text := "", style1 := "", style2 := "", update := true) {
-            if !(this.hwnd){
-               _subtitle := (this.outer) ? new this.outer.Subtitle() : new Subtitle()
-               return _subtitle.Render(text, style1, style2, update)
+            if (!this.hwnd)
+               return (new this).Render(text, style1, style2, update)
+
+            Critical On
+            this.Draw(text, style1, style2)
+            this.DetectScreenResolutionChange()
+            if (this.allowDrag == true)
+               this.Reposition()
+            if (update == true) {
+               UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
             }
-            else {
-               Critical On
-               this.Draw(text, style1, style2)
-               this.DetectScreenResolutionChange()
-               if (this.allowDrag == true)
-                  this.Reposition()
-               if (update == true) {
-                  UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-               }
-               if (this.time) {
-                  self_destruct := ObjBindMethod(this, "Destroy")
-                  SetTimer, % self_destruct, % -1 * this.time
-               }
-               this.rendered := true
-               Critical Off
-               return this
+            if (this.time) {
+               self_destruct := ObjBindMethod(this, "Destroy")
+               SetTimer, % self_destruct, % -1 * this.time
             }
+            this.rendered := true
+            Critical Off
+            return this
          }
 
          RenderToBitmap(text := "", style1 := "", style2 := "") {
-            if !(this.hwnd){
-               _subtitle := (this.outer) ? new this.outer.Subtitle() : new Subtitle()
-               return _subtitle.RenderToBitmap(text, style1, style2)
-            } else {
-               this.Render(text, style1, style2, false)
-               return this.Bitmap()
-            }
+            if (!this.hwnd)
+               return (new this).RenderToBitmap(text, style1, style2)
+
+            this.Render(text, style1, style2, false)
+            return this.Bitmap()
          }
 
          RenderToHBitmap(text := "", style1 := "", style2 := "") {
-            if !(this.hwnd){
-               _subtitle := (this.outer) ? new this.outer.Subtitle() : new Subtitle()
-               return _subtitle.RenderToHBitmap(text, style1, style2)
-            } else {
-               this.Render(text, style1, style2, false)
-               return this.hBitmap()
-            }
+            if (!this.hwnd)
+               return (new this).RenderToHBitmap(text, style1, style2)
+
+            this.Render(text, style1, style2, false)
+            return this.hBitmap()
          }
 
          Reposition() {
@@ -3065,6 +3155,9 @@ class Vis2 {
             ; Create Font.
             hFamily := (___ := Gdip_FontFamilyCreate(f)) ? ___ : Gdip_FontFamilyCreate("Arial") ; Default font is Arial.
             hFont := Gdip_FontCreate(hFamily, s, style)
+            ;GdipStringFormatGetGenericTypographic
+            ;MsgBox % DllCall("gdiplus\GdipStringFormatGetGenericDefault", A_PtrSize ? "UPtr*" : "UInt*", hFormat)
+            ;MsgBox % DllCall("gdiplus\GdipCreateStringFormat", "int", n, "int", 0, A_PtrSize ? "UPtr*" : "UInt*", hFormat)
             hFormat := Gdip_StringFormatCreate(n)
             Gdip_SetStringFormatAlign(hFormat, j)  ; Left = 0, Center = 1, Right = 2
 
@@ -3095,10 +3188,10 @@ class Vis2 {
             _a := RegExReplace(_a, "\s", "")
             _a := (_a = "top") ? 2 : (_a = "left") ? 4 : (_a = "right") ? 6 : (_a = "bottom") ? 8
                : (_a ~= "i)top" && _a ~= "i)left") ? 1 : (_a ~= "i)top" && _a ~= "i)cent(er|re)") ? 2
-               : (_a ~= "i)top" && _a ~= "i)bottom") ? 3 : (_a ~= "i)cent(er|re)" && _a ~= "i)left") ? 4
-               : (_a ~= "i)cent(er|re)") ? 5 : (_a ~= "i)cent(er|re)" && _a ~= "i)bottom") ? 6
-               : (_a ~= "i)bottom" && _a ~= "i)left") ? 7 : (_a ~= "i)bottom" && _a ~= "i)cent(er|re)") ? 8
-               : (_a ~= "i)bottom" && _a ~= "i)right") ? 9 : (_a ~= "^[1-9]$") ? _a : 1 ; Default anchor is top-left.
+               : (_a ~= "i)top" && _a ~= "i)right") ? 3 : (_a ~= "i)cent(er|re)" && _a ~= "i)left") ? 4
+               : (_a ~= "i)cent(er|re)" && _a ~= "i)right") ? 6 : (_a ~= "i)bottom" && _a ~= "i)left") ? 7
+               : (_a ~= "i)bottom" && _a ~= "i)cent(er|re)") ? 8 : (_a ~= "i)bottom" && _a ~= "i)right") ? 9
+               : (_a ~= "i)cent(er|re)") ? 5 : (_a ~= "^[1-9]$") ? _a : 1 ; Default anchor is top-left.
 
             ; _x and _y can be specified as locations (left, center, right, top, bottom).
             ; These location words in _x and _y take precedence over the values in _a.
@@ -3157,10 +3250,10 @@ class Vis2 {
             a  := RegExReplace( a, "\s", "")
             a  := (a = "top") ? 2 : (a = "left") ? 4 : (a = "right") ? 6 : (a = "bottom") ? 8
                : (a ~= "i)top" && a ~= "i)left") ? 1 : (a ~= "i)top" && a ~= "i)cent(er|re)") ? 2
-               : (a ~= "i)top" && a ~= "i)bottom") ? 3 : (a ~= "i)cent(er|re)" && a ~= "i)left") ? 4
-               : (a ~= "i)cent(er|re)") ? 5 : (a ~= "i)cent(er|re)" && a ~= "i)bottom") ? 6
-               : (a ~= "i)bottom" && a ~= "i)left") ? 7 : (a ~= "i)bottom" && a ~= "i)cent(er|re)") ? 8
-               : (a ~= "i)bottom" && a ~= "i)right") ? 9 : (a ~= "^[1-9]$") ? a : 1 ; Default anchor is top-left.
+               : (a ~= "i)top" && a ~= "i)right") ? 3 : (a ~= "i)cent(er|re)" && a ~= "i)left") ? 4
+               : (a ~= "i)cent(er|re)" && a ~= "i)right") ? 6 : (a ~= "i)bottom" && a ~= "i)left") ? 7
+               : (a ~= "i)bottom" && a ~= "i)cent(er|re)") ? 8 : (a ~= "i)bottom" && a ~= "i)right") ? 9
+               : (a ~= "i)cent(er|re)") ? 5 : (a ~= "^[1-9]$") ? a : 1 ; Default anchor is top-left.
 
             ; Text x and text y can be specified as locations (left, center, right, top, bottom).
             ; These location words in text x and text y take precedence over the values in the text anchor.
