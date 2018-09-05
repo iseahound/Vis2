@@ -981,11 +981,11 @@ class Vis2 {
                else if (GetKeyState("RButton", "P")) {
                   obj.area.move()
                   if (!obj.area.isMouseOnCorner() && obj.area.isMouseStopped()) {
-                     obj.area.draw() ; Error Correction of Offset
+                     obj.area.drag() ; Error Correction of Offset
                   }
                }
                else
-                  obj.area.draw()
+                  obj.area.drag()
             }
             else
                return Vis2.ux.process.treasureChest(obj, A_ThisFunc)
@@ -1054,7 +1054,7 @@ class Vis2 {
             else if (obj.action.Alt_LButton = 1)
                obj.area.origin()
             else if (obj.action.Alt_LButton = -1)
-               obj.area.draw()
+               obj.area.drag()
             else if (obj.action.Shift_LButton)
                obj.area.resizeEdges()
             else if (obj.action.LButton || obj.action.RButton)
@@ -1366,6 +1366,170 @@ class Vis2 {
          }
       }
 
+      class memory {
+
+         __New(width, height){
+            this.hbm := CreateDIBSection(this.width := width, this.height := height)
+            this.hdc := CreateCompatibleDC()
+            this.obm := SelectObject(this.hdc, this.hbm)
+            this.G := Gdip_GraphicsFromHDC(this.hdc)
+            return this
+         }
+
+         __Delete(){
+            Gdip_DeleteGraphics(this.G)
+            SelectObject(this.hdc, this.obm)
+            DeleteObject(this.hbm)
+            DeleteDC(this.hdc)
+            return
+         }
+      }
+
+      class queue {
+
+         layers := []
+         fn := []
+         x := []
+         y := []
+         w := []
+         h := []
+         xx := []
+         yy := []
+         mx := []
+         my := []
+         x_mouse := ""
+         y_mouse := ""
+
+         New(function, x_mouse := "", y_mouse := ""){
+            if (function == this.fn.2)
+               return
+
+            if (this.fn.2 != "" && this.lacuna(2))
+               return
+
+            this.shift()
+            this.fn.2 := function
+            this.x_mouse := x_mouse
+            this.y_mouse := y_mouse
+            return true ; useful for allowing a new function to execute when x,y coordinates have remained the same.
+         }
+
+         ; This function takes any number of inputs, from zero to 8. It will populate the inputs with their
+         ; last known values if omitted. In the case of w & h it will check for a xx & yy input. In the case of
+         ; xx & yy, it will check for a w & h input AND check w & h last known value. This means that if w, h, xx, yy
+         ; are omitted, the width and height will remain constant, and the right and bottom values will change.
+         Queue(ByRef x:="", ByRef y:="", ByRef w:="", ByRef h:="", ByRef xx:="", ByRef yy:="", ByRef mx:="", ByRef my:=""){
+            ; Store the last found w & h to check if size has changed, forcing a redraw.
+            old_w := (this.w.2 != "") ? this.w.2 : this.w.1
+            old_h := (this.h.2 != "") ? this.h.2 : this.h.1
+
+            ; x & y are independent and mandatory inputs.
+            if (x != "")
+               this.x.2 := x
+            else if (this.x.2 == "" && this.x.1 != "")
+               this.x.2 := this.x.1
+            else if (this.x.2 == "")
+               throw Exception("x coordinate is a mandatory parameter.")
+
+            if (y != "")
+               this.y.2 := y
+            else if (this.y.2 == "" && this.y.1 != "")
+               this.y.2 := this.y.1
+            else if (this.y.2 == "")
+               throw Exception("y coordinate is a mandatory parameter.")
+
+            ; w & h are dependent on this.x.2 and this.y.2
+            if (w != "")
+               this.w.2 := w
+            else if (xx != "")
+               this.w.2 := xx - this.x.2
+            else if (this.w.2 == "" && this.w.1 != "")
+               this.w.2 := this.w.1
+
+            if (h != "")
+               this.h.2 := h
+            else if (yy != "")
+               this.h.2 := yy - this.y.2
+            else if (this.h.2 == "" && this.h.1 != "")
+               this.h.2 := this.h.1
+
+            ; xx & yy are dependent on this.x.2, this.y.2, this.w.2, and this.h.2
+            if (xx != "")
+               this.xx.2 := xx
+            else if (x != "")
+               this.xx.2 := this.w.2 + x
+            else if (w != "")
+               this.xx.2 := this.x.2 + w
+            else if (this.xx.2 == "" && this.xx.1 != "")
+               this.xx.2 := this.xx.1
+
+            if (yy != "")
+               this.yy.2 := yy
+            else if (y != "")
+               this.yy.2 := this.h.2 + y
+            else if (h != "")
+               this.yy.2 := this.y.2 + h
+            else if (this.yy.2 == "" && this.y.1 != "")
+               this.yy.2 := this.yy.1
+
+            ; mx & my are independent variables.
+            if (mx != "")
+               this.mx.2 := mx
+            else if (this.mx.2 == "" && this.mx.1 != "")
+               this.mx.2 := this.mx.1
+
+            if (my != "")
+               this.my.2 := my
+            else if (this.my.2 == "" && this.my.1 != "")
+               this.my.2 := this.my.1
+
+            ; Internal checking - can be commented out
+            if (this.xx.2 - this.x.2 != this.w.2)
+               throw Exception("Inconsistent width or x2.")
+
+            if (this.yy.2 - this.y.2 != this.h.2)
+               throw Exception("Inconsistent height or y2.")
+
+            ; Detect if width or height has changed, requiring the image to be redrawn.
+            this.identical := (this.w.2 == old_w) && (this.h.2 == old_h)
+
+            ; Return coordinate values by reference.
+            x := this.x.2, w := this.w.2, xx := this.xx.2, mx := this.mx.2
+            y := this.y.2, h := this.h.2, yy := this.yy.2, my := this.my.2
+         }
+
+         Shift(){
+            this.fn.RemoveAt(1)
+            this.x.RemoveAt(1)
+            this.y.RemoveAt(1)
+            this.w.RemoveAt(1)
+            this.h.RemoveAt(1)
+            this.xx.RemoveAt(1)
+            this.yy.RemoveAt(1)
+            this.mx.RemoveAt(1)
+            this.my.RemoveAt(1)
+         }
+
+         Lacuna(n := 2){
+            return (this.x[n] == "" || this.y[n] == "" || this.w[n] == "" || this.h[n] == ""
+               || this.xx[n] == "" || this.yy[n] == "")
+         }
+
+         Debug(){
+            Tooltip % "function: " this.fn.2
+               . "`nx: " this.x.2 "`ty: " this.y.2
+               . "`nw: " this.w.2 "`th: " this.h.2
+               . "`nx2: " this.xx.2 "`ty2: " this.yy.2
+               . "`nmx: " this.mx.2 "`tmy: " this.my.2
+
+               . "`nfunction: " this.fn.1
+               . "`nx: " this.x.1 "`ty: " this.y.1
+               . "`nw: " this.w.1 "`th: " this.h.1
+               . "`nx2: " this.xx.1 "`ty2: " this.yy.1
+               . "`nmx: " this.mx.1 "`tmy: " this.my.1
+         }
+      }
+
       class shared {
 
          __New(title := "", terms*) {
@@ -1384,6 +1548,7 @@ class Vis2 {
             this.hdc := CreateCompatibleDC()
             this.obm := SelectObject(this.hdc, this.hbm)
             this.G := Gdip_GraphicsFromHDC(this.hdc)
+            this.state := new this.outer.queue()
             this.Additional(terms*)
             return this
          }
@@ -1396,6 +1561,13 @@ class Vis2 {
                return
             if (this.pToken)
                return Gdip_Shutdown(this.pToken)
+         }
+
+         MouseGetPos(ByRef x_mouse, ByRef y_mouse) {
+            _cmm := A_CoordModeMouse
+            CoordMode, Mouse, Screen
+            MouseGetPos, x_mouse, y_mouse
+            CoordMode, Mouse, %_cmm%
          }
 
          isDrawable(win := "A") {
@@ -1732,9 +1904,9 @@ class Vis2 {
          }
 
          margin_and_padding(m, default := 0) {
-            static valid := "^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
             static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
             static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
+            static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
 
             if IsObject(m) {
                m.1 := (m.top    != "") ? m.top    : m.t
@@ -1763,10 +1935,10 @@ class Vis2 {
 
             for key, value in m {
                m[key] := (m[key] ~= valid) ? RegExReplace(m[key], "\s", "") : default
-               m[key] := (m[key] ~= "(pt|px)$") ? SubStr(m[key], 1, -2) : m[key]
-               m[key] := (m[key] ~= "vw$") ? RegExReplace(m[key], "vw$", "") * this.vw : m[key]
-               m[key] := (m[key] ~= "vh$") ? RegExReplace(m[key], "vh$", "") * this.vh : m[key]
-               m[key] := (m[key] ~= "vmin$") ? RegExReplace(m[key], "vmin$", "") * this.vmin : m[key]
+               m[key] := (m[key] ~= "i)(pt|px)$") ? SubStr(m[key], 1, -2) : m[key]
+               m[key] := (m[key] ~= "i)vw$") ? RegExReplace(m[key], "i)vw$", "") * this.vw : m[key]
+               m[key] := (m[key] ~= "i)vh$") ? RegExReplace(m[key], "i)vh$", "") * this.vh : m[key]
+               m[key] := (m[key] ~= "i)vmin$") ? RegExReplace(m[key], "i)vmin$", "") * this.vmin : m[key]
             }
             m.1 := (m.1 ~= "%$") ? SubStr(m.1, 1, -1) * this.vh : m.1
             m.2 := (m.2 ~= "%$") ? SubStr(m.2, 1, -1) * (exception ? this.vh : this.vw) : m.2
@@ -1861,140 +2033,6 @@ class Vis2 {
                return inner
             }
          }
-
-         class BoundedQueue {
-
-            fn := []
-            x := []
-            y := []
-            w := []
-            h := []
-            xx := []
-            yy := []
-            mx := []
-            my := []
-            x_mouse := ""
-            y_mouse := ""
-
-            new(function, x_mouse, y_mouse){
-               if (function == this.fn.2)
-                  return
-
-               if (this.fn.2 != "" && this.lacuna(2))
-                  return
-
-               this.shift()
-               this.fn.2 := function
-               this.x_mouse := x_mouse
-               this.y_mouse := y_mouse
-               return true ; useful for allowing a new function to execute when x,y coordinates have remained the same.
-            }
-
-            ; This function takes any number of inputs, from zero to 8. It will populate the inputs with their
-            ; last known values if omitted. In the case of w & h it will check for a xx & yy input. In the case of
-            ; xx & yy, it will check for a w & h input AND check w & h last known value. This means that if w, h, xx, yy
-            ; are omitted, the width and height will remain constant, and the right and bottom values will change.
-            queue(ByRef x:="", ByRef y:="", ByRef w:="", ByRef h:="", ByRef xx:="", ByRef yy:="", ByRef mx:="", ByRef my:=""){
-               if (x != "")
-                  this.x.2 := x
-               else if (this.x.2 == "" && this.x.1 != "")
-                  this.x.2 := this.x.1
-               else if (this.x.2 == "")
-                  throw Exception("x coordinate is a mandatory parameter.")
-
-               if (y != "")
-                  this.y.2 := y
-               else if (this.y.2 == "" && this.y.1 != "")
-                  this.y.2 := this.y.1
-               else if (this.y.2 == "")
-                  throw Exception("y coordinate is a mandatory parameter.")
-
-               ; w & h are dependent on this.x.2 and this.y.2
-               if (w != "")
-                  this.w.2 := w
-               else if (xx != "")
-                  this.w.2 := xx - this.x.2
-               else if (this.w.2 == "" && this.w.1 != "")
-                  this.w.2 := this.w.1
-
-               if (h != "")
-                  this.h.2 := h
-               else if (yy != "")
-                  this.h.2 := yy - this.y.2
-               else if (this.h.2 == "" && this.h.1 != "")
-                  this.h.2 := this.h.1
-
-               ; xx & yy are dependent on this.x.2, this.y.2, this.w.2, and this.h.2
-               if (xx != "")
-                  this.xx.2 := xx
-               else if (x != "")
-                  this.xx.2 := this.w.2 + x
-               else if (w != "")
-                  this.xx.2 := this.x.2 + w
-               else if (this.xx.2 == "" && this.xx.1 != "")
-                  this.xx.2 := this.xx.1
-
-               if (yy != "")
-                  this.yy.2 := yy
-               else if (y != "")
-                  this.yy.2 := this.h.2 + y
-               else if (h != "")
-                  this.yy.2 := this.y.2 + h
-               else if (this.yy.2 == "" && this.y.1 != "")
-                  this.yy.2 := this.yy.1
-
-               if (mx != "")
-                  this.mx.2 := mx
-               else if (this.mx.2 == "" && this.mx.1 != "")
-                  this.mx.2 := this.mx.1
-
-               if (my != "")
-                  this.my.2 := my
-               else if (this.my.2 == "" && this.my.1 != "")
-                  this.my.2 := this.my.1
-
-               if (this.xx.2 - this.x.2 != this.w.2)
-                  throw Exception("Inconsistent width or x2.")
-
-               if (this.yy.2 - this.y.2 != this.h.2)
-                  throw Exception("Inconsistent height or y2.")
-
-               ; Return coordinate values by reference.
-               x := this.x.2, w := this.w.2, xx := this.xx.2, mx := this.mx.2
-               y := this.y.2, h := this.h.2, yy := this.yy.2, my := this.my.2
-            }
-
-            shift(){
-               this.fn.RemoveAt(1)
-               this.x.RemoveAt(1)
-               this.y.RemoveAt(1)
-               this.w.RemoveAt(1)
-               this.h.RemoveAt(1)
-               this.xx.RemoveAt(1)
-               this.yy.RemoveAt(1)
-               this.mx.RemoveAt(1)
-               this.my.RemoveAt(1)
-            }
-
-            lacuna(n := 2){
-               return (this.x[n] == "" || this.y[n] == "" || this.xx[n] == ""
-                  || this.yy[n] == "" || this.w[n] == "" || this.h[n] == "")
-            }
-
-            debug(){
-               Tooltip % "function: " this.fn.2
-                  . "`nx: " this.x.2 "`ty: " this.y.2
-                  . "`nw: " this.w.2 "`th: " this.h.2
-                  . "`nx2: " this.xx.2 "`ty2: " this.yy.2
-                  . "`nmx: " this.mx.2 "`tmy: " this.my.2
-
-                  . "`nfunction: " this.fn.1
-                  . "`nx: " this.x.1 "`ty: " this.y.1
-                  . "`nw: " this.w.1 "`th: " this.h.1
-                  . "`nx2: " this.xx.1 "`ty2: " this.yy.1
-                  . "`nmx: " this.mx.1 "`tmy: " this.my.1
-            }
-         }
       }
 
       class Area {
@@ -2022,55 +2060,293 @@ class Vis2 {
 
          activateOnAdmin := true
          ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
-         action := ["base"], x := [0], y := [0], w := [1], h := [1], a := ["top left"], q := ["bottom right"]
 
-         Additional(terms*) {
-            this.color := (terms.1) ? terms.1 : "0x7FDDDDDD"
-            Gdip_SetSmoothingMode(this.G, 4) ;Adds one clickable pixel to the edge.
-            this.pBrush := Gdip_BrushCreateSolid(this.color)
+         __New(title := "", terms*) {
+            global pToken
+            if !(this.outer.Startup())
+               if !(pToken)
+                  if !(this.pToken := Gdip_Startup())
+                     throw Exception("Gdiplus failed to start. Please ensure you have gdiplus on your system.")
 
-            this.state := new this.inner.BoundedQueue()
-         }
-
-
-         /*
-         safe_x := (0 + dx <= 0) ? 0 : 0 + dx
-         safe_y := (0 + dy <= 0) ? 0 : 0 + dy
-         safe_w := (0 + this.ScreenWidth + dx >= this.ScreenWidth) ? this.ScreenWidth : 0 + this.ScreenWidth + dx
-         safe_h := (0 + this.ScreenHeight + dy >= this.ScreenHeight) ? this.ScreenHeight : 0 + this.ScreenHeight + dy
-         source_x := (dx < 0) ? -dx : 0
-         source_y := (dy < 0) ? -dy : 0
-         */
-
-         /*
-         Gdip_GraphicsClear(this.G)
-         BitBlt(this.hdc, x, y, w, h, this.hdc2, 0, 0)
-         UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-         */
-
-
-         Cache() {
-            if (!this._cache) {
-               this._cache := true
-               this.hbm2 := CreateDIBSection(this.width(), this.height())
-               this.hdc2 := CreateCompatibleDC()
-               this.obm2 := SelectObject(this.hdc2, this.hbm2)
-               BitBlt(this.hdc2, 0, 0, this.width(), this.height(), this.hdc, this.x1(), this.y1())
-            }
+            Gui, New, +LastFound +AlwaysOnTop -Caption -DPIScale +E0x80000 +ToolWindow +hwndhwnd
+            Gui, Show, % (this.activateOnAdmin && !this.isDrawable()) ? "" : "NoActivate"
+            this.hwnd := hwnd
+            this.title := (title != "") ? title : RegExReplace(this.__class, "(.*\.)*(.*)$", "$2") "_" this.hwnd
+            DllCall("SetWindowText", "ptr",this.hwnd, "str",this.title)
+            this.__screen := new this.outer.memory(this.ScreenWidth, this.ScreenHeight)
+            this.state := new this.outer.queue()
+            this.Additional(terms*)
             return this
          }
 
-         MouseGetPos(ByRef x_mouse, ByRef y_mouse) {
-            _cmm := A_CoordModeMouse
-            CoordMode, Mouse, Screen
-            MouseGetPos, x_mouse, y_mouse
-            CoordMode, Mouse, %_cmm%
+         Additional(terms*) {
+            this.color := (terms.1) ? terms.1 : "0x7FDDDDDD"
+            this.cache := 0
+         }
+
+         Render(color := "", style := "", empty := "", update := true) {
+            if (!this.hwnd)
+               return (new this).Render(color, style, empty)
+
+            this.state.new(A_ThisFunc)
+
+            Gdip_GraphicsClear(this.__screen.G)
+
+            Critical On
+            this.DetectScreenResolutionChange()
+            this.Draw(color, style, empty)
+            if (update)
+               UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+            Critical Off
+
+            if (this.time) {
+               self_destruct := ObjBindMethod(this, "Destroy")
+               SetTimer, % self_destruct, % -1 * this.time
+            }
+
+            ; Shift the layers.
+            this.state.layers.RemoveAt(1)
+            this.state.layers.2 := []
+
+            return this
+         }
+
+         Redraw(x, y, w, h) {
+            Critical On
+            ;this.DetectScreenResolutionChange()
+            Gdip_SetSmoothingMode(this.__screen.G, 4) ;Adds one clickable pixel to the edge.
+            pBrush := Gdip_BrushCreateSolid(this.color)
+
+            if (this.cache = 0) {
+               Gdip_GraphicsClear(this.__screen.G)
+               Gdip_FillRectangle(this.__screen.G, pBrush, x, y, w, h)
+            }
+            if (this.cache = 1) {
+               if (!this.state.identical)
+                  this.__cache := ""
+
+               if (!this.__cache) {
+                  this.__cache := new this.outer.memory(w + 1, h + 1)
+                  Gdip_FillRectangle(this.__cache.G, pBrush, 0, 0, w, h)
+               }
+
+               Gdip_GraphicsClear(this.__screen.G)
+               BitBlt(this.__screen.hdc, x, y, w + 1, h + 1, this.__cache.hdc, 0, 0)
+            }
+            if (this.cache = 2) {
+               if (!this.state.identical)
+                  this.__cache := ""
+
+               if (!this.__cache) {
+                  this.__cache := new this.outer.memory(w + 1, h + 1)
+                  Gdip_FillRectangle(this.__cache.G, pBrush, 0, 0, w, h)
+               }
+
+               Gdip_GraphicsClear(this.__screen.G)
+               StretchBlt(this.__screen.hdc, x, y, w + 1, h + 1, this.__cache.hdc, 0, 0, this.__cache.width, this.__cache.height)
+            }
+            UpdateLayeredWindow(this.hwnd, this.__screen.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+            Gdip_DeleteBrush(pBrush)
+            Critical Off
+         }
+
+         Paint(x, y, w, h, pGraphics) {
+            pBrush := Gdip_BrushCreateSolid(this.color)
+            Gdip_FillRectangle(pGraphics, pBrush, x, y, w, h)
+            Gdip_DeleteBrush(pBrush)
+         }
+
+         Draw(color := "", style := "", empty := "", pGraphics := "") {
+
+            ; Note that only the second layer is drawn on. The first layer is the reference layer.
+            if (pGraphics == "") {
+               if (!this.state.layers.2.MaxIndex())
+                  this.__buffer := new this.outer.memory(this.ScreenWidth, this.ScreenHeight)
+               pGraphics := this.__buffer.G
+            }
+
+
+            ; Retrieve last style if omitted. Reduce all whitespace to one space character.
+            style := !IsObject(style) ? RegExReplace(style, "\s+", " ") : style
+            style := (style == "") ? this.state.layers.2[this.state.layers.2.MaxIndex()].2 : style
+            this.state.layers.2.push([color, style, empty])
+
+
+
+            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
+            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
+
+            if IsObject(style) {
+               t  := (style.time != "")        ? style.time        : style.t
+               a  := (style.anchor != "")      ? style.anchor      : style.a
+               x  := (style.left != "")        ? style.left        : style.x
+               y  := (style.top != "")         ? style.top         : style.y
+               w  := (style.width != "")       ? style.width       : style.w
+               h  := (style.height != "")      ? style.height      : style.h
+               m  := (style.margin != "")      ? style.margin      : style.m
+               s  := (style.size != "")        ? style.size        : style.s
+               c  := (style.color != "")       ? style.color       : style.c
+               q  := (style.quality != "")     ? style.quality     : (style.q) ? style.q : style.InterpolationMode
+            } else {
+               t  := ((___ := RegExReplace(style, q1    "(t(ime)?)"          q2, "${value}")) != style) ? ___ : ""
+               a  := ((___ := RegExReplace(style, q1    "(a(nchor)?)"        q2, "${value}")) != style) ? ___ : ""
+               x  := ((___ := RegExReplace(style, q1    "(x|left)"           q2, "${value}")) != style) ? ___ : ""
+               y  := ((___ := RegExReplace(style, q1    "(y|top)"            q2, "${value}")) != style) ? ___ : ""
+               w  := ((___ := RegExReplace(style, q1    "(w(idth)?)"         q2, "${value}")) != style) ? ___ : ""
+               h  := ((___ := RegExReplace(style, q1    "(h(eight)?)"        q2, "${value}")) != style) ? ___ : ""
+               m  := ((___ := RegExReplace(style, q1    "(m(argin)?)"        q2, "${value}")) != style) ? ___ : ""
+               s  := ((___ := RegExReplace(style, q1    "(s(ize)?)"          q2, "${value}")) != style) ? ___ : ""
+               c  := ((___ := RegExReplace(style, q1    "(c(olor)?)"         q2, "${value}")) != style) ? ___ : ""
+               q  := ((___ := RegExReplace(style, q1    "(q(uality)?)"       q2, "${value}")) != style) ? ___ : ""
+            }
+
+            static times := "(?i)^\s*(\d+)\s*(ms|mil(li(second)?)?|s(ec(ond)?)?|m(in(ute)?)?|h(our)?|d(ay)?)?s?\s*$"
+            t  := ( t ~= times) ? RegExReplace( t, "\s", "") : 0 ; Default time is zero.
+            t  := ((___ := RegExReplace( t, "i)(\d+)(ms|mil(li(second)?)?)s?$", "$1")) !=  t) ? ___ *        1 : t
+            t  := ((___ := RegExReplace( t, "i)(\d+)s(ec(ond)?)?s?$"          , "$1")) !=  t) ? ___ *     1000 : t
+            t  := ((___ := RegExReplace( t, "i)(\d+)m(in(ute)?)?s?$"          , "$1")) !=  t) ? ___ *    60000 : t
+            t  := ((___ := RegExReplace( t, "i)(\d+)h(our)?s?$"               , "$1")) !=  t) ? ___ *  3600000 : t
+            t  := ((___ := RegExReplace( t, "i)(\d+)d(ay)?s?$"                , "$1")) !=  t) ? ___ * 86400000 : t
+            this.time := t
+
+            static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+            static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+
+            this.vw := 0.01 * this.ScreenWidth    ; 1% of viewport width.
+            this.vh := 0.01 * this.ScreenHeight   ; 1% of viewport height.
+            this.vmin := (this.vw < this.vh) ? this.vw : this.vh ; 1vw or 1vh, whichever is smaller.
+
+            ; Default = 0, LowQuality = 1, HighQuality = 2, Bilinear = 3
+            ; Bicubic = 4, NearestNeighbor = 5, HighQualityBilinear = 6, HighQualityBicubic = 7
+            q := (q >= 0 && q <= 7) ? q : 7       ; Default InterpolationMode is HighQualityBicubic.
+            Gdip_SetInterpolationMode(pGraphics, q)
+
+            w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : width ; Default width is image width.
+            w  := ( w ~= "i)(pt|px)$") ? SubStr( w, 1, -2) :  w
+            w  := ( w ~= "i)vw$") ? RegExReplace( w, "i)vw$", "") * this.vw :  w
+            w  := ( w ~= "i)vh$") ? RegExReplace( w, "i)vh$", "") * this.vh :  w
+            w  := ( w ~= "i)vmin$") ? RegExReplace( w, "i)vmin$", "") * this.vmin :  w
+            w  := ( w ~= "%$") ? RegExReplace( w, "%$", "") * 0.01 * width :  w
+
+            h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : height ; Default height is image height.
+            h  := ( h ~= "i)(pt|px)$") ? SubStr( h, 1, -2) :  h
+            h  := ( h ~= "i)vw$") ? RegExReplace( h, "i)vw$", "") * this.vw :  h
+            h  := ( h ~= "i)vh$") ? RegExReplace( h, "i)vh$", "") * this.vh :  h
+            h  := ( h ~= "i)vmin$") ? RegExReplace( h, "i)vmin$", "") * this.vmin :  h
+            h  := ( h ~= "%$") ? RegExReplace( h, "%$", "") * 0.01 * height :  h
+
+            ; If size is "auto" automatically downscale by a multiple of 2. Ex: 50%, 25%, 12.5%...
+            if (s = "auto") {
+               ; Determine what is smaller: declared width and height or screen width and height.
+               ; Since the declared w and h are overwritten by the size, they now determine the bounds.
+               ; Default bounds are the ScreenWidth and ScreenHeight, and can be decreased, never increased.
+               visible_w := (w > this.ScreenWidth) ? this.ScreenWidth : w
+               visible_h := (h > this.ScreenHeight) ? this.ScreenHeight : h
+               auto_w := (width > visible_w) ? width // visible_w + 1 : 1
+               auto_h := (height > visible_h) ? height // visible_h + 1 : 1
+               s := (auto_w > auto_h) ? (1 / auto_w) : (1 / auto_h)
+               w := width ; Since the width was overwritten, restore it to the default.
+               h := height ; w and h determine the bounds of the size.
+            }
+
+            s  := ( s ~= valid_positive) ? RegExReplace( s, "\s", "") : 1 ; Default size is 1.00.
+            s  := ( s ~= "i)(pt|px)$") ? SubStr( s, 1, -2) :  s
+            s  := ( s ~= "i)vw$") ? RegExReplace( s, "i)vw$", "") * this.vw / width :  s
+            s  := ( s ~= "i)vh$") ? RegExReplace( s, "i)vh$", "") * this.vh / height:  s
+            s  := ( s ~= "i)vmin$") ? RegExReplace( s, "i)vmin$", "") * this.vmin / minimum :  s
+            s  := ( s ~= "%$") ? RegExReplace( s, "%$", "") * 0.01 :  s
+
+            ; Scale width and height.
+            w := Floor(w * s)
+            h := Floor(h * s)
+
+            a  := RegExReplace( a, "\s", "")
+            a  := (a ~= "i)top" && a ~= "i)left") ? 1 : (a ~= "i)top" && a ~= "i)cent(er|re)") ? 2
+               : (a ~= "i)top" && a ~= "i)right") ? 3 : (a ~= "i)cent(er|re)" && a ~= "i)left") ? 4
+               : (a ~= "i)cent(er|re)" && a ~= "i)right") ? 6 : (a ~= "i)bottom" && a ~= "i)left") ? 7
+               : (a ~= "i)bottom" && a ~= "i)cent(er|re)") ? 8 : (a ~= "i)bottom" && a ~= "i)right") ? 9
+               : (a ~= "i)top") ? 2 : (a ~= "i)left") ? 4 : (a ~= "i)right") ? 6 : (a ~= "i)bottom") ? 8
+               : (a ~= "i)cent(er|re)") ? 5 : (a ~= "^[1-9]$") ? a : 1 ; Default anchor is top-left.
+
+            a  := ( x ~= "i)left") ? 1+((( a-1)//3)*3) : ( x ~= "i)cent(er|re)") ? 2+((( a-1)//3)*3) : ( x ~= "i)right") ? 3+((( a-1)//3)*3) :  a
+            a  := ( y ~= "i)top") ? 1+(mod( a-1,3)) : ( y ~= "i)cent(er|re)") ? 4+(mod( a-1,3)) : ( y ~= "i)bottom") ? 7+(mod( a-1,3)) :  a
+
+            ; Convert English words to numbers. Don't mess with these values any further.
+            x  := ( x ~= "i)left") ? 0 : (x ~= "i)cent(er|re)") ? 0.5*this.ScreenWidth : (x ~= "i)right") ? this.ScreenWidth : x
+            y  := ( y ~= "i)top") ? 0 : (y ~= "i)cent(er|re)") ? 0.5*this.ScreenHeight : (y ~= "i)bottom") ? this.ScreenHeight : y
+
+            ; Validate x and y, convert to pixels.
+            x  := ( x ~= valid) ? RegExReplace( x, "\s", "") : 0 ; Default x is 0.
+            x  := ( x ~= "i)(pt|px)$") ? SubStr( x, 1, -2) :  x
+            x  := ( x ~= "i)(%|vw)$") ? RegExReplace( x, "i)(%|vw)$", "") * this.vw :  x
+            x  := ( x ~= "i)vh$") ? RegExReplace( x, "i)vh$", "") * this.vh :  x
+            x  := ( x ~= "i)vmin$") ? RegExReplace( x, "i)vmin$", "") * this.vmin :  x
+
+            y  := ( y ~= valid) ? RegExReplace( y, "\s", "") : 0 ; Default y is 0.
+            y  := ( y ~= "i)(pt|px)$") ? SubStr( y, 1, -2) :  y
+            y  := ( y ~= "i)vw$") ? RegExReplace( y, "i)vw$", "") * this.vw :  y
+            y  := ( y ~= "i)(%|vh)$") ? RegExReplace( y, "i)(%|vh)$", "") * this.vh :  y
+            y  := ( y ~= "i)vmin$") ? RegExReplace( y, "i)vmin$", "") * this.vmin :  y
+
+            ; Modify x and y values with the anchor, so that the image has a new point of origin.
+            x  -= (mod(a-1,3) == 0) ? 0 : (mod(a-1,3) == 1) ? w/2 : (mod(a-1,3) == 2) ? w : 0
+            y  -= (((a-1)//3) == 0) ? 0 : (((a-1)//3) == 1) ? h/2 : (((a-1)//3) == 2) ? h : 0
+
+            ; Prevent half-pixel rendering and keep image sharp.
+            x := Floor(x)
+            y := Floor(y)
+
+            m := this.margin_and_padding(m)
+
+            ; Calculate border using margin.
+            _x  := x - (m.4)
+            _y  := y - (m.1)
+            _w  := w + (m.2 + m.4)
+            _h  := h + (m.1 + m.3)
+
+            ; Save size.
+            this.x := _x
+            this.y := _y
+            this.w := _w
+            this.h := _h
+
+            if (image != "") {
+               ; Draw border.
+               c := this.color(c, 0xFF000000) ; Default color is black.
+               pBrush := Gdip_BrushCreateSolid(c)
+               Gdip_FillRectangle(pGraphics, pBrush, _x, _y, _w, _h)
+               Gdip_DeleteBrush(pBrush)
+               ; Draw image.
+               Gdip_DrawImage(pGraphics, pBitmap, x, y, w, h, 0, 0, width, height)
+            }
+
+            ; POINTF
+            Gdip_SetSmoothingMode(pGraphics, 4)  ; None = 3, AntiAlias = 4
+            pPen := Gdip_CreatePen(0xFFFF0000, 1)
+
+            for i, polygon in polygons {
+               DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
+               VarSetCapacity(pointf, 8*polygons[i].polygon.maxIndex(), 0)
+               for j, point in polygons[i].polygon {
+                  NumPut(point.x*s + x, pointf, 8*(A_Index-1) + 0, "float")
+                  NumPut(point.y*s + y, pointf, 8*(A_Index-1) + 4, "float")
+               }
+               DllCall("gdiplus\GdipAddPathPolygon", "ptr",pPath, "ptr",&pointf, "uint",polygons[i].polygon.maxIndex())
+               DllCall("gdiplus\GdipDrawPath", "ptr",pGraphics, "ptr",pPen, "ptr",pPath) ; DRAWING!
+            }
+
+            Gdip_DeletePen(pPen)
+
+            if (type != "pBitmap")
+               Gdip_DisposeImage(pBitmap)
+
+            return (pGraphics == "") ? this : ""
          }
 
          Origin() {
             this.MouseGetPos(x_mouse, y_mouse)
             new_state := this.state.new(A_ThisFunc, x_mouse, y_mouse)
-            if (new_state = 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
+            if (new_state = true || x_mouse != this.x_last || y_mouse != this.y_last) {
                this.x_last := x_mouse, this.y_last := y_mouse
 
                x := x_mouse
@@ -2084,10 +2360,10 @@ class Vis2 {
             }
          }
 
-         Draw() {
+         Drag() {
             this.MouseGetPos(x_mouse, y_mouse)
             new_state := this.state.new(A_ThisFunc, x_mouse, y_mouse)
-            if (new_state = 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
+            if (new_state = true || x_mouse != this.x_last || y_mouse != this.y_last) {
                this.x_last := x_mouse, this.y_last := y_mouse
 
                x_origin := (this.state.mx.1) ? this.state.x.1 : this.state.xx.1
@@ -2111,7 +2387,7 @@ class Vis2 {
          Move() {
             this.MouseGetPos(x_mouse, y_mouse)
             new_state := this.state.new(A_ThisFunc, x_mouse, y_mouse)
-            if (new_state = 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
+            if (new_state = true || x_mouse != this.x_last || y_mouse != this.y_last) {
                this.x_last := x_mouse, this.y_last := y_mouse
 
                dx := x_mouse - this.state.x_mouse
@@ -2131,20 +2407,10 @@ class Vis2 {
          }
 
          Before() {
-            Gdip_DeleteBrush(this.pBrush)
          }
 
          Recover() {
             Gdip_SetSmoothingMode(this.G, 4)
-         }
-
-         Redraw(x, y, w, h) {
-            Critical On
-            this.DetectScreenResolutionChange()
-            Gdip_GraphicsClear(this.G)
-            Gdip_FillRectangle(this.G, this.pBrush, x, y, w, h)
-            UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-            Critical Off
          }
 
          ChangeColor(color) {
@@ -2157,7 +2423,7 @@ class Vis2 {
          ResizeCorners() {
             this.MouseGetPos(x_mouse, y_mouse)
             new_state := this.state.new(A_ThisFunc, x_mouse, y_mouse)
-            if (new_state = 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
+            if (new_state = true || x_mouse != this.x_last || y_mouse != this.y_last) {
                this.x_last := x_mouse, this.y_last := y_mouse
 
                xr := this.state.x_mouse - this.state.x.1 - (this.state.w.1 / 2)
@@ -2211,7 +2477,7 @@ class Vis2 {
          ResizeEdges() {
             this.MouseGetPos(x_mouse, y_mouse)
             new_state := this.state.new(A_ThisFunc, x_mouse, y_mouse)
-            if (new_state = 1 || x_mouse != this.x_last || y_mouse != this.y_last) {
+            if (new_state = true || x_mouse != this.x_last || y_mouse != this.y_last) {
                this.x_last := x_mouse, this.y_last := y_mouse
 
                m := -(this.state.h.1 / this.state.w.1)                              ; slope (dy/dx)
@@ -2264,8 +2530,8 @@ class Vis2 {
          }
 
          ScreenshotCoordinates() {
-            x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
-            return (w > 0 && h > 0) ? (x "|" y "|" w "|" h) : ""
+            return (this.state.w.2 > 0 && this.state.h.2 > 0)
+               ? (this.state.x.2 "|" this.state.y.2 "|" this.state.w.2 "|" this.state.h.2) : ""
          }
 
          x1() {
@@ -2546,11 +2812,8 @@ class Vis2 {
             static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
             static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
 
-            this.time := (style.time) ? style.time : (style.t) ? style.t
-               : (!IsObject(style) && (___ := RegExReplace(style, q1 "(t(ime)?)" q2, "${value}")) != style) ? ___
-               : this.time
-
             if IsObject(style) {
+               t  := (style.time != "")        ? style.time        : style.t
                a  := (style.anchor != "")      ? style.anchor      : style.a
                x  := (style.left != "")        ? style.left        : style.x
                y  := (style.top != "")         ? style.top         : style.y
@@ -2561,6 +2824,7 @@ class Vis2 {
                c  := (style.color != "")       ? style.color       : style.c
                q  := (style.quality != "")     ? style.quality     : (style.q) ? style.q : style.InterpolationMode
             } else {
+               t  := ((___ := RegExReplace(style, q1    "(t(ime)?)"          q2, "${value}")) != style) ? ___ : ""
                a  := ((___ := RegExReplace(style, q1    "(a(nchor)?)"        q2, "${value}")) != style) ? ___ : ""
                x  := ((___ := RegExReplace(style, q1    "(x|left)"           q2, "${value}")) != style) ? ___ : ""
                y  := ((___ := RegExReplace(style, q1    "(y|top)"            q2, "${value}")) != style) ? ___ : ""
@@ -2572,8 +2836,17 @@ class Vis2 {
                q  := ((___ := RegExReplace(style, q1    "(q(uality)?)"       q2, "${value}")) != style) ? ___ : ""
             }
 
-            static valid := "^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-            static valid_positive := "^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+            static times := "(?i)^\s*(\d+)\s*(ms|mil(li(second)?)?|s(ec(ond)?)?|m(in(ute)?)?|h(our)?|d(ay)?)?s?\s*$"
+            t  := ( t ~= times) ? RegExReplace( t, "\s", "") : 0 ; Default time is zero.
+            t  := ((___ := RegExReplace( t, "i)(\d+)(ms|mil(li(second)?)?)s?$", "$1")) !=  t) ? ___ *        1 : t
+            t  := ((___ := RegExReplace( t, "i)(\d+)s(ec(ond)?)?s?$"          , "$1")) !=  t) ? ___ *     1000 : t
+            t  := ((___ := RegExReplace( t, "i)(\d+)m(in(ute)?)?s?$"          , "$1")) !=  t) ? ___ *    60000 : t
+            t  := ((___ := RegExReplace( t, "i)(\d+)h(our)?s?$"               , "$1")) !=  t) ? ___ *  3600000 : t
+            t  := ((___ := RegExReplace( t, "i)(\d+)d(ay)?s?$"                , "$1")) !=  t) ? ___ * 86400000 : t
+            this.time := t
+
+            static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+            static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
 
             this.vw := 0.01 * this.ScreenWidth    ; 1% of viewport width.
             this.vh := 0.01 * this.ScreenHeight   ; 1% of viewport height.
@@ -2590,17 +2863,17 @@ class Vis2 {
             minimum := (width < height) ? width : height
 
             w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : width ; Default width is image width.
-            w  := ( w ~= "(pt|px)$") ? SubStr( w, 1, -2) :  w
-            w  := ( w ~= "vw$") ? RegExReplace( w, "vw$", "") * this.vw :  w
-            w  := ( w ~= "vh$") ? RegExReplace( w, "vh$", "") * this.vh :  w
-            w  := ( w ~= "vmin$") ? RegExReplace( w, "vmin$", "") * this.vmin :  w
+            w  := ( w ~= "i)(pt|px)$") ? SubStr( w, 1, -2) :  w
+            w  := ( w ~= "i)vw$") ? RegExReplace( w, "i)vw$", "") * this.vw :  w
+            w  := ( w ~= "i)vh$") ? RegExReplace( w, "i)vh$", "") * this.vh :  w
+            w  := ( w ~= "i)vmin$") ? RegExReplace( w, "i)vmin$", "") * this.vmin :  w
             w  := ( w ~= "%$") ? RegExReplace( w, "%$", "") * 0.01 * width :  w
 
             h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : height ; Default height is image height.
-            h  := ( h ~= "(pt|px)$") ? SubStr( h, 1, -2) :  h
-            h  := ( h ~= "vw$") ? RegExReplace( h, "vw$", "") * this.vw :  h
-            h  := ( h ~= "vh$") ? RegExReplace( h, "vh$", "") * this.vh :  h
-            h  := ( h ~= "vmin$") ? RegExReplace( h, "vmin$", "") * this.vmin :  h
+            h  := ( h ~= "i)(pt|px)$") ? SubStr( h, 1, -2) :  h
+            h  := ( h ~= "i)vw$") ? RegExReplace( h, "i)vw$", "") * this.vw :  h
+            h  := ( h ~= "i)vh$") ? RegExReplace( h, "i)vh$", "") * this.vh :  h
+            h  := ( h ~= "i)vmin$") ? RegExReplace( h, "i)vmin$", "") * this.vmin :  h
             h  := ( h ~= "%$") ? RegExReplace( h, "%$", "") * 0.01 * height :  h
 
             ; If size is "auto" automatically downscale by a multiple of 2. Ex: 50%, 25%, 12.5%...
@@ -2618,10 +2891,10 @@ class Vis2 {
             }
 
             s  := ( s ~= valid_positive) ? RegExReplace( s, "\s", "") : 1 ; Default size is 1.00.
-            s  := ( s ~= "(pt|px)$") ? SubStr( s, 1, -2) :  s
-            s  := ( s ~= "vw$") ? RegExReplace( s, "vw$", "") * this.vw / width :  s
-            s  := ( s ~= "vh$") ? RegExReplace( s, "vh$", "") * this.vh / height:  s
-            s  := ( s ~= "vmin$") ? RegExReplace( s, "vmin$", "") * this.vmin / minimum :  s
+            s  := ( s ~= "i)(pt|px)$") ? SubStr( s, 1, -2) :  s
+            s  := ( s ~= "i)vw$") ? RegExReplace( s, "i)vw$", "") * this.vw / width :  s
+            s  := ( s ~= "i)vh$") ? RegExReplace( s, "i)vh$", "") * this.vh / height:  s
+            s  := ( s ~= "i)vmin$") ? RegExReplace( s, "i)vmin$", "") * this.vmin / minimum :  s
             s  := ( s ~= "%$") ? RegExReplace( s, "%$", "") * 0.01 :  s
 
             ; Scale width and height.
@@ -2629,11 +2902,11 @@ class Vis2 {
             h := Floor(h * s)
 
             a  := RegExReplace( a, "\s", "")
-            a  := (a = "top") ? 2 : (a = "left") ? 4 : (a = "right") ? 6 : (a = "bottom") ? 8
-               : (a ~= "i)top" && a ~= "i)left") ? 1 : (a ~= "i)top" && a ~= "i)cent(er|re)") ? 2
+            a  := (a ~= "i)top" && a ~= "i)left") ? 1 : (a ~= "i)top" && a ~= "i)cent(er|re)") ? 2
                : (a ~= "i)top" && a ~= "i)right") ? 3 : (a ~= "i)cent(er|re)" && a ~= "i)left") ? 4
                : (a ~= "i)cent(er|re)" && a ~= "i)right") ? 6 : (a ~= "i)bottom" && a ~= "i)left") ? 7
                : (a ~= "i)bottom" && a ~= "i)cent(er|re)") ? 8 : (a ~= "i)bottom" && a ~= "i)right") ? 9
+               : (a ~= "i)top") ? 2 : (a ~= "i)left") ? 4 : (a ~= "i)right") ? 6 : (a ~= "i)bottom") ? 8
                : (a ~= "i)cent(er|re)") ? 5 : (a ~= "^[1-9]$") ? a : 1 ; Default anchor is top-left.
 
             a  := ( x ~= "i)left") ? 1+((( a-1)//3)*3) : ( x ~= "i)cent(er|re)") ? 2+((( a-1)//3)*3) : ( x ~= "i)right") ? 3+((( a-1)//3)*3) :  a
@@ -2645,16 +2918,16 @@ class Vis2 {
 
             ; Validate x and y, convert to pixels.
             x  := ( x ~= valid) ? RegExReplace( x, "\s", "") : 0 ; Default x is 0.
-            x  := ( x ~= "(pt|px)$") ? SubStr( x, 1, -2) :  x
-            x  := ( x ~= "(%|vw)$") ? RegExReplace( x, "(%|vw)$", "") * this.vw :  x
-            x  := ( x ~= "vh$") ? RegExReplace( x, "vh$", "") * this.vh :  x
-            x  := ( x ~= "vmin$") ? RegExReplace( x, "vmin$", "") * this.vmin :  x
+            x  := ( x ~= "i)(pt|px)$") ? SubStr( x, 1, -2) :  x
+            x  := ( x ~= "i)(%|vw)$") ? RegExReplace( x, "i)(%|vw)$", "") * this.vw :  x
+            x  := ( x ~= "i)vh$") ? RegExReplace( x, "i)vh$", "") * this.vh :  x
+            x  := ( x ~= "i)vmin$") ? RegExReplace( x, "i)vmin$", "") * this.vmin :  x
 
             y  := ( y ~= valid) ? RegExReplace( y, "\s", "") : 0 ; Default y is 0.
-            y  := ( y ~= "(pt|px)$") ? SubStr( y, 1, -2) :  y
-            y  := ( y ~= "vw$") ? RegExReplace( y, "vw$", "") * this.vw :  y
-            y  := ( y ~= "(%|vh)$") ? RegExReplace( y, "(%|vh)$", "") * this.vh :  y
-            y  := ( y ~= "vmin$") ? RegExReplace( y, "vmin$", "") * this.vmin :  y
+            y  := ( y ~= "i)(pt|px)$") ? SubStr( y, 1, -2) :  y
+            y  := ( y ~= "i)vw$") ? RegExReplace( y, "i)vw$", "") * this.vw :  y
+            y  := ( y ~= "i)(%|vh)$") ? RegExReplace( y, "i)(%|vh)$", "") * this.vh :  y
+            y  := ( y ~= "i)vmin$") ? RegExReplace( y, "i)vmin$", "") * this.vmin :  y
 
             ; Modify x and y values with the anchor, so that the image has a new point of origin.
             x  -= (mod(a-1,3) == 0) ? 0 : (mod(a-1,3) == 1) ? w/2 : (mod(a-1,3) == 2) ? w : 0
@@ -3046,15 +3319,9 @@ class Vis2 {
             static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
             static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
 
-            ; Extract the time variable and save it for later when we Render() everything.
-            this.time := (style1.time) ? style1.time : (style1.t) ? style1.t
-               : (!IsObject(style1) && (___ := RegExReplace(style1, q1 "(t(ime)?)" q2, "${value}")) != style1) ? ___
-               : (style2.time) ? style2.time : (style2.t) ? style2.t
-               : (!IsObject(style2) && (___ := RegExReplace(style2, q1 "(t(ime)?)" q2, "${value}")) != style2) ? ___
-               : this.time
-
             ; Extract styles from the background styles parameter.
             if IsObject(style1) {
+               _t  := (style1.time != "")     ? style1.time     : style1.t
                _a  := (style1.anchor != "")   ? style1.anchor   : style1.a
                _x  := (style1.left != "")     ? style1.left     : style1.x
                _y  := (style1.top != "")      ? style1.top      : style1.y
@@ -3066,6 +3333,7 @@ class Vis2 {
                _p  := (style1.padding != "")  ? style1.padding  : style1.p
                _q  := (style1.quality != "")  ? style1.quality  : (style1.q) ? style1.q : style1.SmoothingMode
             } else {
+               _t  := ((___ := RegExReplace(style1, q1    "(t(ime)?)"          q2, "${value}")) != style1) ? ___ : ""
                _a  := ((___ := RegExReplace(style1, q1    "(a(nchor)?)"        q2, "${value}")) != style1) ? ___ : ""
                _x  := ((___ := RegExReplace(style1, q1    "(x|left)"           q2, "${value}")) != style1) ? ___ : ""
                _y  := ((___ := RegExReplace(style1, q1    "(y|top)"            q2, "${value}")) != style1) ? ___ : ""
@@ -3080,6 +3348,7 @@ class Vis2 {
 
             ; Extract styles from the text styles parameter.
             if IsObject(style2) {
+               t  := (style2.time != "")        ? style2.time        : style2.t
                a  := (style2.anchor != "")      ? style2.anchor      : style2.a
                x  := (style2.left != "")        ? style2.left        : style2.x
                y  := (style2.top != "")         ? style2.top         : style2.y
@@ -3099,6 +3368,7 @@ class Vis2 {
                o  := (style2.outline != "")     ? style2.outline     : style2.o
                q  := (style2.quality != "")     ? style2.quality     : (style2.q) ? style2.q : style2.TextRenderingHint
             } else {
+               t  := ((___ := RegExReplace(style2, q1    "(t(ime)?)"          q2, "${value}")) != style2) ? ___ : ""
                a  := ((___ := RegExReplace(style2, q1    "(a(nchor)?)"        q2, "${value}")) != style2) ? ___ : ""
                x  := ((___ := RegExReplace(style2, q1    "(x|left)"           q2, "${value}")) != style2) ? ___ : ""
                y  := ((___ := RegExReplace(style2, q1    "(y|top)"            q2, "${value}")) != style2) ? ___ : ""
@@ -3119,9 +3389,20 @@ class Vis2 {
                q  := ((___ := RegExReplace(style2, q1    "(q(uality)?)"       q2, "${value}")) != style2) ? ___ : ""
             }
 
+            ; Extract the time variable and save it for later when we Render() everything.
+            static times := "(?i)^\s*(\d+)\s*(ms|mil(li(second)?)?|s(ec(ond)?)?|m(in(ute)?)?|h(our)?|d(ay)?)?s?\s*$"
+            t  := (_t) ? _t : t
+            t  := ( t ~= times) ? RegExReplace( t, "\s", "") : 0 ; Default time is zero.
+            t  := ((___ := RegExReplace( t, "i)(\d+)(ms|mil(li(second)?)?)s?$", "$1")) !=  t) ? ___ *        1 : t
+            t  := ((___ := RegExReplace( t, "i)(\d+)s(ec(ond)?)?s?$"          , "$1")) !=  t) ? ___ *     1000 : t
+            t  := ((___ := RegExReplace( t, "i)(\d+)m(in(ute)?)?s?$"          , "$1")) !=  t) ? ___ *    60000 : t
+            t  := ((___ := RegExReplace( t, "i)(\d+)h(our)?s?$"               , "$1")) !=  t) ? ___ *  3600000 : t
+            t  := ((___ := RegExReplace( t, "i)(\d+)d(ay)?s?$"                , "$1")) !=  t) ? ___ * 86400000 : t
+            this.time := t
+
             ; These are the type checkers.
-            static valid := "^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-            static valid_positive := "^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+            static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+            static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
 
             ; Define viewport width and height. This is the visible screen area.
             this.vw := 0.01 * this.ScreenWidth    ; 1% of viewport width.
@@ -3134,10 +3415,10 @@ class Vis2 {
 
             ; Get Font size.
             s  := (s ~= valid_positive) ? RegExReplace(s, "\s", "") : "2.23vh"           ; Default font size is 2.23vh.
-            s  := (s ~= "(pt|px)$") ? SubStr(s, 1, -2) : s                               ; Strip spaces, px, and pt.
-            s  := (s ~= "vh$") ? RegExReplace(s, "vh$", "") * this.vh : s                ; Relative to viewport height.
-            s  := (s ~= "vw$") ? RegExReplace(s, "vw$", "") * this.vw : s                ; Relative to viewport width.
-            s  := (s ~= "(%|vmin)$") ? RegExReplace(s, "(%|vmin)$", "") * this.vmin : s  ; Relative to viewport minimum.
+            s  := (s ~= "i)(pt|px)$") ? SubStr(s, 1, -2) : s                               ; Strip spaces, px, and pt.
+            s  := (s ~= "i)vh$") ? RegExReplace(s, "i)vh$", "") * this.vh : s                ; Relative to viewport height.
+            s  := (s ~= "i)vw$") ? RegExReplace(s, "i)vw$", "") * this.vw : s                ; Relative to viewport width.
+            s  := (s ~= "i)(%|vmin)$") ? RegExReplace(s, "i)(%|vmin)$", "") * this.vmin : s  ; Relative to viewport minimum.
 
             ; Get Bold, Italic, Underline, NoWrap, and Justification of text.
             style += (b) ? 1 : 0         ; bold
@@ -3170,27 +3451,27 @@ class Vis2 {
 
             ; Get background width and height. Default width and height are simulated width and height.
             _w := (_w ~= valid_positive) ? RegExReplace(_w, "\s", "") : ReturnRC[3]
-            _w := (_w ~= "(pt|px)$") ? SubStr(_w, 1, -2) : _w
-            _w := (_w ~= "(%|vw)$") ? RegExReplace(_w, "(%|vw)$", "") * this.vw : _w
-            _w := (_w ~= "vh$") ? RegExReplace(_w, "vh$", "") * this.vh : _w
-            _w := (_w ~= "vmin$") ? RegExReplace(_w, "vmin$", "") * this.vmin : _w
+            _w := (_w ~= "i)(pt|px)$") ? SubStr(_w, 1, -2) : _w
+            _w := (_w ~= "i)(%|vw)$") ? RegExReplace(_w, "i)(%|vw)$", "") * this.vw : _w
+            _w := (_w ~= "i)vh$") ? RegExReplace(_w, "i)vh$", "") * this.vh : _w
+            _w := (_w ~= "i)vmin$") ? RegExReplace(_w, "i)vmin$", "") * this.vmin : _w
             ; Output is a decimal with pixel units.
 
             _h := (_h ~= valid_positive) ? RegExReplace(_h, "\s", "") : ReturnRC[4]
-            _h := (_h ~= "(pt|px)$") ? SubStr(_h, 1, -2) : _h
-            _h := (_h ~= "vw$") ? RegExReplace(_h, "vw$", "") * this.vw : _h
-            _h := (_h ~= "(%|vh)$") ? RegExReplace(_h, "(%|vh)$", "") * this.vh : _h
-            _h := (_h ~= "vmin$") ? RegExReplace(_h, "vmin$", "") * this.vmin : _h
+            _h := (_h ~= "i)(pt|px)$") ? SubStr(_h, 1, -2) : _h
+            _h := (_h ~= "i)vw$") ? RegExReplace(_h, "i)vw$", "") * this.vw : _h
+            _h := (_h ~= "i)(%|vh)$") ? RegExReplace(_h, "i)(%|vh)$", "") * this.vh : _h
+            _h := (_h ~= "i)vmin$") ? RegExReplace(_h, "i)vmin$", "") * this.vmin : _h
             ; Output is a decimal with pixel units.
 
             ; Get background anchor. This is where the origin of the image is located.
             ; The default origin is the top left corner. Default anchor is 1.
             _a := RegExReplace(_a, "\s", "")
-            _a := (_a = "top") ? 2 : (_a = "left") ? 4 : (_a = "right") ? 6 : (_a = "bottom") ? 8
-               : (_a ~= "i)top" && _a ~= "i)left") ? 1 : (_a ~= "i)top" && _a ~= "i)cent(er|re)") ? 2
+            _a := (_a ~= "i)top" && _a ~= "i)left") ? 1 : (_a ~= "i)top" && _a ~= "i)cent(er|re)") ? 2
                : (_a ~= "i)top" && _a ~= "i)right") ? 3 : (_a ~= "i)cent(er|re)" && _a ~= "i)left") ? 4
                : (_a ~= "i)cent(er|re)" && _a ~= "i)right") ? 6 : (_a ~= "i)bottom" && _a ~= "i)left") ? 7
                : (_a ~= "i)bottom" && _a ~= "i)cent(er|re)") ? 8 : (_a ~= "i)bottom" && _a ~= "i)right") ? 9
+               : (_a ~= "i)top") ? 2 : (_a ~= "i)left") ? 4 : (_a ~= "i)right") ? 6 : (_a ~= "i)bottom") ? 8
                : (_a ~= "i)cent(er|re)") ? 5 : (_a ~= "^[1-9]$") ? _a : 1 ; Default anchor is top-left.
 
             ; _x and _y can be specified as locations (left, center, right, top, bottom).
@@ -3204,17 +3485,17 @@ class Vis2 {
 
             ; Get _x value.
             _x := (_x ~= valid) ? RegExReplace(_x, "\s", "") : 0  ; Default _x is 0.
-            _x := (_x ~= "(pt|px)$") ? SubStr(_x, 1, -2) : _x
-            _x := (_x ~= "(%|vw)$") ? RegExReplace(_x, "(%|vw)$", "") * this.vw : _x
-            _x := (_x ~= "vh$") ? RegExReplace(_x, "vh$", "") * this.vh : _x
-            _x := (_x ~= "vmin$") ? RegExReplace(_x, "vmin$", "") * this.vmin : _x
+            _x := (_x ~= "i)(pt|px)$") ? SubStr(_x, 1, -2) : _x
+            _x := (_x ~= "i)(%|vw)$") ? RegExReplace(_x, "i)(%|vw)$", "") * this.vw : _x
+            _x := (_x ~= "i)vh$") ? RegExReplace(_x, "i)vh$", "") * this.vh : _x
+            _x := (_x ~= "i)vmin$") ? RegExReplace(_x, "i)vmin$", "") * this.vmin : _x
 
             ; Get _y value.
             _y := (_y ~= valid) ? RegExReplace(_y, "\s", "") : 0  ; Default _y is 0.
-            _y := (_y ~= "(pt|px)$") ? SubStr(_y, 1, -2) : _y
-            _y := (_y ~= "vw$") ? RegExReplace(_y, "vw$", "") * this.vw : _y
-            _y := (_y ~= "(%|vh)$") ? RegExReplace(_y, "(%|vh)$", "") * this.vh : _y
-            _y := (_y ~= "vmin$") ? RegExReplace(_y, "vmin$", "") * this.vmin : _y
+            _y := (_y ~= "i)(pt|px)$") ? SubStr(_y, 1, -2) : _y
+            _y := (_y ~= "i)vw$") ? RegExReplace(_y, "i)vw$", "") * this.vw : _y
+            _y := (_y ~= "i)(%|vh)$") ? RegExReplace(_y, "i)(%|vh)$", "") * this.vh : _y
+            _y := (_y ~= "i)vmin$") ? RegExReplace(_y, "i)vmin$", "") * this.vmin : _y
 
             ; Now let's modify the _x and _y values with the _anchor, so that the image has a new point of origin.
             ; We need our calculated _width and _height for this.
@@ -3228,17 +3509,17 @@ class Vis2 {
             ; that is relative to the background width/height. This is undesirable behavior, and so
             ; the user should use "vh" and "vw" whenever possible.
             w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : ReturnRC[3] ; Default is simulated text width.
-            w  := ( w ~= "(pt|px)$") ? SubStr( w, 1, -2) :  w
-            w  := ( w ~= "vw$") ? RegExReplace( w, "vw$", "") * this.vw :  w
-            w  := ( w ~= "vh$") ? RegExReplace( w, "vh$", "") * this.vh :  w
-            w  := ( w ~= "vmin$") ? RegExReplace( w, "vmin$", "") * this.vmin :  w
+            w  := ( w ~= "i)(pt|px)$") ? SubStr( w, 1, -2) :  w
+            w  := ( w ~= "i)vw$") ? RegExReplace( w, "i)vw$", "") * this.vw :  w
+            w  := ( w ~= "i)vh$") ? RegExReplace( w, "i)vh$", "") * this.vh :  w
+            w  := ( w ~= "i)vmin$") ? RegExReplace( w, "i)vmin$", "") * this.vmin :  w
             w  := ( w ~= "%$") ? RegExReplace( w, "%$", "") * 0.01 * _w :  w
 
             h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : ReturnRC[4] ; Default is simulated text height.
-            h  := ( h ~= "(pt|px)$") ? SubStr( h, 1, -2) :  h
-            h  := ( h ~= "vw$") ? RegExReplace( h, "vw$", "") * this.vw :  h
-            h  := ( h ~= "vh$") ? RegExReplace( h, "vh$", "") * this.vh :  h
-            h  := ( h ~= "vmin$") ? RegExReplace( h, "vmin$", "") * this.vmin :  h
+            h  := ( h ~= "i)(pt|px)$") ? SubStr( h, 1, -2) :  h
+            h  := ( h ~= "i)vw$") ? RegExReplace( h, "i)vw$", "") * this.vw :  h
+            h  := ( h ~= "i)vh$") ? RegExReplace( h, "i)vh$", "") * this.vh :  h
+            h  := ( h ~= "i)vmin$") ? RegExReplace( h, "i)vmin$", "") * this.vmin :  h
             h  := ( h ~= "%$") ? RegExReplace( h, "%$", "") * 0.01 * _h :  h
 
             ; If text justification is set but x is not, align the justified text relative to the center
@@ -3248,11 +3529,11 @@ class Vis2 {
 
             ; Get anchor.
             a  := RegExReplace( a, "\s", "")
-            a  := (a = "top") ? 2 : (a = "left") ? 4 : (a = "right") ? 6 : (a = "bottom") ? 8
-               : (a ~= "i)top" && a ~= "i)left") ? 1 : (a ~= "i)top" && a ~= "i)cent(er|re)") ? 2
+            a  := (a ~= "i)top" && a ~= "i)left") ? 1 : (a ~= "i)top" && a ~= "i)cent(er|re)") ? 2
                : (a ~= "i)top" && a ~= "i)right") ? 3 : (a ~= "i)cent(er|re)" && a ~= "i)left") ? 4
                : (a ~= "i)cent(er|re)" && a ~= "i)right") ? 6 : (a ~= "i)bottom" && a ~= "i)left") ? 7
                : (a ~= "i)bottom" && a ~= "i)cent(er|re)") ? 8 : (a ~= "i)bottom" && a ~= "i)right") ? 9
+               : (a ~= "i)top") ? 2 : (a ~= "i)left") ? 4 : (a ~= "i)right") ? 6 : (a ~= "i)bottom") ? 8
                : (a ~= "i)cent(er|re)") ? 5 : (a ~= "^[1-9]$") ? a : 1 ; Default anchor is top-left.
 
             ; Text x and text y can be specified as locations (left, center, right, top, bottom).
@@ -3267,17 +3548,17 @@ class Vis2 {
 
             ; Validate text x and y, convert to pixels.
             x  := ( x ~= valid) ? RegExReplace( x, "\s", "") : _x ; Default text x is background x.
-            x  := ( x ~= "(pt|px)$") ? SubStr( x, 1, -2) :  x
-            x  := ( x ~= "vw$") ? RegExReplace( x, "vw$", "") * this.vw :  x
-            x  := ( x ~= "vh$") ? RegExReplace( x, "vh$", "") * this.vh :  x
-            x  := ( x ~= "vmin$") ? RegExReplace( x, "vmin$", "") * this.vmin :  x
+            x  := ( x ~= "i)(pt|px)$") ? SubStr( x, 1, -2) :  x
+            x  := ( x ~= "i)vw$") ? RegExReplace( x, "i)vw$", "") * this.vw :  x
+            x  := ( x ~= "i)vh$") ? RegExReplace( x, "i)vh$", "") * this.vh :  x
+            x  := ( x ~= "i)vmin$") ? RegExReplace( x, "i)vmin$", "") * this.vmin :  x
             x  := ( x ~= "%$") ? RegExReplace( x, "%$", "") * 0.01 * _w :  x
 
             y  := ( y ~= valid) ? RegExReplace( y, "\s", "") : _y ; Default text y is background y.
-            y  := ( y ~= "(pt|px)$") ? SubStr( y, 1, -2) :  y
-            y  := ( y ~= "vw$") ? RegExReplace( y, "vw$", "") * this.vw :  y
-            y  := ( y ~= "vh$") ? RegExReplace( y, "vh$", "") * this.vh :  y
-            y  := ( y ~= "vmin$") ? RegExReplace( y, "vmin$", "") * this.vmin :  y
+            y  := ( y ~= "i)(pt|px)$") ? SubStr( y, 1, -2) :  y
+            y  := ( y ~= "i)vw$") ? RegExReplace( y, "i)vw$", "") * this.vw :  y
+            y  := ( y ~= "i)vh$") ? RegExReplace( y, "i)vh$", "") * this.vh :  y
+            y  := ( y ~= "i)vmin$") ? RegExReplace( y, "i)vmin$", "") * this.vmin :  y
             y  := ( y ~= "%$") ? RegExReplace( y, "%$", "") * 0.01 * _h :  y
 
             ; Modify text x and text y values with the anchor, so that the text has a new point of origin.
@@ -3318,10 +3599,10 @@ class Vis2 {
 
             ; Define radius of rounded corners.
             _r := (_r ~= valid_positive) ? RegExReplace(_r, "\s", "") : 0  ; Default radius is 0, or square corners.
-            _r := (_r ~= "(pt|px)$") ? SubStr(_r, 1, -2) : _r
-            _r := (_r ~= "vw$") ? RegExReplace(_r, "vw$", "") * this.vw : _r
-            _r := (_r ~= "vh$") ? RegExReplace(_r, "vh$", "") * this.vh : _r
-            _r := (_r ~= "vmin$") ? RegExReplace(_r, "vmin$", "") * this.vmin : _r
+            _r := (_r ~= "i)(pt|px)$") ? SubStr(_r, 1, -2) : _r
+            _r := (_r ~= "i)vw$") ? RegExReplace(_r, "i)vw$", "") * this.vw : _r
+            _r := (_r ~= "i)vh$") ? RegExReplace(_r, "i)vh$", "") * this.vh : _r
+            _r := (_r ~= "i)vmin$") ? RegExReplace(_r, "i)vmin$", "") * this.vmin : _r
             ; percentage is defined as a percentage of the smaller background width/height.
             _r := (_r ~= "%$") ? RegExReplace(_r, "%$", "") * 0.01 * ((_w > _h) ? _h : _w) : _r
             ; the radius cannot exceed the half width or half height, whichever is smaller.
@@ -3500,9 +3781,9 @@ class Vis2 {
          }
 
          dropShadow(d, x_simulated, y_simulated, font_size) {
-            static valid := "^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
             static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
             static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
+            static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
 
             if IsObject(d) {
                d.1 := (d.1) ? d.1 : (d.horizontal != "") ? d.horizontal : d.h
@@ -3529,10 +3810,10 @@ class Vis2 {
                if (key = 4) ; Don't mess with color data.
                   continue
                d[key] := (d[key] ~= valid) ? RegExReplace(d[key], "\s", "") : 0 ; Default for everything is 0.
-               d[key] := (d[key] ~= "(pt|px)$") ? SubStr(d[key], 1, -2) : d[key]
-               d[key] := (d[key] ~= "vw$") ? RegExReplace(d[key], "vw$", "") * this.vw : d[key]
-               d[key] := (d[key] ~= "vh$") ? RegExReplace(d[key], "vh$", "") * this.vh : d[key]
-               d[key] := (d[key] ~= "vmin$") ? RegExReplace(d[key], "vmin$", "") * this.vmin : d[key]
+               d[key] := (d[key] ~= "i)(pt|px)$") ? SubStr(d[key], 1, -2) : d[key]
+               d[key] := (d[key] ~= "i)vw$") ? RegExReplace(d[key], "i)vw$", "") * this.vw : d[key]
+               d[key] := (d[key] ~= "i)vh$") ? RegExReplace(d[key], "i)vh$", "") * this.vh : d[key]
+               d[key] := (d[key] ~= "i)vmin$") ? RegExReplace(d[key], "i)vmin$", "") * this.vmin : d[key]
             }
 
             d.1 := (d.1 ~= "%$") ? SubStr(d.1, 1, -1) * 0.01 * x_simulated : d.1
@@ -3550,9 +3831,9 @@ class Vis2 {
          }
 
          outline(o, font_size, font_color) {
-            static valid_positive := "^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
             static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
             static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
+            static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
 
             if IsObject(o) {
                o.1 := (o.1) ? o.1 : (o.stroke != "") ? o.stroke : o.s
@@ -3575,10 +3856,10 @@ class Vis2 {
                if (key = 2) || (key = 4) ; Don't mess with color data.
                   continue
                o[key] := (o[key] ~= valid_positive) ? RegExReplace(o[key], "\s", "") : 0 ; Default for everything is 0.
-               o[key] := (o[key] ~= "(pt|px)$") ? SubStr(o[key], 1, -2) : o[key]
-               o[key] := (o[key] ~= "vw$") ? RegExReplace(o[key], "vw$", "") * this.vw : o[key]
-               o[key] := (o[key] ~= "vh$") ? RegExReplace(o[key], "vh$", "") * this.vh : o[key]
-               o[key] := (o[key] ~= "vmin$") ? RegExReplace(o[key], "vmin$", "") * this.vmin : o[key]
+               o[key] := (o[key] ~= "i)(pt|px)$") ? SubStr(o[key], 1, -2) : o[key]
+               o[key] := (o[key] ~= "i)vw$") ? RegExReplace(o[key], "i)vw$", "") * this.vw : o[key]
+               o[key] := (o[key] ~= "i)vh$") ? RegExReplace(o[key], "i)vh$", "") * this.vh : o[key]
+               o[key] := (o[key] ~= "i)vmin$") ? RegExReplace(o[key], "i)vmin$", "") * this.vmin : o[key]
             }
 
             o.1 := (o.1 ~= "%$") ? SubStr(o.1, 1, -1) * 0.01 * font_size : o.1

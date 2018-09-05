@@ -1,23 +1,51 @@
-# Vis2 - OCR(), ImageIdentify()
-##### Automation using Computer Vision. Convert images on screen, image files, or an image URL to text. 
-
-### Super Quick Start
-
-Run demo.ahk.
-
-### Quick Start
-1. [Download Vis2.](https://github.com/iseahound/Vis2/archive/master.zip)
-2. Create a new AHK script in the same folder as Vis2.ahk, copying the code below.
-
-```
-    #include <Vis2>
-    MsgBox % OCR("https://i.stack.imgur.com/sFPWe.png")
-```
-    
-3. Run the new AHK script. You should see a MsgBox with OCR Text. Press ```Enter``` to exit. Visit the image link to confirm the OCR is working correctly. 
+# Vis2
+##### Interactively convert images to data.
 
 ### How to use
-When you see the popup "Optical Character Recognition Tool", click and drag. If you press the right mouse button while holding down LButton you can reposition the rectangle. My personal suggestion is to bind OCR() to a mouse button instead of #c. 
+
+1. Install AutoHotkey from https://autohotkey.com/
+2. Run demo.ahk by clicking on it.
+
+### Manual Scripting
+
+1. In the same folder as demo.ahk, create a new script.
+2. This script will bind TextRecognize to the ```Win``` + ```c``` hotkey.
+```
+    #include <Vis2>
+    #c:: TextRecognize()
+```
+3. So far the user interface only understands English. Let's change it to German and English.
+```
+    #include <Vis2>
+    #c:: TextRecognize(, "eng+deu") ; Defaults to Tesseract.
+```
+4. Note that there are different service providers so let's call Tesseract explicitly.
+```
+    #include <Vis2>
+    #c:: Vis2.service.Tesseract.TextRecognize(, "eng+deu")
+    ; "eng+deu" is passed directly to Tesseract.
+```
+5.  Changing the service provider to Google. The second parameter is specific to the service provider and invalid here. 
+```
+    #include <Vis2>
+    #c:: Vis2.service.Google.TextRecognize()
+```
+6.  Finally, a manual image can be specified in the first parameter.
+```
+    #include <Vis2>
+    MsgBox % Vis2.service.Tesseract.TextRecognize("https://i.stack.imgur.com/sFPWe.png")
+```
+7.  The following script will screenshot a notepad window to read its contents. It may capture the blinking cursor.
+```
+    Run, notepad.exe
+    WinWait, Untitled - Notepad
+    ControlSend, Edit1, % "This is some fine looking text." , Untitled - Notepad
+    MsgBox % TextRecognize("Untitled - Notepad")
+```
+
+### Tips
+Press the right mouse button while holding down LButton to reposition the selection.
+Alternatively, press ```Ctrl``` or another modifer key to enter Advanced Mode.
 
 ### Using Additional Languages
 Go to https://github.com/tesseract-ocr/tessdata_best and place your desired languages in bin/tessdata_best. 
