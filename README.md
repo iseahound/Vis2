@@ -1,6 +1,8 @@
 # Vis2
 ##### Interactively convert images to data.
 
+![Imgur](https://i.imgur.com/UQ7tOtA.png)
+
 ### How to use
 
 1. Install AutoHotkey from https://autohotkey.com/
@@ -25,7 +27,7 @@
     #c:: Vis2.service.Tesseract.TextRecognize(, "eng+deu")
     ; "eng+deu" is passed directly to Tesseract.
 ```
-5.  Changing the service provider to Google. The second parameter is specific to the service provider and invalid here. 
+5.  Switching the service provider to Google. The second parameter is specific to the service provider, and is invalid here. 
 ```
     #include <Vis2>
     #c:: Vis2.service.Google.TextRecognize()
