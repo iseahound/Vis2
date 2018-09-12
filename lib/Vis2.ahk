@@ -8,28 +8,28 @@
 
 
 ; Describe() - Creates a phrase that best captions the image.
-Describe(image:="", option:="", crop:="", toClipboard:=true){
-   return Vis2.Finding(A_ThisFunc, image, option, crop, toClipboard)
+Describe(image:="", option:="", crop:="", settings:=""){
+   return Vis2.Finding(A_ThisFunc, image, option, crop, settings)
 }
 
 ; ExplicitContent() - Detect offensive or inappropriate content.
-ExplicitContent(image:="", option:="", crop:="", toClipboard:=true){
-   return Vis2.Finding(A_ThisFunc, image, option, crop, toClipboard)
+ExplicitContent(image:="", option:="", crop:="", settings:=""){
+   return Vis2.Finding(A_ThisFunc, image, option, crop, settings)
 }
 
 ; FindFaces() - Detect faces in images.
-FindFaces(image:="", option="", crop:="", toClipboard:=true){
-   return Vis2.Finding(A_ThisFunc, image, option, crop, toClipboard)
+FindFaces(image:="", option="", crop:="", settings:=""){
+   return Vis2.Finding(A_ThisFunc, image, option, crop, settings)
 }
 
 ; ImageIdentify() - Name and identify objects in images.
-ImageIdentify(image:="", option:="", crop:="", toClipboard:=true){
-   return Vis2.Finding(A_ThisFunc, image, option, crop, toClipboard)
+ImageIdentify(image:="", option:="", crop:="", settings:=""){
+   return Vis2.Finding(A_ThisFunc, image, option, crop, settings)
 }
 
 ; TextRecognize() - Convert pictures of text into text.
-TextRecognize(image:="", option:="", crop:="", toClipboard:=true){
-   return Vis2.Finding(A_ThisFunc, image, option, crop, toClipboard)
+TextRecognize(image:="", option:="", crop:="", settings:=""){
+   return Vis2.Finding(A_ThisFunc, image, option, crop, settings)
 }
 ; Alias for TextRecognize()
 OCR(terms*){
@@ -45,6 +45,20 @@ class Vis2 {
       for i, index in rank
          if IsObject(Vis2.service[index][name])
             return Vis2.service[index][name].call(self, terms*)
+   }
+
+   class settings {
+      ; These are the global default settings for the ux display.
+      ; These global settings are overridden by the local settings found in Vis2.service.
+      ; Users can manually override the local settings by using the fourth parameter:
+      ; Example: Vis2.service.Tesseract.TextRecognize(,,,{"previewBounds":true})
+      static previewBounds := false
+      static previewImage := false
+      static previewText := false
+      static splashImage := false
+      static splashText := true
+      static showCoordinates := false
+      static toClipboard := true
    }
 
    class service {
@@ -93,9 +107,16 @@ class Vis2 {
       class shared extends Vis2.service.functor {
 
          ; Flow 02 - Launches ux if image is blank. Creates a object that includes a service.
-         call(self, image:="", option:="", crop:="", toClipboard:=true){
-            if (image == "")
-               return Vis2.ux.returnData({"service":new this, "option":option, "toClipboard":toClipboard})
+         call(self, image:="", option:="", crop:="", settings:=""){
+            if (image == "") {
+               service := new this
+               for key, value in Vis2.settings
+                  if (service[key] == "" && key != "__Class")
+                     service[key] := value
+               for key, value in settings
+                  service[key] := value
+               return Vis2.ux.returnData({"service":service, "option":option})
+            }
             else
                return (new this).convert(image, crop, option)
          }
@@ -241,12 +262,12 @@ class Vis2 {
             static tooltip := "Google: Image Identification Tool"
             static alert := "ERROR: No images could be identified."
             static splashImage := true
-            static textPreview := false
+            static previewText := false
             static extension := "jpg"
             static compression := "75"
 
             convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.extension, this.compression)
+               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.upscale, this.extension, this.compression)
                reply := this.outer.request(this.coimage, this.extension, "LABEL_DETECTION")
                obj := {}
                for i, value in reply.responses[1].labelAnnotations {
@@ -275,11 +296,11 @@ class Vis2 {
             static tooltip := "Google: Text Recognition Tool"
             static alert := "ERROR: No text data found."
             static splashImage := true
-            static textPreview := false
+            static previewText := false
             static extension := "png"
 
             convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.extension, this.compression)
+               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.upscale, this.extension, this.compression)
 
                ; Note: DOCUMENT_TEXT_DETECTION will take precedence over TEXT_DETECTION
                reply := this.outer.request(this.coimage, this.extension, "DOCUMENT_TEXT_DETECTION", "TEXT_DETECTION")
@@ -346,12 +367,12 @@ class Vis2 {
             static tooltip := "IBM: Explicit Content Detection Tool"
             static alert := "ERROR: No content could be detected."
             static splashImage := true
-            static textPreview := false
+            static previewText := false
             static extension := "jpg"
             static compression := "75"
 
             convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.extension, this.compression)
+               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.upscale, this.extension, this.compression)
                reply := this.outer.request(this.coimage, this.extension)
                i := 0, obj := {}
                while (i++ < reply.maxIndex())
@@ -384,12 +405,12 @@ class Vis2 {
             static tooltip := "IBM: Facial Recognition Tool"
             static alert := "ERROR: No facial features detected."
             static splashImage := true
-            static textPreview := false
+            static previewText := false
             static extension := "jpg"
             static compression := "75"
 
             convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.extension, this.compression)
+               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.upscale, this.extension, this.compression)
                reply := this.outer.request(this.coimage, this.extension)
                i := 0, obj := {}
                while (i++ < reply.maxIndex())
@@ -450,12 +471,12 @@ class Vis2 {
             static tooltip := "IBM: Image Identification Tool"
             static alert := "ERROR: No image data found."
             static splashImage := true
-            static textPreview := false
+            static previewText := false
             static extension := "jpg"
             static compression := "75"
 
             convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.extension, this.compression)
+               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.upscale, this.extension, this.compression)
                reply := this.outer.request(this.coimage, this.extension)
                i := 0, obj := {}
                while (i++ < reply.maxIndex())
@@ -488,11 +509,11 @@ class Vis2 {
             static tooltip := "IBM: Text Recognition Tool"
             static alert := "ERROR: No text data found."
             static splashImage := true
-            static textPreview := false
+            static previewText := false
             static extension := "png"
 
             convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.extension, this.compression)
+               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.upscale, this.extension, this.compression)
                reply := this.outer.request(this.coimage, this.extension)
                i := 0, obj := {}
                while (i++ < reply.maxIndex())
@@ -670,8 +691,8 @@ class Vis2 {
             static tooltip := "Tesseract: Optical Character Recognition Tool"
             static alert := "ERROR: No text data found."
             static splashImage := false
-            static textPreview := 500
-            static upscale := 3.5
+            static previewText := 500
+            static upscale := 2
 
             uuid := this.CreateUUID()
             temp1 := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
@@ -680,18 +701,19 @@ class Vis2 {
 
             ; Flow 04 B - FINAL. If an image was provided, the GUI for image selection does not launch.
             convert(image, crop := "", option := ""){
-               this.temp1 := Vis2.Graphics.Picture.Preprocess("file", image, crop, this.temp1, this.compression)
+               this.temp1 := Vis2.Graphics.Picture.Preprocess("file", image, crop, this.upscale, this.temp1, this.compression)
 
                static ocrPreProcessing := 1
                static negateArg := 2
                static performScaleArg := 1
+               static DoNotScale := 1
 
                if !(FileExist(this.outer.leptonica))
                   throw Exception("Leptonica not found.",, this.outer.leptonica)
 
                static q := Chr(0x22)
                _cmd := q this.outer.leptonica q " " q this.temp1 q " " q this.temp2 q
-               _cmd .= " " negateArg " 0.5 " performScaleArg " " this.upscale " " ocrPreProcessing " 5 2.5 " ocrPreProcessing  " 2000 2000 0 0 0.0"
+               _cmd .= " " negateArg " 0.5 " performScaleArg " " DoNotScale " " ocrPreProcessing " 5 2.5 " ocrPreProcessing " 2000 2000 0 0 0.0"
                _cmd := ComSpec " /C " q _cmd q
                RunWait, % _cmd,, Hide
 
@@ -847,7 +869,7 @@ class Vis2 {
             static tooltip := "Wolfram: Image Identification Tool"
             static alert := "ERROR: No image content found."
             static splashImage := true
-            static textPreview := false
+            static previewText := false
             static compression := "92"
 
             uuid := this.CreateUUID()
@@ -916,9 +938,9 @@ class Vis2 {
          obj.information := new Vis2.Graphics.Subtitle("Vis2_Information")
          obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
 
-         obj.style1_back := {"x":"center", "y":"83.33vh", "padding":"1.35vh", "color":"DD000000", "radius":8}
+         obj.style1_back := {"x":"center", "y":"83.33vh", "padding":"1.35vmin", "color":"DD000000", "radius":8}
          obj.style1_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"White"}
-         obj.style2_back := {"x":"center", "y":"83.33vh", "padding":"1.35vh", "color":"FF88EAB6", "radius":8}
+         obj.style2_back := {"x":"center", "y":"83.33vh", "padding":"1.35vmin", "color":"FF88EAB6", "radius":8}
          obj.style2_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"Black"}
          Vis2.ux.process.display(obj, obj.service.tooltip, obj.style1_back, obj.style1_text)
          Vis2.ux.process.waitForUserInput(obj) ; Ensure this is run once.
@@ -934,7 +956,7 @@ class Vis2 {
             if (GetKeyState("LButton", "P")) {
                selectImage := ObjBindMethod(Vis2.ux.process, "selectImage", obj)
                SetTimer, % selectImage, -10
-               if (obj.service.textPreview) {
+               if (obj.service.previewText) {
                   Vis2.ux.process.display(obj, "Searching for data...", obj.style1_back, obj.style1_text)
                   convertImage := ObjBindMethod(Vis2.ux.process, "convertImage", obj)
                   SetTimer, % convertImage, -250
@@ -954,6 +976,7 @@ class Vis2 {
          }
 
          selectImage(obj){
+            Critical On
             if (GetKeyState("Escape", "P"))
                return Vis2.ux.process.treasureChest(obj, A_ThisFunc, "escape")
 
@@ -968,6 +991,7 @@ class Vis2 {
                selectImage := ObjBindMethod(Vis2.ux.process, "selectImage", obj)
                SetTimer, % selectImage, -10
             }
+            Critical Off
             return
          }
 
@@ -1005,7 +1029,11 @@ class Vis2 {
             obj.key := {}
             obj.action := {}
             obj.selectMode := "Advanced" ; Exit selectImageQuick.
-            obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode - Press spacebar to select.", "time:2500; x:Center; y75%; p1.35vh; c: FFB1AC; r8", "fArial c000000 s2.23%")
+            obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode - Press spacebar to select."
+               , "time:30000 x:center y:16.67vh m:1.35vmin r:8px c:55F9E27E"
+               , "font:(Century Gothic) size:3.33vmin color:#F88958"
+               . A_Space "outline:(stroke:1px color:#F88958 glow:2px tint:Indigo)"
+               . A_Space "dropShadow:(horizontal:3px vertical:3px color:#009DA7 blur:5px opacity:0.33 size:15px)")
             return
          }
 
@@ -1014,7 +1042,7 @@ class Vis2 {
 
             if ((obj.area.width() < -25 || obj.area.height() < -25) && !obj.note_02)
                obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen."
-                  , "time: 6250, x: center, y: 67%, p1.35vh, c: FCF9AF, r8", "f(Arial) c000000 s2.23%")
+                  , "time: 6250, x: center, y: 67%, p1.35vmin, c: FCF9AF, r8", "f(Arial) c000000 s2.23%")
 
             obj.key.LButton := GetKeyState("LButton", "P") ? 1 : 0
             obj.key.RButton := GetKeyState("RButton", "P") ? 1 : 0
@@ -1072,14 +1100,14 @@ class Vis2 {
 
             ; Space Hotkeys
             if (obj.action.Control_Space = 1) {
-               if (obj.service.imagePreview := !obj.service.imagePreview) ; Toggle our new imagePreview flag!
+               if (obj.service.previewImage := !obj.service.previewImage) ; Toggle our new previewImage flag!
                   obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData).show()
                else
                   obj.picture.hide()
             } else if (obj.action.Alt_Space = 1) {
                if (obj.service.showCoordinates := !obj.service.showCoordinates) {
                   c2 := RegExReplace((obj.coordinates) ? obj.coordinates : obj.area.screenshotCoordinates(), "^(\d+)\|(\d+)\|(\d+)\|(\d+)$", "x`n$1`n`ny`n$2`n`nw`n$3`n`nh`n$4")
-                  obj.information.render(c2, "a:centerright x:99vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000", "f:(Arial) j:center y:center s:2.23% c:White").show()
+                  obj.information.render(c2, "a:centerright x:98.14vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000", "f:(Arial) j:center y:center s:2.23% c:White").show()
                } else
                   obj.information.hide()
             } else if (obj.action.Shift_Space = 1) {
@@ -1103,7 +1131,7 @@ class Vis2 {
                pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
                ;obj.area.changeColor(0x7FDDDDDD) ; Lighten Area object, but do not hide or delete it until key up.
                (overlap3 && obj.service.showCoordinates) ? obj.information.show() : ""
-               (overlap2 && obj.service.imagePreview) ? obj.picture.show() : ""
+               (overlap2 && obj.service.previewImage) ? obj.picture.show() : ""
                (overlap1) ? obj.subtitle.show() : ""
                (overlap1 || overlap2 || overlap3) ? obj.area.show() : ""
                (overlap4) ? obj.polygon.show() : "" ; Assert Topmost position in z-order.
@@ -1134,11 +1162,11 @@ class Vis2 {
                   if (!bypass) {
                      if (obj.service.showCoordinates) {
                         c2 := RegExReplace(obj.coordinates, "^(\d+)\|(\d+)\|(\d+)\|(\d+)$", "x`n$1`n`ny`n$2`n`nw`n$3`n`nh`n$4")
-                        obj.information.render(c2, "a:centerright x:99vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000", "f:(Arial) j:center y:center s:2.23% c:White")
+                        obj.information.render(c2, "a:centerright x:98.14vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000", "f:(Arial) j:center y:center s:2.23% c:White")
                      }
-                     if (obj.service.imagePreview)
+                     if (obj.service.previewImage)
                         obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
-                     if (obj.service.overlayPolygon) {
+                     if (obj.service.previewBounds) {
                         xywh := StrSplit(coordinates, "|")
                         obj.polygon.render(, {"size":1/obj.service.upscale, "x":xywh.1, "y":xywh.2, "w":xywh.3, "h":xywh.4}, Vis2.ux.io.data.FullData)
                      }
@@ -1154,7 +1182,7 @@ class Vis2 {
                return Vis2.ux.process.treasureChest(obj, A_ThisFunc)
             else if (!obj.unlock.2) {
                convertImage := ObjBindMethod(Vis2.ux.process, "convertImage", obj)
-               SetTimer, % convertImage, % -Abs(obj.service.textPreview)
+               SetTimer, % convertImage, % -Abs(obj.service.previewText)
             }
             return
          }
@@ -1176,7 +1204,7 @@ class Vis2 {
             ; SelectImage returns. If ConvertImage was not started, start it now.
             if (key ~= "^Vis2.ux.process.selectImage") {
                obj.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
-               if (!obj.service.textPreview) {
+               if (!obj.service.previewText) {
                   Vis2.ux.process.display(obj, "Processing using " RegExReplace(obj.service.__class, ".*\.(.*)\.(.*)$", "$1's $2()..."), obj.style2_back, obj.style2_text)
                   return Vis2.ux.process.convertImage(obj, "bypass")
                } else {
@@ -1200,8 +1228,8 @@ class Vis2 {
 
          finale(obj){
             if (Vis2.ux.io.data == "") {
-               if (!obj.service.textPreview)
-                  Vis2.Graphics.Subtitle.Render(obj.service.alert,  "time:1500 x:center y:83.33vh margin:1.35vh c:FFB1AC radius:8", "f:(Arial) s2.23% c:Black")
+               if (!obj.service.previewText)
+                  Vis2.Graphics.Subtitle.Render(obj.service.alert, "time:1500 x:center y:83.33vh margin:1.35vmin c:FFB1AC radius:8", "f:(Arial) s2.23% c:Black")
                return Vis2.ux.escape(obj, -2) ; blank data
             }
 
@@ -1212,14 +1240,19 @@ class Vis2 {
                t += 75*Vis2.ux.io.data.FullData.maxIndex()  ; Each category adds 75 milliseconds to base.
             }
 
-            if (obj.toClipboard)
+            if (obj.service.toClipboard)
                clipboard := Vis2.ux.io.data
 
             obj.subtitle.hide()
-            Vis2.Graphics.Subtitle.Render(Vis2.ux.io.data.maxLines(3), "time:" t " x:center y:83.33vh padding:1.35vh c:Black radius:8", "size:2.23% f:(Arial) z:(Arial Narrow) j:left c:White")
-            (obj.toClipboard) ? Vis2.Graphics.Subtitle.Render("Saved to Clipboard.", "time: " t ", x: center, y: 75%, p: 1.35vh, c: F9E486, r: 8", "c: 0x000000, s:2.23%, f:Arial") : ""
+            (obj.service.toClipboard) ? Vis2.Graphics.Subtitle.Render("Saved to Clipboard."
+               , "time: " t ", x: center, y: 75%, p: 1.35vmin, c: F9E486, r: 8"
+               , "c: 0x000000, s:2.23%, f:Arial") : ""
+            (obj.service.splashText) ? Vis2.Graphics.Subtitle.Render(Vis2.ux.io.data.maxLines(3)
+               , "time:" t " x:center y:83.33vh padding:1.35vmin c:Black radius:8"
+               , "size:2.23% f:(Arial) z:(Arial Narrow) j:left c:White") : ""
             (obj.service.splashImage) ? Vis2.Graphics.Picture.Render(obj.service.coimage
-               , "time:" t " a:center x:center y:40.99vh margin:0.926vmin size:auto width:100vw height:80.13vh", Vis2.ux.io.data.FullData).FreeMemory() : ""
+               , "time:" t " a:center x:center y:40.99vh margin:0.926vmin size:auto width:100vw height:80.13vh"
+               , Vis2.ux.io.data.FullData).FreeMemory() : ""
 
             return Vis2.ux.escape(obj, 1)  ; Success.
          }
@@ -1242,8 +1275,14 @@ class Vis2 {
          }
 
          overlap(rect1, rect2) {
-            a := (rect1.1 < rect2.1 && rect2.1 < rect1.3) || (rect1.1 < rect2.3 && rect2.3 < rect1.3) || (rect2.1 < rect1.1 && rect1.1 < rect2.3) || (rect2.1 < rect1.3 && rect1.3 < rect2.3)
-            b := (rect1.2 < rect2.2 && rect2.2 < rect1.4) || (rect1.2 < rect2.4 && rect2.4 < rect1.4) || (rect2.2 < rect1.2 && rect1.2 < rect2.4) || (rect2.2 < rect1.4 && rect1.4 < rect2.4)
+            if !(rect1 || rect2)
+               return
+
+            ; Must use <= (preorder) to prevent identical case.
+            a := (rect1.1 <= rect2.1 && rect2.1 <= rect1.3) || (rect1.1 <= rect2.3 && rect2.3 <= rect1.3)
+               || (rect2.1 <= rect1.1 && rect1.1 <= rect2.3) || (rect2.1 <= rect1.3 && rect1.3 <= rect2.3)
+            b := (rect1.2 <= rect2.2 && rect2.2 <= rect1.4) || (rect1.2 <= rect2.4 && rect2.4 <= rect1.4)
+               || (rect2.2 <= rect1.2 && rect1.2 <= rect2.4) || (rect2.2 <= rect1.4 && rect1.4 <= rect2.4)
             ;Tooltip % a "`t" b "`n`n" rect1.1 "`t" rect1.2 "`n" rect1.3 "`t" rect1.4 "`n`n" rect2.1 "`t" rect2.2 "`n" rect2.3 "`t" rect2.4
             return (a && b)
          }
@@ -2079,6 +2118,12 @@ class Vis2 {
             return this
          }
 
+         Destroy() {
+            this.__screen := ""
+            DllCall("DestroyWindow", "ptr",this.hwnd)
+            return this
+         }
+
          Additional(terms*) {
             this.color := (terms.1) ? terms.1 : "0x7FDDDDDD"
             this.cache := 0
@@ -2092,12 +2137,10 @@ class Vis2 {
 
             Gdip_GraphicsClear(this.__screen.G)
 
-            Critical On
             this.DetectScreenResolutionChange()
             this.Draw(color, style, empty)
             if (update)
                UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-            Critical Off
 
             if (this.time) {
                self_destruct := ObjBindMethod(this, "Destroy")
@@ -2112,7 +2155,6 @@ class Vis2 {
          }
 
          Redraw(x, y, w, h) {
-            Critical On
             ;this.DetectScreenResolutionChange()
             Gdip_SetSmoothingMode(this.__screen.G, 4) ;Adds one clickable pixel to the edge.
             pBrush := Gdip_BrushCreateSolid(this.color)
@@ -2147,7 +2189,6 @@ class Vis2 {
             }
             UpdateLayeredWindow(this.hwnd, this.__screen.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
             Gdip_DeleteBrush(pBrush)
-            Critical Off
          }
 
          Paint(x, y, w, h, pGraphics) {
@@ -2587,10 +2628,10 @@ class Vis2 {
          ; Preprocess() - Modifies an input image and returns a Bitmap.
          ; Example: Preprocess("base64", "https://goo.gl/BWUygC")
          ;          The image is downloaded from the URL and is converted to base64.
-         Preprocess(cotype, image, crop := "", terms*) {
+         Preprocess(cotype, image, crop := "", scale := "", terms*) {
             if (!this.hwnd) {
                _picture := new this("Picture.Preprocess")
-               coimage := _picture.Preprocess(cotype, image, crop, terms*)
+               coimage := _picture.Preprocess(cotype, image, crop, scale, terms*)
                _picture.FreeMemory()
                _picture := ""
                return coimage
@@ -2602,11 +2643,19 @@ class Vis2 {
             ; If the type and cotype match, do nothing.
             if (type = cotype && !this.isRectangle(crop))
                return image
-            ; Convert the image to a pBitmap (byte array) and crop the image.
+            ; Convert the image to a pBitmap (byte array).
             pBitmap := this.toBitmap(type, image)
+            ; Crop the image, disposing if type is not pBitmap.
             if this.isRectangle(crop){
-               pBitmap2 := this.Gdip_CropBitmap(pBitmap, image)
+               pBitmap2 := this.Gdip_CropBitmap(pBitmap, crop)
                if (type != "pBitmap")
+                  Gdip_DisposeImage(pBitmap)
+               pBitmap := pBitmap2
+            }
+            ; Scale the image, disposing if type is not pBitmap.
+            if (scale && scale != 1) {
+               pBitmap2 := this.Gdip_ScaleBitmap(pBitmap, scale)
+               if (type != "pBitmap" || this.isRectangle(crop)) ; Should fix leaks.
                   Gdip_DisposeImage(pBitmap)
                pBitmap := pBitmap2
             }
@@ -2779,12 +2828,10 @@ class Vis2 {
             if (!this.hwnd)
                return (new this).Render(image, style, polygons)
 
-            Critical On
             this.DetectScreenResolutionChange()
             Gdip_GraphicsClear(this.G)
             this.Draw(image, style, polygons)
             UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-            Critical Off
             if (this.time) {
                self_destruct := ObjBindMethod(this, "Destroy")
                SetTimer, % self_destruct, % -1 * this.time
@@ -3076,6 +3123,22 @@ class Vis2 {
             return StrGet(&base64, base64Length, "CP0")
          }
 
+         Gdip_ScaleBitmap(pBitmap, scale, width:="", height:="") {
+            width := (width) ? width : Gdip_GetImageWidth(pBitmap)
+            height := (height) ? height : Gdip_GetImageHeight(pBitmap)
+
+            safe_w := Ceil(width * scale)
+            safe_h := Ceil(height * scale)
+
+            pBitmap2 := Gdip_CreateBitmap(safe_w, safe_h)
+            G2 := Gdip_GraphicsFromImage(pBitmap2)
+            Gdip_SetSmoothingMode(G2, 4)
+            Gdip_SetInterpolationMode(G2, 7)
+            Gdip_DrawImage(G2, pBitmap, 0, 0, safe_w, safe_h)
+            Gdip_DeleteGraphics(G2)
+            return pBitmap2
+         }
+
          isBitmapEqual(pBitmap1, pBitmap2, width:="", height:="") {
             ; Check if pointers are identical.
             if (pBitmap1 == pBitmap2)
@@ -3215,7 +3278,6 @@ class Vis2 {
             if (!this.hwnd)
                return (new this).Render(text, style1, style2, update)
 
-            Critical On
             this.Draw(text, style1, style2)
             this.DetectScreenResolutionChange()
             if (this.allowDrag == true)
@@ -3228,7 +3290,6 @@ class Vis2 {
                SetTimer, % self_destruct, % -1 * this.time
             }
             this.rendered := true
-            Critical Off
             return this
          }
 
