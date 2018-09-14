@@ -16,23 +16,23 @@
     #include <Vis2>
     #c:: TextRecognize()
 ```
-3. So far the user interface only understands English. Let's change it to German and English.
+3. So far the user interface only understands English. For German and English text:
 ```
     #include <Vis2>
     #c:: TextRecognize(, "eng+deu") ; Defaults to Tesseract.
 ```
-4. Note that there are different service providers so let's call Tesseract explicitly.
+4. Let's call Tesseract as a service explicitly. Note that different service providers exist, including Tesseract and Google.
 ```
     #include <Vis2>
     #c:: Vis2.service.Tesseract.TextRecognize(, "eng+deu")
     ; "eng+deu" is passed directly to Tesseract.
 ```
-5.  Switching the service provider to Google. The second parameter is specific to the service provider, and is invalid here. 
+5.  The service provider is now Google. The second parameter is specific to the service, and the previous "eng+deu" is invalid here. Text previews are disabled by default when using web services to prevent overuse of quota. 
 ```
     #include <Vis2>
     #c:: Vis2.service.Google.TextRecognize()
 ```
-6.  Finally, a manual image can be specified in the first parameter.
+6.  An image can be specified in the first parameter, disabling the on screen user selection. URLs, window titles, filenames, and even base64 strings are considered valid image input. JPG, BMP, PNG, and additional file types accepted. 
 ```
     #include <Vis2>
     MsgBox % Vis2.service.Tesseract.TextRecognize("https://i.stack.imgur.com/sFPWe.png")
@@ -46,8 +46,8 @@
 ```
 
 ### Tips
-Press the right mouse button while holding down LButton to reposition the selection.
-Alternatively, press ```Ctrl``` or another modifer key to enter Advanced Mode.
+While holding down left mouse button, press the right mouse button to reposition the selection area.
+Press ```Ctrl``` or another modifer key to enter Advanced Mode.
 
 ### Using Additional Languages
 Go to https://github.com/tesseract-ocr/tessdata_best and place your desired languages in bin/tessdata_best. 
