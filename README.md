@@ -2,6 +2,7 @@
 ##### Interactively convert images to data.
 
 ![Imgur](https://i.imgur.com/UQ7tOtA.png)
+###### For red boxes: ```TextRecognize(,,,{"previewBounds":true})```
 
 ### How to use
 
