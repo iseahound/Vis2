@@ -1,11 +1,17 @@
 ﻿; Script:    Vis2.ahk
 ; Author:    iseahound
-; Version:   2018-08-21 (alpha)
+; License:   GPLv3
+; Version:   August 2018 (not for public use.)
 ; Release:   2018-08-21
 
 #include <Gdip_All>    ; https://goo.gl/rUuEF5
 #include <JSON>        ; https://goo.gl/MAsQDe
 
+
+; AsciiArt() - Artistically reduces an image to ASCII characters.
+AsciiArt(image:="", option:="", crop:="", settings:=""){
+   return Vis2.Finding(A_ThisFunc, image, option, crop, settings)
+}
 
 ; Describe() - Creates a phrase that best captions the image.
 Describe(image:="", option:="", crop:="", settings:=""){
@@ -29,6 +35,7 @@ ImageIdentify(image:="", option:="", crop:="", settings:=""){
 
 ; TextRecognize() - Convert pictures of text into text.
 TextRecognize(image:="", option:="", crop:="", settings:=""){
+   global startTime := A_TickCount
    return Vis2.Finding(A_ThisFunc, image, option, crop, settings)
 }
 ; Alias for TextRecognize()
@@ -37,9 +44,30 @@ OCR(terms*){
 }
 
 
+; Preprocess() - Modifies an input image and returns it in a new form.
+; Example: Preprocess("base64", "https://goo.gl/BWUygC")
+;          The image is downloaded from the URL and is converted to base64.
+ImagePreprocess(cotype, image, crop:="", scale:="", terms*){
+   return Vis2.Graphics.Picture.Preprocess(cotype, image, crop, scale, terms*)
+}
+
+ImageEquality(images*){
+   return Vis2.Graphics.Picture.Equality(images*)
+}
+
+ImageRender(image:="", style:="", polygons:=""){
+   return Vis2.Graphics.Picture.Render(image, style, polygons)
+}
+
+TextRender(text:="", style1:="", style2:=""){
+   return Vis2.Graphics.Subtitle.Render(text, style1, style2)
+}
+
 class Vis2 {
 
-   ; Flow 01 - Search for the word Flow to follow the function calls.
+   ; Flow A-01 - Search for the word Flow to follow the function calls.
+   ;             This is one of two ways to start Vis2.
+   ; Next: Flow 0-02
    Finding(name, terms*){
       static rank := ["Tesseract", "Google", "Wolfram", "IBM"]
       for i, index in rank
@@ -48,17 +76,82 @@ class Vis2 {
    }
 
    class settings {
-      ; These are the global default settings for the ux display.
-      ; These global settings are overridden by the local settings found in Vis2.service.
+      ; These are the GLOBAL DEFAULT SETTINGS for the ux display.
+      ; Local settings found in Vis2.service. Local settings override global settings.
       ; Users can manually override the local settings by using the fourth parameter:
-      ; Example: Vis2.service.Tesseract.TextRecognize(,,,{"previewBounds":true})
+      ; Example: Vis2.service.Tesseract.TextRecognize(,,,{"previewImage":true})
+      static convertImageDelay := 900
       static previewBounds := false
       static previewImage := false
       static previewText := false
+      static splashBounds := false
       static splashImage := false
-      static splashText := true
+      static splashText := true           ; Default splashText is true.
       static showCoordinates := false
-      static toClipboard := true
+      static toClipboard := true          ; Default toClipboard is true.
+      ; Notes: convertImageDelay accepts an integer which becomes the delay in milliseconds.
+      ;        For example, setting convertImageDelay to 500 is equal to 500 ms. (recommended)
+      ;        convertImageDelay has been set locally to prevent the user from getting IP banned by
+      ;        abusing the free quota on various cloud demo websites. Change at your own risk!!!
+
+      ; Predefined styles for the user experience.
+      class area {
+         static set := ObjBindMethod(Vis2.settings, "set")
+         static c := 0x7FDDDDDD
+      }
+      class picture {
+         static set := ObjBindMethod(Vis2.settings, "set")
+      }
+      class polygon {
+         static set := ObjBindMethod(Vis2.settings, "set")
+      }
+      class subtitle {
+         class background {
+            static set := ObjBindMethod(Vis2.settings, "set")
+            static x := "center"
+            static y := "83.33vh"
+            static m := "1.35vmin"        ; margin is 15px
+            static c := "#DD000000"       ; color is transparent black
+            static r := "0.74vmin"        ; radius is 8px
+         }
+         class text {
+            static set := ObjBindMethod(Vis2.settings, "set")
+            static q := 4                 ; text quality is anti-alias
+            static f := "Arial"           ; font is Arial
+            static z := "Arial Narrow"    ; condensed font is Arial Narrow
+            static s := "2.23vmin"        ; font size is 24pt
+         }
+      }
+      /*
+      class information {
+         static set := ObjBindMethod(Vis2.settings, "set")
+         ; obj.information.render(c2, "a:centerright x:98.14vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000"
+         ;, "f:(Arial) j:center y:center s:2.23% c:White")
+         class background {
+            static set := ObjBindMethod(Vis2.settings, "set")
+            static x := "center"
+            static y := "83.33vh"         ; top is 83%
+            static m := "1.35vmin"        ; margin is 15px
+            static c := "#DD000000"
+            static r := "0.74vmin"        ; radius is 8px
+         }
+         class text {
+            static set := ObjBindMethod(Vis2.settings, "set")
+            static q := 4                 ; text quality is anti-alias
+            static f := "Arial"           ; font is Arial
+            static z := "Arial Narrow"    ; condensed font is Arial Narrow
+            static s := "2.23vmin"        ; font size is 24pt
+         }
+      }
+      */
+
+
+      ; This function is a mixin used by all subobjects in Vis2.settings
+      set(self, key, value) {
+         clone := self.Clone()
+         clone[key] := value
+         return clone
+      }
    }
 
    class service {
@@ -67,15 +160,15 @@ class Vis2 {
 
       class functor {
 
-         ; Flow 01b - Calling a service directly redirects the __call() to call() then convert().
-         __Call(method, args*) {
-            ; When casting to Call(), use a new instance of the "function object"
-            ; so as to avoid directly storing the properties(used across sub-methods)
-            ; into the "function object" itself. Modified to accept empty arg.
-            if (method == "")
-               return (new this).Call(args*)
-            if IsObject(method)
-               return (new this).Call(method, args*)
+         ; Flow B-01 - Redirects this __call() to Vis2.shared.call().
+         ;             A direct function call such as Vis2.service.Tesseract.TextRecognize()
+         ;             calls this __call() meta function first.
+         ; Next: Flow 0-02
+         __Call(self, terms*) {
+            if (self == "")
+               return this.call(terms*)
+            if IsObject(self)
+               return this.call(self, terms*)
          }
 
          inner[]
@@ -90,35 +183,44 @@ class Vis2 {
             }
          }
 
-         outer[]
-         {
+         outer[p:=""] {
             get {
                ; Determine if there is a parent class. this.__class will retrive the
-               ; current instance's class name. Array notation [] will dereference.
-               ; Returns void if this function is not nested in at least 2 classes.
+               ; current instance's class name. Split the class string at each period,
+               ; using array notation [] to dereference. Void if not nested in at least 2 classes.
                if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
                   Loop, Parse, _class, .
                      outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
-               return outer
+               ; Test if this property is nested in one class. If so, return the global class "p".
+               ; Otherwise if no subclass (p) is specified, return an empty string.
+               if IsObject(outer)
+                  return (p) ? outer[p] : outer
+               else
+                  return (p) ? %p% : ""
             }
          }
       }
 
       class shared extends Vis2.service.functor {
 
-         ; Flow 02 - Launches ux if image is blank. Creates a object that includes a service.
+         ; Flow 0-02 - Diverges depending on a blank image parameter.
+         ;             A blank image parameter means that it launches the user experience.
+         ;             If an image is supplied, it only calls the service (back end).
+         ; Next: Flow C-03, Flow D-03
          call(self, image:="", option:="", crop:="", settings:=""){
-            if (image == "") {
-               service := new this
-               for key, value in Vis2.settings
-                  if (service[key] == "" && key != "__Class")
-                     service[key] := value
-               for key, value in settings
-                  service[key] := value
-               return Vis2.ux.returnData({"service":service, "option":option})
-            }
+            settings := IsObject(settings) ? settings : {}   ; user settings
+            settings.base := this.settings                   ; service specific settings
+            settings.base.base := Vis2.settings              ; default settings
+
+            if (image == "")
+               return Vis2.ux.returnData(new this(option, settings), settings)
             else
-               return (new this).convert(image, crop, option)
+               return (new this(option, settings)).convert(image, crop)
+         }
+
+         __New(option:="", settings:=""){
+            this.option := option
+            this.settings := settings
          }
 
          CreateUUID() {
@@ -137,6 +239,7 @@ class Vis2 {
             return 1
          }
 
+         ; MAKE QUICK SORT GENERIC AND USE NOT SCORE LOL
          QuickSort(a){
             if (a.MaxIndex() <= 1)
                return a
@@ -259,16 +362,18 @@ class Vis2 {
          ; Vis2.service.Google.ImageIdentify()
          class ImageIdentify extends Vis2.service.shared {
 
-            static tooltip := "Google: Image Identification Tool"
-            static alert := "ERROR: No images could be identified."
-            static splashImage := true
-            static previewText := false
-            static extension := "jpg"
-            static compression := "75"
+            class settings {
+               static tooltip := "Google: Image Identification Tool"
+               static alert := "ERROR: No images could be identified."
+               static extension := "jpg"
+               static compression := "75"
+               static previewText := false
+               static splashImage := true
+            }
 
-            convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.upscale, this.extension, this.compression)
-               reply := this.outer.request(this.coimage, this.extension, "LABEL_DETECTION")
+            convert(image, crop := ""){
+               coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.settings.upscale, this.settings.extension, this.settings.compression)
+               reply := this.outer.request(coimage, this.settings.extension, "LABEL_DETECTION")
                obj := {}
                for i, value in reply.responses[1].labelAnnotations {
                   value.category := value.description
@@ -281,6 +386,7 @@ class Vis2 {
                   sentence2 .= ((A_Index == 1) ? "" : "`r`n") . v.category ", " Format("{:#.3f}", v.score)
                }
                data := sentence2
+               data.base.coimage := coimage
                data.base.FullData := obj
                for reference, function in Vis2.Text {
                   if IsFunc(function)
@@ -293,17 +399,19 @@ class Vis2 {
          ; Vis2.service.Google.TextRecognize()
          class TextRecognize extends Vis2.service.shared {
 
-            static tooltip := "Google: Text Recognition Tool"
-            static alert := "ERROR: No text data found."
-            static splashImage := true
-            static previewText := false
-            static extension := "png"
+            class settings {
+               static tooltip := "Google: Text Recognition Tool"
+               static alert := "ERROR: No text data found."
+               static extension := "png"
+               static previewText := false
+               static splashImage := true
+            }
 
-            convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.upscale, this.extension, this.compression)
+            convert(image, crop := ""){
+               coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.settings.upscale, this.settings.extension, this.settings.compression)
 
                ; Note: DOCUMENT_TEXT_DETECTION will take precedence over TEXT_DETECTION
-               reply := this.outer.request(this.coimage, this.extension, "DOCUMENT_TEXT_DETECTION", "TEXT_DETECTION")
+               reply := this.outer.request(coimage, this.settings.extension, "DOCUMENT_TEXT_DETECTION", "TEXT_DETECTION")
 
                ; Get text from both models. I'm not sure if the text is the same.
                if !(data := reply.responses[1].fullTextAnnotation.text)
@@ -332,6 +440,7 @@ class Vis2 {
                }
 
                data := RegExReplace(data, "(?<!\r)\n", "`r`n") ; LF to CRLF
+               data.base.coimage := coimage
                data.base.FullData := obj
                for reference, function in Vis2.Text {
                   if IsFunc(function)
@@ -364,16 +473,18 @@ class Vis2 {
          ; Vis2.service.IBM.ExplicitContent()
          class ExplicitContent extends Vis2.service.shared {
 
-            static tooltip := "IBM: Explicit Content Detection Tool"
-            static alert := "ERROR: No content could be detected."
-            static splashImage := true
-            static previewText := false
-            static extension := "jpg"
-            static compression := "75"
+            class settings {
+               static tooltip := "IBM: Explicit Content Detection Tool"
+               static alert := "ERROR: No content could be detected."
+               static extension := "jpg"
+               static compression := "75"
+               static previewText := false
+               static splashImage := true
+            }
 
-            convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.upscale, this.extension, this.compression)
-               reply := this.outer.request(this.coimage, this.extension)
+            convert(image, crop := ""){
+               coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.settings.upscale, this.settings.extension, this.settings.compression)
+               reply := this.outer.request(coimage, this.settings.extension)
                i := 0, obj := {}
                while (i++ < reply.maxIndex())
                   if (reply[i].classifier_id = "explicit")
@@ -390,6 +501,7 @@ class Vis2 {
                }
 
                data := sentence2
+               data.base.coimage := coimage
                data.base.FullData := obj
                for reference, function in Vis2.Text {
                   if IsFunc(function)
@@ -402,16 +514,18 @@ class Vis2 {
          ; Vis2.service.IBM.FindFaces()
          class FindFaces extends Vis2.service.shared {
 
-            static tooltip := "IBM: Facial Recognition Tool"
-            static alert := "ERROR: No facial features detected."
-            static splashImage := true
-            static previewText := false
-            static extension := "jpg"
-            static compression := "75"
+            class settings {
+               static tooltip := "IBM: Facial Recognition Tool"
+               static alert := "ERROR: No facial features detected."
+               static extension := "jpg"
+               static compression := "75"
+               static previewText := false
+               static splashImage := true
+            }
 
-            convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.upscale, this.extension, this.compression)
-               reply := this.outer.request(this.coimage, this.extension)
+            convert(image, crop := ""){
+               coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.settings.upscale, this.settings.extension, this.settings.compression)
+               reply := this.outer.request(coimage, this.settings.extension)
                i := 0, obj := {}
                while (i++ < reply.maxIndex())
                   if (reply[i].classifier_id = "faces")
@@ -428,6 +542,7 @@ class Vis2 {
                }
 
                data := sentence
+               data.base.coimage := coimage
                data.base.FullData := obj
                for reference, function in Vis2.Text {
                   if IsFunc(function)
@@ -468,16 +583,18 @@ class Vis2 {
          ; Vis2.service.IBM.ImageIdentify()
          class ImageIdentify extends Vis2.service.shared {
 
-            static tooltip := "IBM: Image Identification Tool"
-            static alert := "ERROR: No image data found."
-            static splashImage := true
-            static previewText := false
-            static extension := "jpg"
-            static compression := "75"
+            class settings {
+               static tooltip := "IBM: Image Identification Tool"
+               static alert := "ERROR: No image data found."
+               static extension := "jpg"
+               static compression := "75"
+               static previewText := false
+               static splashImage := true
+            }
 
-            convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.upscale, this.extension, this.compression)
-               reply := this.outer.request(this.coimage, this.extension)
+            convert(image, crop := ""){
+               coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.settings.upscale, this.settings.extension, this.settings.compression)
+               reply := this.outer.request(coimage, this.settings.extension)
                i := 0, obj := {}
                while (i++ < reply.maxIndex())
                   if (reply[i].classifier_id = "default")
@@ -494,6 +611,7 @@ class Vis2 {
                }
 
                data := sentence2
+               data.base.coimage := coimage
                data.base.FullData := obj
                for reference, function in Vis2.Text {
                   if IsFunc(function)
@@ -506,15 +624,17 @@ class Vis2 {
          ; Vis2.service.IBM.TextRecognize()
          class TextRecognize extends Vis2.service.shared {
 
-            static tooltip := "IBM: Text Recognition Tool"
-            static alert := "ERROR: No text data found."
-            static splashImage := true
-            static previewText := false
-            static extension := "png"
+            class settings {
+               static tooltip := "IBM: Text Recognition Tool"
+               static alert := "ERROR: No text data found."
+               static extension := "png"
+               static previewText := false
+               static splashImage := true
+            }
 
-            convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.upscale, this.extension, this.compression)
-               reply := this.outer.request(this.coimage, this.extension)
+            convert(image, crop := ""){
+               coimage := Vis2.Graphics.Picture.Preprocess("base64", image, crop, this.settings.upscale, this.settings.extension, this.settings.compression)
+               reply := this.outer.request(coimage, this.settings.extension)
                i := 0, obj := {}
                while (i++ < reply.maxIndex())
                   if (reply[i].classifier_id = "text") {
@@ -527,6 +647,7 @@ class Vis2 {
                   }
 
                data := RegExReplace(data, "(?<!\r)\n", "`r`n")
+               data.base.coimage := coimage
                data.base.FullData := obj
                for reference, function in Vis2.Text {
                   if IsFunc(function)
@@ -688,20 +809,28 @@ class Vis2 {
          ; Vis2.service.Tesseract.TextRecognize()
          class TextRecognize extends Vis2.service.shared {
 
-            static tooltip := "Tesseract: Optical Character Recognition Tool"
-            static alert := "ERROR: No text data found."
-            static splashImage := false
-            static previewText := 500
-            static upscale := 2
+            class settings {
+               static tooltip := "Tesseract: Optical Character Recognition Tool"
+               static alert := "ERROR: No text data found."
+               static upscale := 2
+               static convertImageDelay := 500
+               static previewBounds := true
+               static previewText := true
+               static splashImage := false
+            }
 
             uuid := this.CreateUUID()
             temp1 := A_Temp "\Vis2_screenshot" this.uuid ".bmp"
             temp2 := A_Temp "\Vis2_preprocess" this.uuid ".tif"
             temp3 := A_Temp "\Vis2_text" this.uuid ".tsv"
 
-            ; Flow 04 B - FINAL. If an image was provided, the GUI for image selection does not launch.
-            convert(image, crop := "", option := ""){
-               this.temp1 := Vis2.Graphics.Picture.Preprocess("file", image, crop, this.upscale, this.temp1, this.compression)
+            ; Flow D-03 - Directly calls the convert() function of the service.
+            ;             Returns the text data to the user's function.
+            ;             Object data can be extracted using
+            ;             Vis2.service.Tesseract.TextRecognize(image).FullData
+            ; Next: COMPLETE
+            convert(image, crop := ""){
+               this.temp1 := Vis2.Graphics.Picture.Preprocess("file", image, crop, this.settings.upscale, this.temp1, this.settings.compression)
 
                static ocrPreProcessing := 1
                static negateArg := 2
@@ -720,24 +849,24 @@ class Vis2 {
                if !(FileExist(this.temp2))
                   throw Exception("Preprocessing failed.",, _cmd)
 
-               this.coimage := this.temp2
+               coimage := this.temp2
 
-               if !(FileExist(this.coimage))
-                  throw Exception("File not found.",, this.coimage)
+               if !(FileExist(coimage))
+                  throw Exception("File not found.",, coimage)
 
                if !(FileExist(this.outer.tesseract))
                   throw Exception("Tesseract not found.",, this.outer.tesseract)
 
                _cmd := q this.outer.tesseract q " --tessdata-dir " q this.outer.tessdata q
-               _cmd .= " " q this.coimage q " " q SubStr(this.temp3, 1, -4) q
-               _cmd .= (option) ? " -l " q option q : ""
+               _cmd .= " " q coimage q " " q SubStr(this.temp3, 1, -4) q
+               _cmd .= (this.option) ? " -l " q this.option q : ""
                _cmd .= " -c tessedit_create_tsv=1 -c tessedit_pageseg_mode=1"
                _cmd := ComSpec " /C " q _cmd q
                ;_cmd := "powershell -NoProfile -command "  q  "& " _cmd q
                RunWait % _cmd,, Hide
 
                database := FileOpen(this.temp3, "r`n", "UTF-8")
-               tsv := RegExReplace(database.Read(), "^\s*(.*?)\s*+$", "$1")
+               tsv := Trim(database.Read())
                database.Close()
 
                obj := {}, block := {"paragraphs":[]}, paragraph := {"lines":[]}, line := {"words":[]}, word := {}
@@ -825,6 +954,7 @@ class Vis2 {
                obj.push(block)
 
                data := text
+               data.base.coimage := coimage
                data.base.FullData := obj
                for reference, function in Vis2.Text {
                   if IsFunc(function)
@@ -866,22 +996,25 @@ class Vis2 {
 
          class ImageIdentify extends Vis2.service.shared {
 
-            static tooltip := "Wolfram: Image Identification Tool"
-            static alert := "ERROR: No image content found."
-            static splashImage := true
-            static previewText := false
-            static compression := "92"
+            class settings {
+               static tooltip := "Wolfram: Image Identification Tool"
+               static alert := "ERROR: No image content found."
+               static compression := "92"
+               static previewText := false
+               static splashImage := true
+            }
 
             uuid := this.CreateUUID()
             file := A_Temp "\Vis2_screenshot" this.uuid ".png"
 
-            convert(image, crop := "", option := ""){
-               this.coimage := Vis2.Graphics.Picture.Preprocess("file", image, crop, this.file, this.compression)
-               reply := this.outer.request(this.coimage)
+            convert(image, crop := ""){
+               coimage := Vis2.Graphics.Picture.Preprocess("file", image, crop, this.file, this.settings.compression)
+               reply := this.outer.request(coimage)
                obj := reply.identify
                obj.category := reply.title
                obj.score    := reply.score
                data := reply.identify.title
+               data.base.coimage := coimage
                data.base.FullData := obj
                for reference, function in Vis2.Text {
                   if IsFunc(function)
@@ -895,34 +1028,39 @@ class Vis2 {
 
    class ux {
 
-      ; Flow 04 A - Starts the GUI. Query the status code.
-      ; returnData() is a wrapper function of Vis2.ux.start()
-      ; Unlike Vis2.ux.start(), this function will return a string of text.
-      ; You'll need a service: Vis2.ux.returnData({"service":new Vis2.service.Tesseract.TextRecognize()})
-      returnData(obj){
-         if (error := Vis2.ux.start(obj))
+      ; Flow C-03 - returnData() is a wrapper function that waits for Vis2.ux.start().
+      ;             Unlike Vis2.ux.start(), this function will return a string of text.
+      ;             To call directly: Vis2.ux.returnData(new Vis2.service.Tesseract.TextRecognize())
+      ; Next: Flow C-04
+      returnData(terms*){
+         if (error := Vis2.ux.start(terms*))
             return error
          while !(Vis2.ux.io.status)
             Sleep 10
          return Vis2.ux.io.data
       }
 
-      ; start() is the function that launches the user interface.
-      ; This can be called directly without calling Vis2.ux.returnData().
-      ; You'll need a service: Vis2.ux.start({"service":new Vis2.service.Tesseract.TextRecognize()})
-      start(obj){
+      ; Flow C-04 - start() is the function that launches the user interface.
+      ;             This can be called directly without calling Vis2.ux.returnData().
+      ;             To call directly: Vis2.ux.start(new Vis2.service.Tesseract.TextRecognize())
+      start(service, settings := ""){
       static void := ObjBindMethod({}, {})
 
-         if (Vis2.ux.io.status == 0)
+         if (Vis2.ux.io.status == 0) {
+            Vis2.ux.io.settings.palette++
             return "Already in use."
+         }
 
-         if !IsObject(obj.service)
-            return "Service required."
+         if !IsObject(settings) {
+            settings := service.settings                 ; service specific settings
+            settings.base := Vis2.settings               ; default settings
+         }
 
-         ; Sets a lock (status), preventing multiple instances of the user experience.
-         Vis2.ux.io := {"data":"", "status":0} ; -2 = blank data; -1 = escaped; 0 = in progress; 1 = success
+         Vis2.ux.io := {"data": ""                       ; return data
+                     , "status": 0                       ; -2 = blank data; -1 = escaped; 0 = in progress; 1 = success
+                     , "settings": settings}             ; reference to settings object for I/O.
 
-         Vis2.ux.setSystemCursor(32515) ; IDC_Cross := 32515
+         Vis2.ux.setSystemCursor(32515)                  ; IDC_Cross := 32515
          Hotkey, LButton, % void, On
          Hotkey, ^LButton, % void, On
          Hotkey, !LButton, % void, On
@@ -931,92 +1069,96 @@ class Vis2 {
          Hotkey, Escape, % void, On
 
          Vis2.Graphics.Startup()
-         obj.selectMode := "Quick"
-         obj.area := new Vis2.Graphics.Area("Vis2_Aries", 0x7FDDDDDD)
-         obj.picture := new Vis2.Graphics.Picture("Vis2_Kitsune")
-         obj.polygon := new Vis2.Graphics.Picture("Vis2_Polygon")
-         obj.information := new Vis2.Graphics.Subtitle("Vis2_Information")
-         obj.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
+         state := {}
+         state.selectMode := "Quick"
+         global StartTime
+         state.subtitle := new Vis2.Graphics.Subtitle("Vis2_Hermes")
+            .render(settings.tooltip A_Space . (A_TickCount - StartTime), settings.subtitle.background, settings.subtitle.text)
+         state.area := new Vis2.Graphics.Area("Vis2_Aries", settings.area.c)
+         state.information := new Vis2.Graphics.Subtitle("Vis2_Information")
+         state.picture := new Vis2.Graphics.Picture("Vis2_Kitsune")
+         state.polygon := new Vis2.Graphics.Picture("Vis2_Polygon")
 
-         obj.style1_back := {"x":"center", "y":"83.33vh", "padding":"1.35vmin", "color":"DD000000", "radius":8}
-         obj.style1_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"White"}
-         obj.style2_back := {"x":"center", "y":"83.33vh", "padding":"1.35vmin", "color":"FF88EAB6", "radius":8}
-         obj.style2_text := {"q":4, "size":"2.23%", "font":"Arial", "z":"Arial Narrow", "justify":"left", "color":"Black"}
-         Vis2.ux.process.display(obj, obj.service.tooltip, obj.style1_back, obj.style1_text)
-         Vis2.ux.process.waitForUserInput(obj) ; Ensure this is run once.
+         state.style1_back := settings.subtitle.background
+         state.style1_text := settings.subtitle.text
+
+         state.style2_back := settings.subtitle.background.set("color", "#FF88EAB6")
+         state.style2_text := settings.subtitle.text
+
+         Vis2.ux.process.waitForUserInput(state, service, settings) ; Ensure this is run once.
          return
       }
 
       class process {
 
-         waitForUserInput(obj){
+         waitForUserInput(state, service, settings){
             if (GetKeyState("Escape", "P"))
-               return Vis2.ux.escape(obj, -1) ; -1 = escaped
+               return Vis2.ux.escape(state, -1)
 
             if (GetKeyState("LButton", "P")) {
-               selectImage := ObjBindMethod(Vis2.ux.process, "selectImage", obj)
+               selectImage := ObjBindMethod(Vis2.ux.process, "selectImage", state, settings)
                SetTimer, % selectImage, -10
-               if (obj.service.previewText) {
-                  Vis2.ux.process.display(obj, "Searching for data...", obj.style1_back, obj.style1_text)
-                  convertImage := ObjBindMethod(Vis2.ux.process, "convertImage", obj)
+               if (settings.previewText || settings.previewImage || settings.previewBounds) {
+                  Vis2.ux.process.display(state, "Searching for data...", state.style1_back, state.style1_text)
+                  convertImage := ObjBindMethod(Vis2.ux.process, "convertImage", state, service, settings)
                   SetTimer, % convertImage, -250
                }
                else
-                  Vis2.ux.process.display(obj, "Waiting for user selection...", obj.style2_back, obj.style2_text, "Still patiently waiting for user selection...")
+                  Vis2.ux.process.display(state, "Waiting for user selection...", state.style2_back, state.style2_text, "Still patiently waiting for user selection...")
                return
             }
 
-            if (A_Cursor == "Unknown" && WinExist("A") != obj.area.hwnd) ; BUGFIX: Flickering on custom cursor
-               obj.area.clickThrough(1)
+            if (A_Cursor == "Unknown" && WinExist("A") != state.area.hwnd) ; BUGFIX: Flickering on custom cursor
+               state.area.clickThrough(1)
 
-            obj.area.origin()
-            waitForUserInput := ObjBindMethod(Vis2.ux.process, "waitForUserInput", obj)
+            state.area.origin()
+            waitForUserInput := ObjBindMethod(Vis2.ux.process, "waitForUserInput", state, service, settings)
             SetTimer, % waitForUserInput, -10
             return
          }
 
-         selectImage(obj){
+         selectImage(state, settings){
             Critical On
             if (GetKeyState("Escape", "P"))
-               return Vis2.ux.process.treasureChest(obj, A_ThisFunc, "escape")
+               return Vis2.ux.process.treasureChest(state, settings, A_ThisFunc, "escape")
 
-            if (obj.selectMode == "Quick")
-               Vis2.ux.process.selectImageQuick(obj)
-            if (obj.selectMode == "Advanced")
-               Vis2.ux.process.selectImageAdvanced(obj)
+            if (state.selectMode == "Quick")
+               Vis2.ux.process.selectImageQuick(state, settings)
+            if (state.selectMode == "Advanced")
+               Vis2.ux.process.selectImageAdvanced(state, settings)
 
-            Vis2.ux.process.display(obj) ; Detect overlap mostly.
+            Vis2.ux.process.display(state) ; Detect overlap mostly.
 
-            if !(obj.unlock.1 ~= "^Vis2.ux.process.selectImage" || obj.unlock.2 ~= "^Vis2.ux.process.selectImage") {
-               selectImage := ObjBindMethod(Vis2.ux.process, "selectImage", obj)
+            if !(state.unlock.1 ~= "^Vis2\.ux\.process\.selectImage" || state.unlock.2 ~= "^Vis2\.ux\.process\.selectImage") {
+               selectImage := ObjBindMethod(Vis2.ux.process, "selectImage", state, settings)
                SetTimer, % selectImage, -10
             }
             Critical Off
             return
          }
 
-         selectImageQuick(obj){
-            if (A_Cursor == "Unknown" && WinExist("A") != obj.area.hwnd) ; BUGFIX: Flickering on custom cursor
-               obj.area.clickThrough(1)
+         selectImageQuick(state, settings){
+            if (A_Cursor == "Unknown" && WinExist("A") != state.area.hwnd) ; BUGFIX: Flickering on custom cursor
+               state.area.clickThrough(1)
 
             if (GetKeyState("LButton", "P")) {
                if (GetKeyState("Control", "P") || GetKeyState("Alt", "P") || GetKeyState("Shift", "P"))
-                  Vis2.ux.process.selectImageTransition(obj) ; Must be last thing to happen.
+                  Vis2.ux.process.selectImageTransition(state, settings) ; Must be last thing to happen.
                else if (GetKeyState("RButton", "P")) {
-                  obj.area.move()
-                  if (!obj.area.isMouseOnCorner() && obj.area.isMouseStopped()) {
-                     obj.area.drag() ; Error Correction of Offset
+                  state.area.move()
+                  if (!state.area.isMouseOnCorner() && state.area.isMouseStopped()) {
+                     state.area.drag() ; Error Correction of Offset
                   }
                }
                else
-                  obj.area.drag()
+                  state.area.drag()
             }
             else
-               return Vis2.ux.process.treasureChest(obj, A_ThisFunc)
+               return Vis2.ux.process.treasureChest(state, settings, A_ThisFunc)
             return
          }
 
-         selectImageTransition(obj){
+         selectImageTransition(state, settings){
          static void := ObjBindMethod({}, {})
 
             DllCall("SystemParametersInfo", "uint", SPI_SETCURSORS := 0x57, "uint",0, "uint",0, "uint",0) ; RestoreCursor()
@@ -1024,12 +1166,12 @@ class Vis2 {
             Hotkey, ^Space, % void, On
             Hotkey, !Space, % void, On
             Hotkey, +Space, % void, On
-            obj.area.clickThrough(0) ; Allow the cursor to change again.
-            obj.tokenMousePressed := 1
-            obj.key := {}
-            obj.action := {}
-            obj.selectMode := "Advanced" ; Exit selectImageQuick.
-            obj.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode - Press spacebar to select."
+            state.area.clickThrough(0) ; Allow the cursor to change again.
+            state.tokenMousePressed := 1
+            state.key := {}
+            state.action := {}
+            state.selectMode := "Advanced" ; Exit selectImageQuick.
+            state.note_01 := Vis2.Graphics.Subtitle.Render("Advanced Mode - Press spacebar to select."
                , "time:30000 x:center y:16.67vh m:1.35vmin r:8px c:55F9E27E"
                , "font:(Century Gothic) size:3.33vmin color:#F88958"
                . A_Space "outline:(stroke:1px color:#F88958 glow:2px tint:Indigo)"
@@ -1037,59 +1179,60 @@ class Vis2 {
             return
          }
 
-         selectImageAdvanced(obj){
+         selectImageAdvanced(state, settings){
          static void := ObjBindMethod({}, {})
 
-            if ((obj.area.width() < -25 || obj.area.height() < -25) && !obj.note_02)
-               obj.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen."
-                  , "time: 6250, x: center, y: 67%, p1.35vmin, c: FCF9AF, r8", "f(Arial) c000000 s2.23%")
+            if ((state.area.width() < -25 || state.area.height() < -25) && !state.note_02)
+               state.note_02 := Vis2.Graphics.Subtitle.Render("Press Alt + LButton to create a new selection anywhere on screen."
+                  , state.style1_back.clone().set("time", "6250").set("y", "66.67vh").set("color", "FCF9AF")
+                  , state.style1_text.clone())
 
-            obj.key.LButton := GetKeyState("LButton", "P") ? 1 : 0
-            obj.key.RButton := GetKeyState("RButton", "P") ? 1 : 0
-            obj.key.Space   := GetKeyState("Space", "P")   ? 1 : 0
-            obj.key.Control := GetKeyState("Control", "P") ? 1 : 0
-            obj.key.Alt     := GetKeyState("Alt", "P")     ? 1 : 0
-            obj.key.Shift   := GetKeyState("Shift", "P")   ? 1 : 0
+            state.key.LButton := GetKeyState("LButton", "P") ? 1 : 0
+            state.key.RButton := GetKeyState("RButton", "P") ? 1 : 0
+            state.key.Space   := GetKeyState("Space", "P")   ? 1 : 0
+            state.key.Control := GetKeyState("Control", "P") ? 1 : 0
+            state.key.Alt     := GetKeyState("Alt", "P")     ? 1 : 0
+            state.key.Shift   := GetKeyState("Shift", "P")   ? 1 : 0
 
             ; Check if mouse is inside on activation.
-            obj.action.Control_LButton := (obj.area.isMouseInside() && obj.key.Control && obj.key.LButton)
-               ? 1 : (obj.key.Control && obj.key.LButton) ? obj.action.Control_LButton : 0
-            obj.action.Shift_LButton   := (obj.area.isMouseInside() && obj.key.Shift && obj.key.LButton)
-               ? 1 : (obj.key.Shift && obj.key.LButton) ? obj.action.Shift_LButton : 0
-            obj.action.LButton         := (obj.area.isMouseInside() && obj.key.LButton)
-               ? 1 : (obj.key.LButton) ? obj.action.LButton : 0
-            obj.action.RButton         := (obj.area.isMouseInside() && obj.key.RButton)
-               ? 1 : (obj.key.RButton) ? obj.action.RButton : 0
+            state.action.Control_LButton := (state.area.isMouseInside() && state.key.Control && state.key.LButton)
+               ? 1 : (state.key.Control && state.key.LButton) ? state.action.Control_LButton : 0
+            state.action.Shift_LButton   := (state.area.isMouseInside() && state.key.Shift && state.key.LButton)
+               ? 1 : (state.key.Shift && state.key.LButton) ? state.action.Shift_LButton : 0
+            state.action.LButton         := (state.area.isMouseInside() && state.key.LButton)
+               ? 1 : (state.key.LButton) ? state.action.LButton : 0
+            state.action.RButton         := (state.area.isMouseInside() && state.key.RButton)
+               ? 1 : (state.key.RButton) ? state.action.RButton : 0
 
-            ;___|¯¯¯|___ 00011111000 Keypress
+            ;___|���|___ 00011111000 Keypress
             ;___|_______ 0001----000 Activation Function (pseudo heaviside)
-            obj.action.Control_Space   := (obj.key.Control && obj.key.Space)
-               ? ((!obj.action.Control_Space) ? 1 : -1) : 0
-            obj.action.Alt_Space       := (obj.key.Alt && obj.key.Space)
-               ? ((!obj.action.Alt_Space) ? 1 : -1) : 0
-            obj.action.Shift_Space     := (obj.key.Shift && obj.key.Space)
-               ? ((!obj.action.Shift_Space) ? 1 : -1) : 0
-            obj.action.Alt_LButton     := (obj.key.Alt && obj.key.LButton)
-               ? ((!obj.action.Alt_LButton) ? 1 : -1) : 0
+            state.action.Control_Space   := (state.key.Control && state.key.Space)
+               ? ((!state.action.Control_Space) ? 1 : -1) : 0
+            state.action.Alt_Space       := (state.key.Alt && state.key.Space)
+               ? ((!state.action.Alt_Space) ? 1 : -1) : 0
+            state.action.Shift_Space     := (state.key.Shift && state.key.Space)
+               ? ((!state.action.Shift_Space) ? 1 : -1) : 0
+            state.action.Alt_LButton     := (state.key.Alt && state.key.LButton)
+               ? ((!state.action.Alt_LButton) ? 1 : -1) : 0
 
             ; Ensure only Space is pressed.
-            obj.action.Space := (obj.key.Space && !obj.key.Control && !obj.key.Alt && !obj.key.Shift)
-               ? ((!obj.action.Space) ? 1 : -1) : 0
+            state.action.Space := (state.key.Space && !state.key.Control && !state.key.Alt && !state.key.Shift)
+               ? ((!state.action.Space) ? 1 : -1) : 0
 
             ; Mouse Hotkeys
-            if (obj.action.Control_LButton)
-               obj.area.resizeCorners()
-            else if (obj.action.Alt_LButton = 1)
-               obj.area.origin()
-            else if (obj.action.Alt_LButton = -1)
-               obj.area.drag()
-            else if (obj.action.Shift_LButton)
-               obj.area.resizeEdges()
-            else if (obj.action.LButton || obj.action.RButton)
-               obj.area.move()
+            if (state.action.Control_LButton)
+               state.area.resizeCorners()
+            else if (state.action.Alt_LButton = 1)
+               state.area.origin()
+            else if (state.action.Alt_LButton = -1)
+               state.area.drag()
+            else if (state.action.Shift_LButton)
+               state.area.resizeEdges()
+            else if (state.action.LButton || state.action.RButton)
+               state.area.move()
             else {
-               obj.area.hover() ; Collapse Stack
-               if obj.area.isMouseInside() {
+               state.area.hover() ; Collapse Stack
+               if state.area.isMouseInside() {
                   Hotkey, LButton, % void, On
                   Hotkey, RButton, % void, On
                } else {
@@ -1099,48 +1242,49 @@ class Vis2 {
             }
 
             ; Space Hotkeys
-            if (obj.action.Control_Space = 1) {
-               if (obj.service.previewImage := !obj.service.previewImage) ; Toggle our new previewImage flag!
-                  obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData).show()
+            if (state.action.Control_Space = 1) {
+               if (settings.previewImage := !settings.previewImage) ; Toggle our new previewImage flag!
+                  state.picture.render(Vis2.ux.io.data.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData).show()
                else
-                  obj.picture.hide()
-            } else if (obj.action.Alt_Space = 1) {
-               if (obj.service.showCoordinates := !obj.service.showCoordinates) {
-                  c2 := RegExReplace((obj.coordinates) ? obj.coordinates : obj.area.screenshotCoordinates(), "^(\d+)\|(\d+)\|(\d+)\|(\d+)$", "x`n$1`n`ny`n$2`n`nw`n$3`n`nh`n$4")
-                  obj.information.render(c2, "a:centerright x:98.14vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000", "f:(Arial) j:center y:center s:2.23% c:White").show()
+                  state.picture.hide()
+            } else if (state.action.Alt_Space = 1) {
+               if (settings.showCoordinates := !settings.showCoordinates) {
+                  c2 := RegExReplace((state.coordinates) ? state.coordinates : state.area.screenshotCoordinates(), "^(\d+)\|(\d+)\|(\d+)\|(\d+)$", "x`n$1`n`ny`n$2`n`nw`n$3`n`nh`n$4")
+                  state.information.render(c2, "a:centerright x:98.14vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000"
+                     , state.style1_text.clone().set("y", "center").set("justify", "center")).show()
                } else
-                  obj.information.hide()
-            } else if (obj.action.Shift_Space = 1) {
+                  state.information.hide()
+            } else if (state.action.Shift_Space = 1) {
 
-            } else if (obj.action.Space = 1) {
-               return Vis2.ux.process.treasureChest(obj, A_ThisFunc) ; return this!
+            } else if (state.action.Space = 1) {
+               return Vis2.ux.process.treasureChest(state, settings, A_ThisFunc) ; return this!
             }
             return
          }
 
-         convertImage(obj, bypass:=""){
+         convertImage(state, service, settings, bypass:=""){
             ; The bypass parameter is normally used when convertImage is off, producing no text on screen.
             ; Check for valid coordinates, returns "" if invalid.
-            if (coordinates := obj.area.screenshotCoordinates()) {
+            if (coordinates := state.area.screenshotCoordinates()) {
                ; Sometimes a user will make the subtitle blink from top to bottom. If so, hide subtitle temporarily.
-               (overlap1 := Vis2.ux.process.overlap(obj.area.rect(), obj.subtitle.rect())) ? obj.subtitle.hide() : ""
-               (overlap2 := Vis2.ux.process.overlap(obj.area.rect(), obj.picture.rect())) ? obj.picture.hide() : ""
-               (overlap3 := Vis2.ux.process.overlap(obj.area.rect(), obj.information.rect())) ? obj.information.hide() : ""
-               (overlap4 := Vis2.ux.process.overlap(obj.area.rect(), obj.polygon.rect())) ? obj.polygon.hide() : ""
-               ;obj.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
+               (overlap1 := Vis2.ux.process.overlap(state.area.rect(), state.subtitle.rect())) ? state.subtitle.hide() : ""
+               (overlap2 := Vis2.ux.process.overlap(state.area.rect(), state.picture.rect())) ? state.picture.hide() : ""
+               (overlap3 := Vis2.ux.process.overlap(state.area.rect(), state.information.rect())) ? state.information.hide() : ""
+               (overlap4 := Vis2.ux.process.overlap(state.area.rect(), state.polygon.rect())) ? state.polygon.hide() : ""
+               ;state.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
                pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
-               ;obj.area.changeColor(0x7FDDDDDD) ; Lighten Area object, but do not hide or delete it until key up.
-               (overlap3 && obj.service.showCoordinates) ? obj.information.show() : ""
-               (overlap2 && obj.service.previewImage) ? obj.picture.show() : ""
-               (overlap1) ? obj.subtitle.show() : ""
-               (overlap1 || overlap2 || overlap3) ? obj.area.show() : ""
-               (overlap4) ? obj.polygon.show() : "" ; Assert Topmost position in z-order.
+               ;state.area.changeColor(0x7FDDDDDD) ; Lighten Area object, but do not hide or delete it until key up.
+               (overlap3 && settings.showCoordinates) ? state.information.show() : ""
+               (overlap2 && settings.previewImage) ? state.picture.show() : ""
+               (overlap1) ? state.subtitle.show() : ""
+               (overlap1 || overlap2 || overlap3) ? state.area.show() : ""
+               (overlap4) ? state.polygon.show() : "" ; Assert Topmost position in z-order.
 
                ; If any x,y,w,h coordinates are different, or the image has changed (like video), proceed.
-               if (bypass || coordinates != obj.coordinates || !obj.picture.isBitmapEqual(pBitmap, obj.pBitmap)) {
+               if (bypass || coordinates != state.coordinates || !state.picture.isBitmapEqual(pBitmap, state.pBitmap)) {
 
                   ; Declare type as pBitmap
-                  try data := obj.service.convert({"pBitmap":pBitmap},, obj.option, 100)
+                  try data := service.convert({"pBitmap":pBitmap})
                   catch e {
                      MsgBox, 16,, % "Exception thrown!`n`nwhat: " e.what "`nfile: " e.file
                         . "`nline: " e.line "`nmessage: " e.message "`nextra: " e.extra "`ncoordinates: " coordinates
@@ -1152,25 +1296,25 @@ class Vis2 {
                      return Gdip_DisposeImage(pBitmap) ; If selectImage exited while convert, destroy the pBitmap.
 
                   ; Do not update last coordinates (space) and last pBitmap (time) until conversion finishes.
-                  ; In Vis2.ux.process.treasureChest(), obj.coordinates will be compared to user's mouse release.
-                  if (obj.pBitmap)
-                     Gdip_DisposeImage(obj.pBitmap)
-                  obj.coordinates := coordinates
-                  obj.pBitmap := pBitmap
+                  ; In Vis2.ux.process.treasureChest(), state.coordinates will be compared to user's mouse release.
+                  if (state.pBitmap)
+                     Gdip_DisposeImage(state.pBitmap)
+                  state.coordinates := coordinates
+                  state.pBitmap := pBitmap
 
                   ; Visual Effects
                   if (!bypass) {
-                     if (obj.service.showCoordinates) {
-                        c2 := RegExReplace(obj.coordinates, "^(\d+)\|(\d+)\|(\d+)\|(\d+)$", "x`n$1`n`ny`n$2`n`nw`n$3`n`nh`n$4")
-                        obj.information.render(c2, "a:centerright x:98.14vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000", "f:(Arial) j:center y:center s:2.23% c:White")
+                     if (settings.showCoordinates) {
+                        c2 := RegExReplace(state.coordinates, "^(\d+)\|(\d+)\|(\d+)\|(\d+)$", "x`n$1`n`ny`n$2`n`nw`n$3`n`nh`n$4")
+                        state.information.render(c2, "a:centerright x:98.14vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000", "f:(Arial) j:center y:center s:2.23% c:White")
                      }
-                     if (obj.service.previewImage)
-                        obj.picture.render(obj.service.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
-                     if (obj.service.previewBounds) {
-                        xywh := StrSplit(coordinates, "|")
-                        obj.polygon.render(, {"size":1/obj.service.upscale, "x":xywh.1, "y":xywh.2, "w":xywh.3, "h":xywh.4}, Vis2.ux.io.data.FullData)
+                     if (settings.previewImage)
+                        state.picture.render(Vis2.ux.io.data.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
+                     if (settings.previewBounds) {
+                        xywh := StrSplit(state.coordinates, "|") ; use saved coordinates!
+                        state.polygon.render(, {"size":1/settings.upscale, "x":xywh.1, "y":xywh.2, "w":xywh.3, "h":xywh.4}, Vis2.ux.io.data.FullData)
                      }
-                     Vis2.ux.process.display(obj, (Vis2.ux.io.data.maxLines(3)) ? Vis2.ux.io.data.maxLines(3) : obj.service.alert)
+                     Vis2.ux.process.display(state, (Vis2.ux.io.data.maxLines(3)) ? Vis2.ux.io.data.maxLines(3) : settings.alert)
                   }
                }
                else { ; This is an identical image, so delete it.
@@ -1178,23 +1322,23 @@ class Vis2 {
                }
             }
 
-            if (obj.unlock.1 && !obj.unlock.2)
-               return Vis2.ux.process.treasureChest(obj, A_ThisFunc)
-            else if (!obj.unlock.2) {
-               convertImage := ObjBindMethod(Vis2.ux.process, "convertImage", obj)
-               SetTimer, % convertImage, % -Abs(obj.service.previewText)
+            if (state.unlock.1 && !state.unlock.2)
+               return Vis2.ux.process.treasureChest(state, settings, A_ThisFunc)
+            else if (!state.unlock.2) {
+               convertImage := ObjBindMethod(Vis2.ux.process, "convertImage", state, service, settings)
+               SetTimer, % convertImage, % -Abs(settings.previewText)
             }
             return
          }
 
-         treasureChest(obj, key, escape:=""){
+         treasureChest(state, settings, key, escape:=""){
             ; Create an "unlock" object with two vacancies that will be filled when SelectImage and ConvertImage return.
-            (IsObject(obj.unlock) && key != obj.unlock.1) ? obj.unlock.push(key) : (obj.unlock := [key])
+            (IsObject(state.unlock) && key != state.unlock.1) ? state.unlock.push(key) : (state.unlock := [key])
 
             ; Immediately escape when called by SelectImage.
             if (escape) {
                Vis2.ux.io.data := "" ; race condition in ConvertImage!
-               return Vis2.ux.escape(obj, -1)
+               return Vis2.ux.escape(state, -1)
             }
 
             ; ConvertImage will do nothing when escaped via SelectImage.
@@ -1202,83 +1346,86 @@ class Vis2 {
                return
 
             ; SelectImage returns. If ConvertImage was not started, start it now.
-            if (key ~= "^Vis2.ux.process.selectImage") {
-               obj.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
-               if (!obj.service.previewText) {
-                  Vis2.ux.process.display(obj, "Processing using " RegExReplace(obj.service.__class, ".*\.(.*)\.(.*)$", "$1's $2()..."), obj.style2_back, obj.style2_text)
-                  return Vis2.ux.process.convertImage(obj, "bypass")
+            if (key ~= "^Vis2\.ux\.process\.selectImage") {
+               state.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
+               if (!settings.previewText) {
+                  Vis2.ux.process.display(state, "Processing using " RegExReplace(settings.base.__class, ".*\.(.*)\.(.*)$", "$1's $2()..."), state.style2_back, state.style2_text)
+                  return Vis2.ux.process.convertImage(state, service, settings, "bypass")
                } else {
                   ; If user's final coordinates and last processed coordinates are the same:
                   ; Do an early exit. Don't wait for the in progress convertImage to return. Skip that.
-                  if (obj.area.screenshotCoordinates() == obj.coordinates)
-                     return Vis2.ux.process.finale(obj)
+                  if (state.area.screenshotCoordinates() == state.coordinates)
+                     return Vis2.ux.process.finale(state, settings)
                }
             }
 
             ; ConvertImage returns.
-            if (obj.unlock.maxIndex() == 2) {
+            if (state.unlock.maxIndex() == 2) {
                ; Even though ConvertImage has returned, make sure that the area coordinates when the mouse was released
                ; are equal to the coordinates that were sent to the last iteration of ConvertImage.
-               if (obj.area.screenshotCoordinates() != obj.coordinates)
-                  Vis2.ux.process.convertImage(obj, "bypass")
-               return Vis2.ux.process.finale(obj)
+               if (state.area.screenshotCoordinates() != state.coordinates)
+                  Vis2.ux.process.convertImage(state, service, settings, "bypass")
+               return Vis2.ux.process.finale(state, settings)
             }
             return
          }
 
-         finale(obj){
+         finale(state, settings){
             if (Vis2.ux.io.data == "") {
-               if (!obj.service.previewText)
-                  Vis2.Graphics.Subtitle.Render(obj.service.alert, "time:1500 x:center y:83.33vh margin:1.35vmin c:FFB1AC radius:8", "f:(Arial) s2.23% c:Black")
-               return Vis2.ux.escape(obj, -2) ; blank data
+               if (!settings.previewText)
+                  Vis2.Graphics.Subtitle.Render(settings.alert, "time:1500 x:center y:83.33vh margin:1.35vmin c:FFB1AC radius:8", "f:(Arial) s2.23% c:Black")
+               return Vis2.ux.escape(state, -2) ; blank data
             }
 
             t := 1250
             t += 8*Vis2.ux.io.data.maxLines(3).characters() ; Each character adds 8 milliseconds to base.
-            if (obj.service.splashImage) {
+            if (settings.splashImage) {
                t += 1250                                    ; BUGFIX: Separate it, objects bug out occasionally.
                t += 75*Vis2.ux.io.data.FullData.maxIndex()  ; Each category adds 75 milliseconds to base.
             }
 
-            if (obj.service.toClipboard)
+            if (settings.toClipboard)
                clipboard := Vis2.ux.io.data
 
-            obj.subtitle.hide()
-            (obj.service.toClipboard) ? Vis2.Graphics.Subtitle.Render("Saved to Clipboard."
-               , "time: " t ", x: center, y: 75%, p: 1.35vmin, c: F9E486, r: 8"
-               , "c: 0x000000, s:2.23%, f:Arial") : ""
-            (obj.service.splashText) ? Vis2.Graphics.Subtitle.Render(Vis2.ux.io.data.maxLines(3)
-               , "time:" t " x:center y:83.33vh padding:1.35vmin c:Black radius:8"
-               , "size:2.23% f:(Arial) z:(Arial Narrow) j:left c:White") : ""
-            (obj.service.splashImage) ? Vis2.Graphics.Picture.Render(obj.service.coimage
+            (settings.splashBounds) ? Vis2.Graphics.Picture.Render(
+               , {"time":t, "size":1/settings.upscale, "x":state.area.x1(), "y":state.area.y1(), "w":state.area.width(), "h":state.area.height()}
+               , Vis2.ux.io.data.FullData).FreeMemory() : ""
+            (settings.splashImage) ? Vis2.Graphics.Picture.Render(Vis2.ux.io.data.coimage
                , "time:" t " a:center x:center y:40.99vh margin:0.926vmin size:auto width:100vw height:80.13vh"
                , Vis2.ux.io.data.FullData).FreeMemory() : ""
+            (settings.splashText) ? Vis2.Graphics.Subtitle.Render(Vis2.ux.io.data.maxLines(3)
+               , state.style1_back.clone().set("time", t).set("color", "Black")
+               , state.style1_text.clone()) : ""
+            (settings.toClipboard) ? Vis2.Graphics.Subtitle.Render("Saved to Clipboard."
+               , state.style1_back.clone().set("time", t).set("y", "75.00vh").set("color", "#F9E486")
+               , state.style1_text.clone()) : ""
 
-            return Vis2.ux.escape(obj, 1)  ; Success.
+            state.subtitle.hide()
+
+            return Vis2.ux.escape(state, 1)  ; Success.
          }
 
-         display(obj, text := "", backgroundStyle := "", textStyle := "", overlapText := ""){
-            if (overlap := Vis2.ux.process.overlap(obj.area.rect(), obj.subtitle.rect())) {
-                obj.style1_back.y := (obj.style1_back.y == "83.33vh") ? "2.07vh" : "83.33vh"
-                obj.style2_back.y := (obj.style2_back.y == "83.33vh") ? "2.07vh" : "83.33vh"
+         display(state, text := "", backgroundStyle := "", textStyle := "", overlapText := ""){
+            if (overlap := Vis2.ux.process.overlap(state.area.rect(), state.subtitle.rect())) {
+                state.style1_back.y := (state.style1_back.y == "83.33vh") ? "2.07vh" : "83.33vh"
+                state.style2_back.y := (state.style2_back.y == "83.33vh") ? "2.07vh" : "83.33vh"
             }
 
             ; Save the current text so when overlap is detected, it can remember the last text.
             if (text != "")
-               obj.displayText := text
+               state.displayText := text
             if (overlapText != "")
-               obj.displayOverlapText := overlapText
+               state.displayOverlapText := overlapText
 
             ; Render text on screen.
             if (overlap || text != "")
-               obj.subtitle.render((overlap && obj.displayOverlapText) ? obj.displayOverlapText : obj.displayText, backgroundStyle, textStyle)
+               state.subtitle.render((overlap && state.displayOverlapText) ? state.displayOverlapText : state.displayText, backgroundStyle, textStyle)
          }
 
          overlap(rect1, rect2) {
-            if !(rect1 || rect2)
+            if !(IsObject(rect1) && IsObject(rect2))
                return
 
-            ; Must use <= (preorder) to prevent identical case.
             a := (rect1.1 <= rect2.1 && rect2.1 <= rect1.3) || (rect1.1 <= rect2.3 && rect2.3 <= rect1.3)
                || (rect2.1 <= rect1.1 && rect1.1 <= rect2.3) || (rect2.1 <= rect1.3 && rect1.3 <= rect2.3)
             b := (rect1.2 <= rect2.2 && rect2.2 <= rect1.4) || (rect1.2 <= rect2.4 && rect2.4 <= rect1.4)
@@ -1288,12 +1435,12 @@ class Vis2 {
          }
       }
 
-      escape(obj, status){
+      escape(state, status){
       static void := ObjBindMethod({}, {})
 
          ; Fixes a bug where AHK does not detect key releases if there is an admin-level window beneath.
-         ; This code must be positioned before obj.area.destroy().
-         if WinActive("ahk_id" obj.area.hwnd) {
+         ; This code must be positioned before state.area.destroy().
+         if WinActive("ahk_id" state.area.hwnd) {
             KeyWait Control
             KeyWait Alt
             KeyWait Shift
@@ -1303,15 +1450,15 @@ class Vis2 {
             KeyWait Escape
          }
 
-         obj.area.destroy()
-         obj.picture.destroy()
-         obj.polygon.destroy()
-         obj.information.destroy()
-         obj.subtitle.destroy()
-         obj.note_01.hide() ; Let them time out instead of Destroy()
-         obj.note_02.destroy()
-         Gdip_DisposeImage(obj.pBitmap) ; This must be positioned before obj := ""
-         obj := "" ; Goodbye all, you were loved :c
+         state.area.destroy()
+         state.picture.destroy()
+         state.polygon.destroy()
+         state.information.destroy()
+         state.subtitle.destroy()
+         state.note_01.hide() ; Let them time out instead of Destroy()
+         state.note_02.destroy()
+         Gdip_DisposeImage(state.pBitmap) ; This must be positioned before state := ""
+         state := "" ; Goodbye all, you were loved :c
          Vis2.Graphics.Shutdown()
 
          Hotkey, LButton, % void, Off
@@ -1343,7 +1490,7 @@ class Vis2 {
          Hotkey, !Space, % void, Off
          Hotkey, +Space, % void, Off
          DllCall("SystemParametersInfo", "uint", SPI_SETCURSORS := 0x57, "uint",0, "uint",0, "uint",0) ; RestoreCursor
-         obj.area.hide()
+         state.area.hide()
          return
       }
 
@@ -1355,16 +1502,16 @@ class Vis2 {
          Hotkey, RButton, % void, On
          Hotkey, Escape, % void, On
 
-         if (obj.selectMode == "Quick")
+         if (state.selectMode == "Quick")
             Vis2.ux.setSystemCursor(32515) ; IDC_Cross := 32515
 
-         if (obj.selectMode == "Advanced") {
+         if (state.selectMode == "Advanced") {
             Hotkey, Space, % void, On
             Hotkey, ^Space, % void, On
             Hotkey, !Space, % void, On
             Hotkey, +Space, % void, On
          }
-         obj.area.show()
+         state.area.show()
          return
       }
 
@@ -1388,20 +1535,49 @@ class Vis2 {
 
       Startup() {
          global pToken
-         return this.inner.pToken := (this.inner.Gdip++ > 0) ? this.inner.pToken : ((pToken) ? pToken : Gdip_Startup())
+         return this.pToken := (this.Gdip++ > 0) ? this.pToken : ((pToken) ? pToken : Gdip_Startup())
       }
 
       Shutdown() {
          global pToken
-         return this.inner.pToken := (--this.inner.Gdip <= 0) ? ((pToken) ? pToken : Gdip_Shutdown(this.inner.pToken)) : this.inner.pToken
+         return this.pToken := (--this.Gdip <= 0) ? ((pToken) ? pToken : Gdip_Shutdown(this.pToken)) : this.pToken
       }
 
-      inner[] {
-         get {
-            if (_class := this.__class)
-               Loop, Parse, _class, .
-                  inner := (A_Index=1) ? %A_LoopField% : inner[A_LoopField]
-            return inner
+      class safe_bitmap {
+
+         outer[p:=""] {
+            get {
+               if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
+                  Loop, Parse, _class, .
+                     outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
+               return IsObject(outer) ? ((p) ? outer[p] : outer) : ((p) ? %p% : "")
+            }
+         }
+
+         __New(pBitmap) {
+            global pToken
+            if !(this.outer.Startup())
+               if !(pToken)
+                  if !(this.pToken := Gdip_Startup())
+                     throw Exception("Gdiplus failed to start. Please ensure you have gdiplus on your system.")
+
+            this.pBitmap := pBitmap
+         }
+
+         __Delete() {
+            Gdip_DisposeImage(this.pBitmap)
+
+            global pToken
+            if (this.outer.pToken)
+               return this.outer.Shutdown()
+            if (pToken)
+               return
+            if (this.pToken)
+               return Gdip_Shutdown(this.pToken)
+         }
+
+         __Get() {
+            return this.pBitmap
          }
       }
 
@@ -1572,6 +1748,7 @@ class Vis2 {
       class shared {
 
          __New(title := "", terms*) {
+
             global pToken
             if !(this.outer.Startup())
                if !(pToken)
@@ -1583,8 +1760,22 @@ class Vis2 {
             this.hwnd := hwnd
             this.title := (title != "") ? title : RegExReplace(this.__class, "(.*\.)*(.*)$", "$2") "_" this.hwnd
             DllCall("SetWindowText", "ptr",this.hwnd, "str",this.title)
-            this.hbm := CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
+
+
             this.hdc := CreateCompatibleDC()
+            this.ScreenWidth := A_ScreenWidth, this.ScreenHeight := A_ScreenHeight
+
+
+            ; struct BITMAPINFOHEADER - https://docs.microsoft.com/en-us/windows/desktop/api/wingdi/ns-wingdi-tagbitmapinfoheader
+            VarSetCapacity(bi, 40, 0)
+            , NumPut(size := 40                , bi,  0, "uint")
+            , NumPut(width := A_ScreenWidth    , bi,  4, "uint")
+            , NumPut(height := A_ScreenHeight  , bi,  8, "uint")
+            , NumPut(planes := 1               , bi, 12, "ushort")
+            , NumPut(bpp := 32                 , bi, 14, "ushort")
+            , NumPut(0                         , bi, 16, "uint")
+            this.hbm := DllCall("CreateDIBSection", "ptr",this.hdc, "ptr",&bi, "uint",0, "ptr*",pBits, "ptr",0, "uint",0, "ptr")
+            this.dib := {"hbm":this.hbm, "pBits":pBits, "width":width, "height":height, "bpp":bpp}
             this.obm := SelectObject(this.hdc, this.hbm)
             this.G := Gdip_GraphicsFromHDC(this.hdc)
             this.state := new this.outer.queue()
@@ -1942,51 +2133,57 @@ class Vis2 {
             return map[c]
          }
 
-         margin_and_padding(m, default := 0) {
+         dropShadow(d, x_simulated, y_simulated, font_size) {
             static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
             static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
             static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
 
-            if IsObject(m) {
-               m.1 := (m.top    != "") ? m.top    : m.t
-               m.2 := (m.right  != "") ? m.right  : m.r
-               m.3 := (m.bottom != "") ? m.bottom : m.b
-               m.4 := (m.left   != "") ? m.left   : m.l
-            } else if (m != "") {
-               _ := RegExReplace(m, ":\s+", ":")
+            if IsObject(d) {
+               d.1 := (d.1) ? d.1 : (d.horizontal != "") ? d.horizontal : d.h
+               d.2 := (d.2) ? d.2 : (d.vertical   != "") ? d.vertical   : d.v
+               d.3 := (d.3) ? d.3 : (d.blur       != "") ? d.blur       : d.b
+               d.4 := (d.4) ? d.4 : (d.color      != "") ? d.color      : d.c
+               d.5 := (d.5) ? d.5 : (d.opacity    != "") ? d.opacity    : d.o
+               d.6 := (d.6) ? d.6 : (d.size       != "") ? d.size       : d.s
+            } else if (d != "") {
+               _ := RegExReplace(d, ":\s+", ":")
                _ := RegExReplace(_, "\s+", " ")
                _ := StrSplit(_, " ")
-               _.1 := ((___ := RegExReplace(m, q1    "(t(op)?)"           q2, "${value}")) != m) ? ___ : _.1
-               _.2 := ((___ := RegExReplace(m, q1    "(r(ight)?)"         q2, "${value}")) != m) ? ___ : _.2
-               _.3 := ((___ := RegExReplace(m, q1    "(b(ottom)?)"        q2, "${value}")) != m) ? ___ : _.3
-               _.4 := ((___ := RegExReplace(m, q1    "(l(eft)?)"          q2, "${value}")) != m) ? ___ : _.4
-               m := _
+               _.1 := ((___ := RegExReplace(d, q1    "(h(orizontal)?)"    q2, "${value}")) != d) ? ___ : _.1
+               _.2 := ((___ := RegExReplace(d, q1    "(v(ertical)?)"      q2, "${value}")) != d) ? ___ : _.2
+               _.3 := ((___ := RegExReplace(d, q1    "(b(lur)?)"          q2, "${value}")) != d) ? ___ : _.3
+               _.4 := ((___ := RegExReplace(d, q1    "(c(olor)?)"         q2, "${value}")) != d) ? ___ : _.4
+               _.5 := ((___ := RegExReplace(d, q1    "(o(pacity)?)"       q2, "${value}")) != d) ? ___ : _.5
+               _.6 := ((___ := RegExReplace(d, q1    "(s(ize)?)"          q2, "${value}")) != d) ? ___ : _.6
+               d := _
             }
-            else return {1:default, 2:default, 3:default, 4:default}
+            else return {"void":true, 1:0, 2:0, 3:0, 4:0, 5:0, 6:0}
 
-            ; Follow CSS guidelines for margin!
-            if (m.2 == "" && m.3 == "" && m.4 == "")
-               m.4 := m.3 := m.2 := m.1, exception := true
-            if (m.3 == "" && m.4 == "")
-               m.4 := m.2, m.3 := m.1
-            if (m.4 == "")
-               m.4 := m.2
-
-            for key, value in m {
-               m[key] := (m[key] ~= valid) ? RegExReplace(m[key], "\s", "") : default
-               m[key] := (m[key] ~= "i)(pt|px)$") ? SubStr(m[key], 1, -2) : m[key]
-               m[key] := (m[key] ~= "i)vw$") ? RegExReplace(m[key], "i)vw$", "") * this.vw : m[key]
-               m[key] := (m[key] ~= "i)vh$") ? RegExReplace(m[key], "i)vh$", "") * this.vh : m[key]
-               m[key] := (m[key] ~= "i)vmin$") ? RegExReplace(m[key], "i)vmin$", "") * this.vmin : m[key]
+            for key, value in d {
+               if (key = 4) ; Don't mess with color data.
+                  continue
+               d[key] := (d[key] ~= valid) ? RegExReplace(d[key], "\s", "") : 0 ; Default for everything is 0.
+               d[key] := (d[key] ~= "i)(pt|px)$") ? SubStr(d[key], 1, -2) : d[key]
+               d[key] := (d[key] ~= "i)vw$") ? RegExReplace(d[key], "i)vw$", "") * this.vw : d[key]
+               d[key] := (d[key] ~= "i)vh$") ? RegExReplace(d[key], "i)vh$", "") * this.vh : d[key]
+               d[key] := (d[key] ~= "i)vmin$") ? RegExReplace(d[key], "i)vmin$", "") * this.vmin : d[key]
             }
-            m.1 := (m.1 ~= "%$") ? SubStr(m.1, 1, -1) * this.vh : m.1
-            m.2 := (m.2 ~= "%$") ? SubStr(m.2, 1, -1) * (exception ? this.vh : this.vw) : m.2
-            m.3 := (m.3 ~= "%$") ? SubStr(m.3, 1, -1) * this.vh : m.3
-            m.4 := (m.4 ~= "%$") ? SubStr(m.4, 1, -1) * (exception ? this.vh : this.vw) : m.4
-            return m
+
+            d.1 := (d.1 ~= "%$") ? SubStr(d.1, 1, -1) * 0.01 * x_simulated : d.1
+            d.2 := (d.2 ~= "%$") ? SubStr(d.2, 1, -1) * 0.01 * y_simulated : d.2
+            d.3 := (d.3 ~= "%$") ? SubStr(d.3, 1, -1) * 0.01 * font_size : d.3
+            d.4 := this.color(d.4, 0xFFFF0000) ; Default color is red.
+            d.5 := (d.5 ~= "%$") ? SubStr(d.5, 1, -1) / 100 : d.5
+            d.5 := (d.5 <= 0 || d.5 > 1) ? 1 : d.5 ; Range Opacity is a float from 0-1.
+            d.6 := (d.6 ~= "%$") ? SubStr(d.6, 1, -1) * 0.01 * font_size : d.6
+            return d
          }
 
-         GaussianBlur(ByRef pBitmap, radius, opacity := 1) {
+         font(f, default := "Arial"){
+
+         }
+
+         gaussianBlur(ByRef pBitmap, radius, opacity := 1) {
             static x86 := "
             (LTrim
             VYnlV1ZTg+xci0Uci30c2UUgx0WsAwAAAI1EAAGJRdiLRRAPr0UYicOJRdSLRRwP
@@ -2064,41 +2261,129 @@ class Vis2 {
             return value
          }
 
-         inner[] {
-            get {
-               if (_class := this.__class)
-                  Loop, Parse, _class, .
-                     inner := (A_Index=1) ? %A_LoopField% : inner[A_LoopField]
-               return inner
+         grayscale(sRGB) {
+            static rY := 0.212655
+            static gY := 0.715158
+            static bY := 0.072187
+
+            c1 := 255 & ( sRGB >> 16 )
+            c2 := 255 & ( sRGB >> 8 )
+            c3 := 255 & ( sRGB )
+
+            loop 3 {
+               c%A_Index% := c%A_Index% / 255
+               c%A_Index% := (c%A_Index% <= 0.04045) ? c%A_Index%/12.92 : ((c%A_Index%+0.055)/(1.055))**2.4
             }
+
+            v := rY*c1 + gY*c2 + bY*c3
+            v := (v <= 0.0031308) ? v * 12.92 : 1.055*(v**(1.0/2.4))-0.055
+            return Round(v*255)
+         }
+
+         margin_and_padding(m, default := 0) {
+            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
+            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
+            static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+
+            if IsObject(m) {
+               m.1 := (m.top    != "") ? m.top    : m.t
+               m.2 := (m.right  != "") ? m.right  : m.r
+               m.3 := (m.bottom != "") ? m.bottom : m.b
+               m.4 := (m.left   != "") ? m.left   : m.l
+            } else if (m != "") {
+               _ := RegExReplace(m, ":\s+", ":")
+               _ := RegExReplace(_, "\s+", " ")
+               _ := StrSplit(_, " ")
+               _.1 := ((___ := RegExReplace(m, q1    "(t(op)?)"           q2, "${value}")) != m) ? ___ : _.1
+               _.2 := ((___ := RegExReplace(m, q1    "(r(ight)?)"         q2, "${value}")) != m) ? ___ : _.2
+               _.3 := ((___ := RegExReplace(m, q1    "(b(ottom)?)"        q2, "${value}")) != m) ? ___ : _.3
+               _.4 := ((___ := RegExReplace(m, q1    "(l(eft)?)"          q2, "${value}")) != m) ? ___ : _.4
+               m := _
+            }
+            else return {1:default, 2:default, 3:default, 4:default}
+
+            ; Follow CSS guidelines for margin!
+            if (m.2 == "" && m.3 == "" && m.4 == "")
+               m.4 := m.3 := m.2 := m.1, exception := true
+            if (m.3 == "" && m.4 == "")
+               m.4 := m.2, m.3 := m.1
+            if (m.4 == "")
+               m.4 := m.2
+
+            for key, value in m {
+               m[key] := (m[key] ~= valid) ? RegExReplace(m[key], "\s", "") : default
+               m[key] := (m[key] ~= "i)(pt|px)$") ? SubStr(m[key], 1, -2) : m[key]
+               m[key] := (m[key] ~= "i)vw$") ? RegExReplace(m[key], "i)vw$", "") * this.vw : m[key]
+               m[key] := (m[key] ~= "i)vh$") ? RegExReplace(m[key], "i)vh$", "") * this.vh : m[key]
+               m[key] := (m[key] ~= "i)vmin$") ? RegExReplace(m[key], "i)vmin$", "") * this.vmin : m[key]
+            }
+            m.1 := (m.1 ~= "%$") ? SubStr(m.1, 1, -1) * this.vh : m.1
+            m.2 := (m.2 ~= "%$") ? SubStr(m.2, 1, -1) * (exception ? this.vh : this.vw) : m.2
+            m.3 := (m.3 ~= "%$") ? SubStr(m.3, 1, -1) * this.vh : m.3
+            m.4 := (m.4 ~= "%$") ? SubStr(m.4, 1, -1) * (exception ? this.vh : this.vw) : m.4
+            return m
+         }
+
+         outline(o, font_size, font_color) {
+            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
+            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
+            static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+
+            if IsObject(o) {
+               o.1 := (o.1) ? o.1 : (o.stroke != "") ? o.stroke : o.s
+               o.2 := (o.2) ? o.2 : (o.color  != "") ? o.color  : o.c
+               o.3 := (o.3) ? o.3 : (o.glow   != "") ? o.glow   : o.g
+               o.4 := (o.4) ? o.4 : (o.tint   != "") ? o.tint   : o.t
+            } else if (o != "") {
+               _ := RegExReplace(o, ":\s+", ":")
+               _ := RegExReplace(_, "\s+", " ")
+               _ := StrSplit(_, " ")
+               _.1 := ((___ := RegExReplace(o, q1    "(s(troke)?)"        q2, "${value}")) != o) ? ___ : _.1
+               _.2 := ((___ := RegExReplace(o, q1    "(c(olor)?)"         q2, "${value}")) != o) ? ___ : _.2
+               _.3 := ((___ := RegExReplace(o, q1    "(g(low)?)"          q2, "${value}")) != o) ? ___ : _.3
+               _.4 := ((___ := RegExReplace(o, q1    "(t(int)?)"          q2, "${value}")) != o) ? ___ : _.4
+               o := _
+            }
+            else return {"void":true, 1:0, 2:0, 3:0, 4:0}
+
+            for key, value in o {
+               if (key = 2) || (key = 4) ; Don't mess with color data.
+                  continue
+               o[key] := (o[key] ~= valid_positive) ? RegExReplace(o[key], "\s", "") : 0 ; Default for everything is 0.
+               o[key] := (o[key] ~= "i)(pt|px)$") ? SubStr(o[key], 1, -2) : o[key]
+               o[key] := (o[key] ~= "i)vw$") ? RegExReplace(o[key], "i)vw$", "") * this.vw : o[key]
+               o[key] := (o[key] ~= "i)vh$") ? RegExReplace(o[key], "i)vh$", "") * this.vh : o[key]
+               o[key] := (o[key] ~= "i)vmin$") ? RegExReplace(o[key], "i)vmin$", "") * this.vmin : o[key]
+            }
+
+            o.1 := (o.1 ~= "%$") ? SubStr(o.1, 1, -1) * 0.01 * font_size : o.1
+            o.2 := this.color(o.2, font_color) ; Default color is the text font color.
+            o.3 := (o.3 ~= "%$") ? SubStr(o.3, 1, -1) * 0.01 * font_size : o.3
+            o.4 := this.color(o.4, o.2) ; Default color is outline color.
+            return o
          }
       }
 
       class Area {
-         static extends := "shared"
-         init := this._init(true)
-         _init(endofunctor := "") {
-            extends := this.extends
-            under := ((this.outer)[extends])
-               ? ((___ := (this.outer)[extends]._init()) ? ___ : (this.outer)[extends])
-               : ((___ := %extends%._init()) ? ___ : %extends%)
-            if (endofunctor)
-               this.base.base := under
-            else
-               this.base := under
-            return this
+      static extends := "shared"
+
+         _extends := this.__extends()
+         __extends(endofunctor := "") {
+            under := ((___ := this.outer[this.extends].__extends(true)) ? ___ : this.outer[this.extends])
+            (endofunctor) ? (this.base := under) : (this.base.base := under)
+            return (endofunctor) ? this : ""
          }
-         outer[] {
+
+         outer[p:=""] {
             get {
                if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
                   Loop, Parse, _class, .
                      outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
-               return outer
+               return IsObject(outer) ? ((p) ? outer[p] : outer) : ((p) ? %p% : "")
             }
          }
 
-         activateOnAdmin := true
-         ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
+         activateOnAdmin := true, ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
 
          __New(title := "", terms*) {
             global pToken
@@ -2601,229 +2886,29 @@ class Vis2 {
       } ; End of Area class.
 
       class Picture {
-         static extends := "shared"
-         init := this._init(true)
-         _init(endofunctor := "") {
-            extends := this.extends
-            under := ((this.outer)[extends])
-               ? ((___ := (this.outer)[extends]._init()) ? ___ : (this.outer)[extends])
-               : ((___ := %extends%._init()) ? ___ : %extends%)
-            if (endofunctor)
-               this.base.base := under
-            else
-               this.base := under
-            return this
+      static extends := "shared"
+
+         _extends := this.__extends()
+         __extends(endofunctor := "") {
+            under := ((___ := this.outer[this.extends].__extends(true)) ? ___ : this.outer[this.extends])
+            (endofunctor) ? (this.base := under) : (this.base.base := under)
+            return (endofunctor) ? this : ""
          }
-         outer[] {
+
+         outer[p:=""] {
             get {
                if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
                   Loop, Parse, _class, .
                      outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
-               return outer
+               return IsObject(outer) ? ((p) ? outer[p] : outer) : ((p) ? %p% : "")
             }
-         }
-
-         ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
-
-         ; Preprocess() - Modifies an input image and returns a Bitmap.
-         ; Example: Preprocess("base64", "https://goo.gl/BWUygC")
-         ;          The image is downloaded from the URL and is converted to base64.
-         Preprocess(cotype, image, crop := "", scale := "", terms*) {
-            if (!this.hwnd) {
-               _picture := new this("Picture.Preprocess")
-               coimage := _picture.Preprocess(cotype, image, crop, scale, terms*)
-               _picture.FreeMemory()
-               _picture := ""
-               return coimage
-            }
-
-            ; Determine the representation (type) of the input image.
-            if !(type := this.DontVerifyImageType(image))
-               type := this.ImageType(image)
-            ; If the type and cotype match, do nothing.
-            if (type = cotype && !this.isRectangle(crop))
-               return image
-            ; Convert the image to a pBitmap (byte array).
-            pBitmap := this.toBitmap(type, image)
-            ; Crop the image, disposing if type is not pBitmap.
-            if this.isRectangle(crop){
-               pBitmap2 := this.Gdip_CropBitmap(pBitmap, crop)
-               if (type != "pBitmap")
-                  Gdip_DisposeImage(pBitmap)
-               pBitmap := pBitmap2
-            }
-            ; Scale the image, disposing if type is not pBitmap.
-            if (scale && scale != 1) {
-               pBitmap2 := this.Gdip_ScaleBitmap(pBitmap, scale)
-               if (type != "pBitmap" || this.isRectangle(crop)) ; Should fix leaks.
-                  Gdip_DisposeImage(pBitmap)
-               pBitmap := pBitmap2
-            }
-            ; Convert from the pBitmap intermediate to the desired representation.
-            coimage := this.toCotype(cotype, pBitmap, terms*)
-            ; Delete the pBitmap intermediate, unless the input was originally pBitmap.
-            if (type != "pBitmap" || this.isRectangle(crop))
-               Gdip_DisposeImage(pBitmap)
-            return coimage
-         }
-
-         ; DontVerifyImageType() - The user should declare exactly what type it is.
-         ; Ex. DontVerifyImageType({"Screenshot":[0,0,100,100]})
-         DontVerifyImageType(ByRef image) {
-            ; Check for type declaration.
-            if !IsObject(image)
-               return
-
-            if (image.screenshot)
-               return "screenshot", image := image.screenshot
-
-            if (image.file)
-               return "file", image := image.file
-
-            if (image.url)
-               return "url", image := image.url
-
-            if (image.window)
-               return "window", image := image.window
-
-            if (image.hwnd)
-               return "hwnd", image := image.hwnd
-
-            if (image.pBitmap)
-               return "pBitmap", image := image.pBitmap
-
-            if (image.hBitmap)
-               return "hBitmap", image := image.hBitmap
-
-            if (image.base64)
-               return "base64", image := image.base64
-
-            return
-         }
-
-         ; ImageType() -  Makes best guess as to the user's intention.
-         ImageType(image) {
-            ; Check if image is empty string.
-            if (image == "")
-               throw Exception("Image data is empty string.")
-            ; Check if image is an array of 4 numbers.
-            if this.isRectangle(image)
-               return "screenshot"
-            ; Check if image points to a valid file.
-            if FileExist(image)
-               return "file"
-            ; Check if image points to a valid URL.
-            if this.isURL(image)
-               return "url"
-            ; Check if image matches a window title.
-            if WinExist(image)
-               return "window"
-            ; Check if image is a valid handle to a window.
-            if DllCall("IsWindow", "ptr", image)
-               return "hwnd"
-            ; Check if image is a valid GDI Bitmap.
-            if DeleteObject(Gdip_CreateHBITMAPFromBitmap(image))
-               return "pBitmap"
-            ; Check if image is a valid handle to a GDI Bitmap.
-            if (DllCall("GetObjectType", "ptr", image) == 7)
-               return "hBitmap"
-            ; Check if image is a base64 string.
-            if (image ~= "^(?:[A-Za-z0-9+/]{4})*?(?:[A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$")
-               return "base64"
-
-            throw Exception("Image type could not be identified.")
-         }
-
-         toBitmap(type, image) {
-            if (type = "screenshot")
-               return Gdip_BitmapFromScreen(image.1 "|" image.2 "|" image.3 "|" image.4)
-
-            if (type = "file")
-               return Gdip_CreateBitmapFromFile(image)
-
-            if (type = "url"){
-               req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
-               req.Open("GET", image)
-               req.Send()
-               pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
-               DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
-               ObjRelease(pStream)
-               return pBitmap
-            }
-
-            if (type = "window")
-               return this.Gdip_BitmapFromClientHWND(WinExist(image))
-
-            if (type = "hwnd")
-               return this.Gdip_BitmapFromClientHWND(image)
-
-            if (type = "pBitmap")
-               return image
-
-            if (type = "hBitmap")
-               return Gdip_CreateBitmapFromHBITMAP(image)
-
-            if (type = "base64"){
-               DllCall("crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A"), "ptr",&image, "uint",0, "uint",1, "ptr",0, "uint*",nSize, "ptr",0, "ptr",0)
-               VarSetCapacity(bin, nSize, 0)
-               DllCall("crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A"), "ptr",&image, "uint",0, "uint",1, "ptr",&bin, "uint*",nSize, "ptr",0, "ptr",0)
-               hData := DllCall("GlobalAlloc", "uint",0x2, "ptr",nSize)
-               pData := DllCall("GlobalLock", "ptr",hData)
-               DllCall("RtlMoveMemory", "ptr",pData, "ptr",&bin, "ptr",nSize)
-               DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",0, "uptr*",pStream)
-               DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
-               pBitmap2 := Gdip_CloneBitmapArea(pBitmap, 0, 0, Gdip_GetImageWidth(pBitmap), Gdip_GetImageHeight(pBitmap))
-               Gdip_DisposeImage(pBitmap)
-               ObjRelease(pStream)
-               DllCall("GlobalUnlock", "ptr",hData)
-               DllCall("GlobalFree", "ptr",hData) ; Will delete the original bitmap if not cloned.
-               return pBitmap2
-            }
-         }
-
-         toCotype(cotype, pBitmap, terms*) {
-            if (cotype = "screenshot") {
-               return this.Render({"pBitmap":pBitmap})
-            }
-               ; Place it on the screen.
-
-            if (cotype = "file") {
-               Gdip_SaveBitmapToFile(pBitmap, filename := terms.1, compression := terms.2)
-               return filename
-            }
-
-            if (cotype = "url"){
-               ; make a url
-            }
-
-            if (cotype = "window")
-               return "ahk_id " . this.Render({"pBitmap":pBitmap}).AlwaysOnTop().ToolWindow().Caption().hwnd
-
-            if (cotype = "hwnd")
-               return this.Render({"pBitmap":pBitmap}).hwnd
-
-            if (cotype = "pBitmap")
-               return pBitmap
-
-            if (cotype = "hBitmap")
-               return Gdip_CreateHBITMAPFromBitmap(pBitmap, alpha := terms.1)
-
-            if (cotype = "base64")
-               return this.Gdip_EncodeBitmapToBase64(pBitmap, extension := terms.1, compression := terms.2)
          }
 
          ; Types of input accepted
          ; Objects: Rectangle Array (Screenshot)
          ; Strings: File, URL, Window Title (ahk_class...), base64
          ; Numbers: hwnd, GDI Bitmap, GDI HBitmap
-         ; Rawfile: Binary
 
-         ; Vis2.preprocess(image, crop) - This is a template function.
-         ; Each service should implement their own preprocess function based off
-         ; this template. Accepts all 8 input types, returns a cropped pBitmap.
-         ; If a service implements this, it should return file/base64/binary.
-         ; The service should also implement a bypass if there is no crop array,
-         ; and the input and output types are the same.
          Render(image := "", style := "", polygons := "") {
             if (!this.hwnd)
                return (new this).Render(image, style, polygons)
@@ -3031,96 +3116,394 @@ class Vis2 {
             return (pGraphics == "") ? this : ""
          }
 
-         Gdip_BitmapFromClientHWND(hwnd) {
-            VarSetCapacity(rc, 16)
-            DllCall("GetClientRect", "ptr", hwnd, "ptr", &rc)
-         	hbm := CreateDIBSection(NumGet(rc, 8, "int"), NumGet(rc, 12, "int"))
-            VarSetCapacity(rc, 0)
-            hdc := CreateCompatibleDC()
-            obm := SelectObject(hdc, hbm)
-         	PrintWindow(hwnd, hdc, 1)
-         	pBitmap := Gdip_CreateBitmapFromHBITMAP(hbm)
-         	SelectObject(hdc, obm), DeleteObject(hbm), DeleteDC(hdc)
-         	return pBitmap
+         Preprocess(cotype, image, crop := "", scale := "", terms*) {
+            if (!this.hwnd) {
+               _picture := new this("Picture.Preprocess")
+               _picture.title := _picture.title "_" _picture.hwnd
+               DllCall("SetWindowText", "ptr",_picture.hwnd, "str",_picture.title)
+               coimage := _picture.Preprocess(cotype, image, crop, scale, terms*)
+               _picture.FreeMemory()
+               _picture := ""
+               return coimage
+            }
+
+            ; Determine the representation (type) of the input image.
+            if !(type := this.DontVerifyImageType(image))
+               type := this.ImageType(image)
+            ; If the type and cotype match, do nothing.
+            if (type = cotype && !this.isCropArray(crop) && !(scale ~= "^\d+(\.\d+)?$" && scale != 1))
+               return image
+            ; Convert the image to a pBitmap (byte array).
+            pBitmap := this.toBitmap(type, image)
+            ; Crop the image, disposing if type is not pBitmap.
+            if this.isCropArray(crop){
+               pBitmap2 := this.Gdip_CropBitmap(pBitmap, crop)
+               if !(type = "pBitmap")
+                  Gdip_DisposeImage(pBitmap)
+               pBitmap := pBitmap2
+            }
+            ; Scale the image, disposing if type is not pBitmap.
+            if (scale ~= "^\d+(\.\d+)?$" && scale != 1) {
+               pBitmap2 := this.Gdip_ScaleBitmap(pBitmap, scale)
+               if !(type = "pBitmap" && !this.isCropArray(crop))
+                  Gdip_DisposeImage(pBitmap)
+               pBitmap := pBitmap2
+            }
+            ; Convert from the pBitmap intermediate to the desired representation.
+            coimage := this.toCotype(cotype, pBitmap, terms*)
+            ; Delete the pBitmap intermediate, unless the input/output is pBitmap.
+            if !(cotype = "pBitmap"
+               || (type = "pBitmap" && !this.isCropArray(crop) && !(scale ~= "^\d+(\.\d+)?$" && scale != 1)))
+                  Gdip_DisposeImage(pBitmap)
+            return coimage
          }
 
-         Gdip_CropBitmap(pBitmap, crop, width:="", height:=""){
+         Equality(images*) {
+            if !(images.1)
+               return false
+
+            if (images.MaxIndex() == 1)
+               return true
+
+            ; Activate gdip basically LOL.
+            if (!this.hwnd) {
+               _picture := new this("Picture.Equality")
+               _picture.title := _picture.title "_" _picture.hwnd
+               DllCall("SetWindowText", "ptr",_picture.hwnd, "str",_picture.title)
+               answer := _picture.Equality(images*)
+               _picture.FreeMemory()
+               _picture := ""
+               return answer
+            }
+
+            ; Convert the images to pBitmaps (byte arrays).
+            for i, image in images {
+               if !(type := this.DontVerifyImageType(image))
+                  try type := this.ImageType(image)
+                  catch
+                     return false
+
+               if (A_Index == 1) {
+                  pBitmap1 := this.toBitmap(type, image)
+                  cleanup := type
+               } else {
+                  pBitmap2 := this.toBitmap(type, image)
+                  result := this.isBitmapEqual(pBitmap1, pBitmap2)
+                  (type != "pBitmap") ? Gdip_DisposeImage(pBitmap2) : ""
+                  if (result)
+                     continue
+                  else
+                     return false
+               }
+            }
+
+            if (cleanup = "pBitmap")
+               Gdip_DisposeImage(pBitmap1)
+
+            return true
+         }
+
+         DontVerifyImageType(ByRef image) {
+            ; Check for image type declaration.
+            if !IsObject(image)
+               return
+
+            if (image.object != "")
+               return "object", image := image.object
+
+            if (image.screen != "")
+               return "screen", image := image.screen
+
+            if (image.screenshot != "")
+               return "screenshot", image := image.screenshot
+
+            if (image.file != "")
+               return "file", image := image.file
+
+            if (image.url != "")
+               return "url", image := image.url
+
+            if (image.window != "")
+               return "window", image := image.window
+
+            if (image.hwnd != "")
+               return "hwnd", image := image.hwnd
+
+            if (image.pBitmap != "")
+               return "pBitmap", image := image.pBitmap
+
+            if (image.hBitmap != "")
+               return "hBitmap", image := image.hBitmap
+
+            if (image.base64 != "")
+               return "base64", image := image.base64
+
+            return
+         }
+
+         ImageType(image) {
+            ; Check if image is empty string.
+            if (image == "")
+               throw Exception("Image data is empty string.")
+            ; Check if image is an object with a Bitmap() method.
+            if IsObject(image) and IsFunc(image.Bitmap)
+               return "object"
+            ; Check if image is an array of 4 numbers.
+            if (image.1 ~= "^\d+$" && image.2 ~= "^\d+$" && image.3 ~= "^\d+$" && image.4 ~= "^\d+$")
+               return "screenshot"
+            ; Check if image points to a valid file.
+            if FileExist(image)
+               return "file"
+            ; Check if image points to a valid URL.
+            if this.isURL(image)
+               return "url"
+            ; Check if image matches a window title. Also matches "A".
+            if WinExist(image)
+               return "window"
+            ; Check if image is a valid handle to a window.
+            if DllCall("IsWindow", "ptr", image)
+               return "hwnd"
+            ; Check if image is a valid GDI Bitmap.
+            if (DllCall("gdiplus\GdipGetImageType", "ptr",image, "ptr*",ErrorLevel) == 0)
+               return "pBitmap"
+            ; Check if image is a valid handle to a GDI Bitmap.
+            if (DllCall("GetObjectType", "ptr", image) == 7)
+               return "hBitmap"
+            ; Check if image is a base64 string.
+            if (image ~= "^\s*(?:data:image\/[a-z]+;base64,)?(?:[A-Za-z0-9+\/]{4})*+(?:[A-Za-z0-9+\/]{3}=|[A-Za-z0-9+\/]{2}==)?\s*$")
+               return "base64"
+
+            throw Exception("Image type could not be identified.")
+         }
+
+         toBitmap(type, image) {
+            if (type = "object")
+               return image.Bitmap()
+
+            if (type = "screen") {
+               if (image > 0) {
+                  M := GetMonitorInfo(image)
+                  x := M.Left
+                  y := M.Top
+                  w := M.Right - M.Left
+                  h := M.Bottom - M.Top
+               } else {
+                  x := DllCall("GetSystemMetrics", "int",76)
+                  y := DllCall("GetSystemMetrics", "int",77)
+                  w := DllCall("GetSystemMetrics", "int",78)
+                  h := DllCall("GetSystemMetrics", "int",79)
+               }
+               chdc := CreateCompatibleDC()
+               hbm := CreateDIBSection(w, h, chdc)
+               obm := SelectObject(chdc, hbm)
+               hhdc := GetDC()
+               BitBlt(chdc, 0, 0, w, h, hhdc, x, y, Raster := "")
+               ReleaseDC(hhdc)
+               pBitmap := Gdip_CreateBitmapFromHBITMAP(hbm)
+               SelectObject(chdc, obm), DeleteObject(hbm), DeleteDC(hhdc), DeleteDC(chdc)
+               return pBitmap
+            }
+
+            if (type = "screenshot") {
+               chdc := CreateCompatibleDC()
+               hbm := CreateDIBSection(image.3, image.4, chdc)
+               obm := SelectObject(chdc, hbm)
+               hhdc := GetDC()
+               BitBlt(chdc, 0, 0, image.3, image.4, hhdc, image.1, image.2, Raster := "")
+               ReleaseDC(hhdc)
+               pBitmap := Gdip_CreateBitmapFromHBITMAP(hbm)
+               SelectObject(chdc, obm), DeleteObject(hbm), DeleteDC(hhdc), DeleteDC(chdc)
+               return pBitmap
+            }
+
+            if (type = "file")
+               return Gdip_CreateBitmapFromFile(image)
+
+            if (type = "url") {
+               req := ComObjCreate("WinHttp.WinHttpRequest.5.1")
+               req.Open("GET", image)
+               req.Send()
+               pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
+               DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+               ObjRelease(pStream)
+               return pBitmap
+            }
+
+            if (type = "window" || type = "hwnd") {
+               image := (type = "window") ? WinExist(image) : image
+               if DllCall("IsIconic", "ptr",image)
+                  DllCall("ShowWindow", "ptr",image, "int",4) ; Restore if minimized!
+               VarSetCapacity(rc, 16)
+               DllCall("GetClientRect", "ptr",image, "ptr",&rc)
+               hbm := CreateDIBSection(NumGet(rc, 8, "int"), NumGet(rc, 12, "int"))
+               VarSetCapacity(rc, 0)
+               hdc := CreateCompatibleDC()
+               obm := SelectObject(hdc, hbm)
+               DllCall("PrintWindow", "ptr",image, "ptr",hdc, "uint",0x3)
+               pBitmap := Gdip_CreateBitmapFromHBITMAP(hbm)
+               SelectObject(hdc, obm), DeleteObject(hbm), DeleteDC(hdc)
+               return pBitmap
+            }
+
+            if (type = "pBitmap")
+               return image
+
+            if (type = "hBitmap")
+               return Gdip_CreateBitmapFromHBITMAP(image)
+
+            if (type = "base64") {
+               image := Trim(image)
+               image := RegExReplace(image, "^data:image\/[a-z]+;base64,", "")
+               DllCall("crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A"), "ptr",&image, "uint",0, "uint",1, "ptr",0, "uint*",nSize, "ptr",0, "ptr",0)
+               VarSetCapacity(bin, nSize, 0)
+               DllCall("crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A"), "ptr",&image, "uint",0, "uint",1, "ptr",&bin, "uint*",nSize, "ptr",0, "ptr",0)
+               hData := DllCall("GlobalAlloc", "uint",0x2, "ptr",nSize)
+               pData := DllCall("GlobalLock", "ptr",hData)
+               DllCall("RtlMoveMemory", "ptr",pData, "ptr",&bin, "ptr",nSize)
+               DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",false, "uptr*",pStream)
+               DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+               pBitmap2 := Gdip_CloneBitmapArea(pBitmap, 0, 0, Gdip_GetImageWidth(pBitmap), Gdip_GetImageHeight(pBitmap))
+               Gdip_DisposeImage(pBitmap)
+               ObjRelease(pStream)
+               DllCall("GlobalUnlock", "ptr",hData)
+               DllCall("GlobalFree", "ptr",hData) ; Will delete the original bitmap if not cloned.
+               return pBitmap2
+            }
+         }
+
+         toCotype(cotype, pBitmap, terms*) {
+            ; toCotype("screenshot", pBitmap, style)
+            if (cotype = "screenshot") {
+               _picture := this.Render({"pBitmap":pBitmap}, terms.1)
+               return [_picture.x1(), _picture.y1(), _picture.width(), _picture.height()]
+            }
+
+            ; toCotype("file", pBitmap, filename, quality)
+            if (cotype = "file") {
+               filename := (terms.1) ? terms.1 : this.title ".png"
+               Gdip_SaveBitmapToFile(pBitmap, filename, terms.2)
+               return filename
+            }
+
+            ; toCotype("url", ????????????????????????
+            if (cotype = "url") {
+               ; make a url
+            }
+
+            ; toCotype("window", pBitmap)
+            if (cotype = "window")
+               return "ahk_id " . this.Render({"pBitmap":pBitmap}).AlwaysOnTop().ToolWindow().Caption().hwnd
+
+            ; toCotype("hwnd", pBitmap)
+            if (cotype = "hwnd")
+               return this.Render({"pBitmap":pBitmap}).hwnd
+
+            if (cotype = "bitmap") {
+               ;Bitmap := {"ptr":pBitmap, base:{__Delete:Func("_s2")}}
+               ;a := {"value":66, base:{__Delete:Func("_s2")}}
+               return new this.outer.safe_bitmap(pBitmap)
+            }
+
+            ; toCotype("pBitmap", pBitmap)
+            if (cotype = "pBitmap")
+               return pBitmap
+
+            ; toCotype("hBitmap", pBitmap, alpha)
+            if (cotype = "hBitmap")
+               return Gdip_CreateHBITMAPFromBitmap(pBitmap, terms.1)
+
+            ; toCotype("base64", pBitmap, extension, quality)
+            if (cotype = "base64") { ; Thanks to noname.
+               if !(terms.1 ~= "(?i)bmp|dib|rle|jpg|jpeg|jpe|jfif|gif|tif|tiff|png")
+                  terms.1 := "png"
+               Extension := "." terms.1
+
+               Quality := terms.2
+
+               DllCall("gdiplus\GdipGetImageEncodersSize", "uint*",nCount, "uint*",nSize)
+               VarSetCapacity(ci, nSize)
+               DllCall("gdiplus\GdipGetImageEncoders", "uint",nCount, "uint",nSize, "ptr",&ci)
+               if !(nCount && nSize)
+                  throw Exception("Could not get a list of image codec encoders on this system.")
+
+               Loop % nCount
+               {
+                  sString := StrGet(NumGet(ci, (idx := (48+7*A_PtrSize)*(A_Index-1))+32+3*A_PtrSize), "UTF-16")
+                  if InStr(sString, "*" Extension)
+                     break
+               }
+
+               if !(pCodec := &ci+idx)
+                  throw Exception("Could not find matching encoder for specified file format.")
+
+               if Extension in .JPG,.JPEG,.JPE,.JFIF
+               {
+                  Quality := (Quality < 0) ? 0 : (Quality > 100) ? 100 : Quality
+                  DllCall("gdiplus\GdipGetEncoderParameterListSize", "ptr",pBitmap, "ptr",pCodec, "uint*",nSize)
+                  VarSetCapacity(EncoderParameters, nSize, 0)
+                  DllCall("gdiplus\GdipGetEncoderParameterList", "ptr",pBitmap, "ptr",pCodec, "uint",nSize, "ptr",&EncoderParameters)
+                  Loop, % NumGet(EncoderParameters, "uint")
+                  {
+                     elem := (24+A_PtrSize)*(A_Index-1) + 4 + (pad := A_PtrSize = 8 ? 4 : 0)
+                     if (NumGet(EncoderParameters, elem+16, "uint") = 1) && (NumGet(EncoderParameters, elem+20, "uint") = 6)
+                     {
+                        p := elem+&EncoderParameters-pad-4
+                        NumPut(Quality, NumGet(NumPut(4, NumPut(1, p+0)+20, "uint")), "uint")
+                        break
+                     }
+                  }
+               }
+
+               DllCall("ole32\CreateStreamOnHGlobal", "ptr",0, "int",true, "ptr*",pStream)
+               DllCall("gdiplus\GdipSaveImageToStream", "ptr",pBitmap, "ptr",pStream, "ptr",pCodec, "uint",p ? p : 0)
+               DllCall("ole32\GetHGlobalFromStream", "ptr",pStream, "uint*",hData)
+               pData := DllCall("GlobalLock", "ptr",hData, "uptr")
+               nSize := DllCall("GlobalSize", "uint",pData)
+
+               VarSetCapacity(bin, nSize, 0)
+               DllCall("RtlMoveMemory", "ptr",&bin, "ptr",pData, "uint",nSize)
+               DllCall("GlobalUnlock", "ptr",hData)
+               ObjRelease(pStream)
+               DllCall("GlobalFree", "ptr",hData)
+
+               ; Using CryptBinaryToStringA saves about 2MB in memory.
+               DllCall("Crypt32.dll\CryptBinaryToStringA", "ptr",&bin, "uint",nSize, "uint",0x40000001, "ptr",0, "uint*",base64Length)
+               VarSetCapacity(base64, base64Length, 0)
+               DllCall("Crypt32.dll\CryptBinaryToStringA", "ptr",&bin, "uint",nSize, "uint",0x40000001, "ptr",&base64, "uint*",base64Length)
+               VarSetCapacity(bin, 0)
+
+               return StrGet(&base64, base64Length, "CP0")
+            }
+         }
+
+         Gdip_CropBitmap(pBitmap, crop, width:="", height:="") {
             width := (width) ? width : Gdip_GetImageWidth(pBitmap)
             height := (height) ? height : Gdip_GetImageHeight(pBitmap)
+
+            ; Are the numbers percentages?
+            crop.1 := (crop.1 ~= "%$") ? SubStr(crop.1, 1, -1) * 0.01 * width : crop.1
+            crop.2 := (crop.2 ~= "%$") ? SubStr(crop.2, 1, -1) * 0.01 * height : crop.2
+            crop.3 := (crop.3 ~= "%$") ? SubStr(crop.3, 1, -1) * 0.01 * width : crop.3
+            crop.4 := (crop.4 ~= "%$") ? SubStr(crop.4, 1, -1) * 0.01 * height : crop.4
+
+            ; If numbers are negative, subtract the values from the edge.
+            crop.1 := (crop.1 < 0) ? Abs(crop.1) : crop.1
+            crop.2 := (crop.2 < 0) ? Abs(crop.2) : crop.2
+            crop.3 := (crop.3 < 0) ? width + crop.3 : crop.3
+            crop.4 := (crop.4 < 0) ? height + crop.4 : crop.4
+
+            ; Round to the nearest integer.
+            crop.1 := Round(crop.1)
+            crop.2 := Round(crop.2)
+            crop.3 := Round(crop.3)
+            crop.4 := Round(crop.4)
+
             ; Ensure that coordinates can never exceed the expected Bitmap area.
             safe_x := (crop.1 > width) ? 0 : crop.1
             safe_y := (crop.2 > height) ? 0 : crop.2
             safe_w := (crop.1 + crop.3 > width) ? width - safe_x : crop.3
             safe_h := (crop.2 + crop.4 > height) ? height - safe_y : crop.4
             return Gdip_CloneBitmapArea(pBitmap, safe_x, safe_y, safe_w, safe_h)
-         }
-
-         Gdip_EncodeBitmapToBase64(pBitmap, ext, Quality=75) {
-
-            if Ext not in BMP,DIB,RLE,JPG,JPEG,JPE,JFIF,GIF,TIF,TIFF,PNG
-               return -1
-            Extension := "." Ext
-
-            DllCall("gdiplus\GdipGetImageEncodersSize", "uint*", nCount, "uint*", nSize)
-            VarSetCapacity(ci, nSize)
-            DllCall("gdiplus\GdipGetImageEncoders", "uint", nCount, "uint", nSize, Ptr, &ci)
-            if !(nCount && nSize)
-               return -2
-
-            Loop, %nCount%
-            {
-               sString := StrGet(NumGet(ci, (idx := (48+7*A_PtrSize)*(A_Index-1))+32+3*A_PtrSize), "UTF-16")
-               if !InStr(sString, "*" Extension)
-                  continue
-
-               pCodec := &ci+idx
-               break
-            }
-
-            if !pCodec
-               return -3
-
-            if (Quality != 75)
-            {
-               Quality := (Quality < 0) ? 0 : (Quality > 100) ? 100 : Quality
-               if Extension in .JPG,.JPEG,.JPE,.JFIF
-               {
-                  DllCall("gdiplus\GdipGetEncoderParameterListSize", Ptr, pBitmap, Ptr, pCodec, "uint*", nSize)
-                  VarSetCapacity(EncoderParameters, nSize, 0)
-                  DllCall("gdiplus\GdipGetEncoderParameterList", Ptr, pBitmap, Ptr, pCodec, "uint", nSize, Ptr, &EncoderParameters)
-                  Loop, % NumGet(EncoderParameters, "UInt")
-                  {
-                     elem := (24+(A_PtrSize ? A_PtrSize : 4))*(A_Index-1) + 4 + (pad := A_PtrSize = 8 ? 4 : 0)
-                     if (NumGet(EncoderParameters, elem+16, "UInt") = 1) && (NumGet(EncoderParameters, elem+20, "UInt") = 6)
-                     {
-                        p := elem+&EncoderParameters-pad-4
-                        NumPut(Quality, NumGet(NumPut(4, NumPut(1, p+0)+20, "UInt")), "UInt")
-                        break
-                     }
-                  }
-               }
-            }
-
-            DllCall("ole32\CreateStreamOnHGlobal", "ptr",0, "int",true, "ptr*",pStream)
-            DllCall("gdiplus\GdipSaveImageToStream", "ptr",pBitmap, "ptr",pStream, "ptr",pCodec, "uint",p ? p : 0)
-
-            DllCall("ole32\GetHGlobalFromStream", "ptr",pStream, "uint*",hData)
-            pData := DllCall("GlobalLock", "ptr",hData, "uptr")
-            nSize := DllCall("GlobalSize", "uint",pData)
-
-            VarSetCapacity(Bin, nSize, 0)
-            DllCall("RtlMoveMemory", "ptr",&Bin, "ptr",pData, "uint",nSize)
-            DllCall("GlobalUnlock", "ptr",hData)
-            DllCall(NumGet(NumGet(pStream + 0, 0, "uptr") + (A_PtrSize * 2), 0, "uptr"), "ptr",pStream)
-            DllCall("GlobalFree", "ptr",hData)
-
-            ; Using CryptBinaryToStringA saves about 2MB in memory.
-            DllCall("Crypt32.dll\CryptBinaryToStringA", "ptr",&Bin, "uint",nSize, "uint",0x40000001, "ptr",0, "uint*",base64Length)
-            VarSetCapacity(base64, base64Length, 0)
-            DllCall("Crypt32.dll\CryptBinaryToStringA", "ptr",&Bin, "uint",nSize, "uint",0x40000001, "ptr",&base64, "uint*",base64Length)
-            VarSetCapacity(Bin, 0)
-
-            return StrGet(&base64, base64Length, "CP0")
          }
 
          Gdip_ScaleBitmap(pBitmap, scale, width:="", height:="") {
@@ -3139,14 +3522,28 @@ class Vis2 {
             return pBitmap2
          }
 
-         isBitmapEqual(pBitmap1, pBitmap2, width:="", height:="") {
+         isBitmapEqual(pBitmap1, pBitmap2) {
+            ; Make sure both Bitmaps are valid pointers.
+            if !(pBitmap1 && pBitmap2)
+               return false
+
             ; Check if pointers are identical.
             if (pBitmap1 == pBitmap2)
                return true
 
-            ; Assume both Bitmaps are equal in width and height.
-            width := (width) ? width : Gdip_GetImageWidth(pBitmap1)
-            height := (height) ? height : Gdip_GetImageHeight(pBitmap1)
+            pBitmap1_width  := Gdip_GetImageWidth(pBitmap1)
+            pBitmap1_height := Gdip_GetImageHeight(pBitmap1)
+            pBitmap2_width  := Gdip_GetImageWidth(pBitmap2)
+            pBitmap2_height := Gdip_GetImageHeight(pBitmap2)
+
+            ; Match image dimensions. De Morgan's rules!
+            if !(pBitmap1_width == pBitmap2_width && pBitmap1_height == pBitmap2_height)
+               return false
+
+            ; Find smaller width and height to match bytes.
+            ; Sort of unnessessary due to the above statement, but nice to have.
+            width := (pBitmap1_width < pBitmap2_width) ? pBitmap1_width : pBitmap2_width
+            height := (pBitmap1_height < pBitmap2_height) ? pBitmap1_height : pBitmap2_height
             E1 := Gdip_LockBits(pBitmap1, 0, 0, width, height, Stride1, Scan01, BitmapData1)
             E2 := Gdip_LockBits(pBitmap2, 0, 0, width, height, Stride2, Scan02, BitmapData2)
 
@@ -3159,11 +3556,16 @@ class Vis2 {
             return (byte == size) ? true : false
          }
 
-         isRectangle(array){
-            return array.1 ~= "^\d+$" && array.2 ~= "^\d+$" && array.3 ~= "^\d+$"  && array.4 ~= "^\d+$"
+         isCropArray(array) {
+            if (array.MaxIndex() != 4)
+               return false
+            for index, value in array
+               if !(value ~= "^\-?\d+(?:\.\d*)?%?$")
+                  return false
+            return true
          }
 
-         isURL(url){
+         isURL(url) {
             regex .= "((https?|ftp)\:\/\/)" ; SCHEME
             regex .= "([a-z0-9+!*(),;?&=\$_.-]+(\:[a-z0-9+!*(),;?&=\$_.-]+)?@)?" ; User and Pass
             regex .= "([a-z0-9-.]*)\.([a-z]{2,3})" ; Host or IP
@@ -3173,6 +3575,15 @@ class Vis2 {
             regex .= "(#[a-z_.-][a-z0-9+\$_.-]*)?" ; Anchor
 
             return (url ~= "i)" regex) ? true : false
+         }
+
+         _s1() {
+            this.outer.startup()
+         }
+
+         _s2(pBitmap) {
+            MsgBox % pBitmap.value
+            this.outer.Shutdown()
          }
 
          x1() {
@@ -3201,78 +3612,25 @@ class Vis2 {
       } ; End of Image class.
 
       class Subtitle {
-         static extends := "shared"
-         init := this._init(true)
-         _init(endofunctor := "") {
-            extends := this.extends
-            under := ((this.outer)[extends])
-               ? ((___ := (this.outer)[extends]._init()) ? ___ : (this.outer)[extends])
-               : ((___ := %extends%._init()) ? ___ : %extends%)
-            if (endofunctor)
-               this.base.base := under
-            else
-               this.base := under
-            return this
+      static extends := "shared"
+
+         _extends := this.__extends()
+         __extends(endofunctor := "") {
+            under := ((___ := this.outer[this.extends].__extends(true)) ? ___ : this.outer[this.extends])
+            (endofunctor) ? (this.base := under) : (this.base.base := under)
+            return (endofunctor) ? this : ""
          }
-         outer[] {
+
+         outer[p:=""] {
             get {
                if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
                   Loop, Parse, _class, .
                      outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
-               return outer
+               return IsObject(outer) ? ((p) ? outer[p] : outer) : ((p) ? %p% : "")
             }
          }
 
-         layers := {}, ScreenWidth := A_ScreenWidth, ScreenHeight := A_ScreenHeight
-
-         Recover(pGraphics) {
-            loop % this.layers.maxIndex()
-               this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
-         }
-
-         Bitmap(x := "", y := "", w := "", h := "") {
-            x := (x != "") ? x : this.x
-            y := (y != "") ? y : this.y
-            w := (w != "") ? w : this.xx - this.x
-            h := (h != "") ? h : this.yy - this.y
-
-            pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
-            pGraphics := Gdip_GraphicsFromImage(pBitmap)
-            loop % this.layers.maxIndex()
-               this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
-            Gdip_DeleteGraphics(pGraphics)
-            pBitmapCopy := Gdip_CloneBitmapArea(pBitmap, x, y, w, h)
-            Gdip_DisposeImage(pBitmap)
-            return pBitmapCopy ; Please dispose of this image responsibly.
-         }
-
-         hBitmap(alpha := 0xFFFFFFFF) {
-            ; hBitmap converts alpha channel to specified alpha color.
-            ; Adds 1 pixel because Anti-Alias (SmoothingMode = 4)
-            ; Should it be crop 1 pixel instead?
-            pBitmap := this.Bitmap()
-            hBitmap := Gdip_CreateHBITMAPFromBitmap(pBitmap, alpha)
-            Gdip_DisposeImage(pBitmap)
-            return hBitmap
-         }
-
-         Save(filename := "", quality := 92) {
-            filename := (filename ~= "i)\.(bmp|dib|rle|jpg|jpeg|jpe|jfif|gif|tif|tiff|png)$") ? filename
-                     : (filename != "") ? filename ".png" : this.title ".png"
-            pBitmap := this.Bitmap()
-            Gdip_SaveBitmapToFile(pBitmap, filename, quality)
-            Gdip_DisposeImage(pBitmap)
-            return this
-         }
-
-         Screenshot(filename := "", quality := 92) {
-            filename := (filename ~= "i)\.(bmp|dib|rle|jpg|jpeg|jpe|jfif|gif|tif|tiff|png)$") ? filename
-                     : (filename != "") ? filename ".png" : this.title ".png"
-            pBitmap := Gdip_BitmapFromScreen(this.x "|" this.y "|" this.xx - this.x "|" this.yy - this.y)
-            Gdip_SaveBitmapToFile(pBitmap, filename, quality)
-            Gdip_DisposeImage(pBitmap)
-            return this
-         }
+         layers := {}
 
          Render(text := "", style1 := "", style2 := "", update := true) {
             if (!this.hwnd)
@@ -3291,66 +3649,6 @@ class Vis2 {
             }
             this.rendered := true
             return this
-         }
-
-         RenderToBitmap(text := "", style1 := "", style2 := "") {
-            if (!this.hwnd)
-               return (new this).RenderToBitmap(text, style1, style2)
-
-            this.Render(text, style1, style2, false)
-            return this.Bitmap()
-         }
-
-         RenderToHBitmap(text := "", style1 := "", style2 := "") {
-            if (!this.hwnd)
-               return (new this).RenderToHBitmap(text, style1, style2)
-
-            this.Render(text, style1, style2, false)
-            return this.hBitmap()
-         }
-
-         Reposition() {
-            CoordMode, Mouse, Screen
-            MouseGetPos, x_mouse, y_mouse
-            this.LButton := GetKeyState("LButton", "P") ? 1 : 0
-            this.keypress := (this.LButton && DllCall("GetForegroundWindow") == this.hwnd) ? ((!this.keypress) ? 1 : -1) : ((this.keypress == -1) ? 2 : 0)
-
-            if (this.keypress == 1) {
-               this.x_mouse := x_mouse, this.y_mouse := y_mouse
-               this.hbm2 := CreateDIBSection(A_ScreenWidth, A_ScreenHeight)
-               this.hdc2 := CreateCompatibleDC()
-               this.obm2 := SelectObject(this.hdc2, this.hbm2)
-               this.G2 := Gdip_GraphicsFromHDC(this.hdc2)
-            }
-
-            if (this.keypress == -1) {
-               dx := x_mouse - this.x_mouse
-               dy := y_mouse - this.y_mouse
-               safe_x := (0 + dx <= 0) ? 0 : 0 + dx
-               safe_y := (0 + dy <= 0) ? 0 : 0 + dy
-               safe_w := (0 + this.ScreenWidth + dx >= this.ScreenWidth) ? this.ScreenWidth : 0 + this.ScreenWidth + dx
-               safe_h := (0 + this.ScreenHeight + dy >= this.ScreenHeight) ? this.ScreenHeight : 0 + this.ScreenHeight + dy
-               source_x := (dx < 0) ? -dx : 0
-               source_y := (dy < 0) ? -dy : 0
-               ;Tooltip % dx ", " dy "`n" safe_x ", " safe_y ", " safe_w ", " safe_h
-               Gdip_GraphicsClear(this.G2)
-               BitBlt(this.hdc2, safe_x, safe_y, safe_w, safe_h, this.hdc, source_x, source_y)
-               UpdateLayeredWindow(this.hwnd, this.hdc2, 0, 0, this.ScreenWidth, this.ScreenHeight)
-            }
-
-            if (this.keypress == 2) {
-               Gdip_DeleteGraphics(this.G)
-               SelectObject(this.hdc, this.obm)
-               DeleteObject(this.hbm)
-               DeleteDC(this.hdc)
-               this.hdc := this.hdc2
-               this.obm := this.obm2
-               this.hbm := this.hbm2
-               this.G := Gdip_GraphicsFromHDC(this.hdc2)
-            }
-
-            Reposition := ObjBindMethod(this, "Reposition")
-            SetTimer, % Reposition, -10
          }
 
          Draw(text := "", style1 := "", style2 := "", pGraphics := "") {
@@ -3672,7 +3970,9 @@ class Vis2 {
             ; Define color.
             _c := this.color(_c, 0xDD424242) ; Default background color is transparent gray.
             SourceCopy := (c ~= "i)(delete|eraser?|overwrite|sourceCopy)") ? 1 : 0 ; Eraser brush for text.
-            c  := (SourceCopy) ? 0x00000000 : this.color( c, 0xFFFFFFFF) ; Default text color is white.
+            if (!c) ; Default text color changes between white and black.
+               c := (this.grayscale(_c) < 128) ? 0xFFFFFFFF : 0xFF000000
+            c  := (SourceCopy) ? 0x00000000 : this.color( c)
 
             ; Define outline and dropShadow.
             o := this.outline(o, s, c)
@@ -3841,93 +4141,398 @@ class Vis2 {
             return (pGraphics == "") ? this : ""
          }
 
-         dropShadow(d, x_simulated, y_simulated, font_size) {
-            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
-            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
-            static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-
-            if IsObject(d) {
-               d.1 := (d.1) ? d.1 : (d.horizontal != "") ? d.horizontal : d.h
-               d.2 := (d.2) ? d.2 : (d.vertical   != "") ? d.vertical   : d.v
-               d.3 := (d.3) ? d.3 : (d.blur       != "") ? d.blur       : d.b
-               d.4 := (d.4) ? d.4 : (d.color      != "") ? d.color      : d.c
-               d.5 := (d.5) ? d.5 : (d.opacity    != "") ? d.opacity    : d.o
-               d.6 := (d.6) ? d.6 : (d.size       != "") ? d.size       : d.s
-            } else if (d != "") {
-               _ := RegExReplace(d, ":\s+", ":")
-               _ := RegExReplace(_, "\s+", " ")
-               _ := StrSplit(_, " ")
-               _.1 := ((___ := RegExReplace(d, q1    "(h(orizontal)?)"    q2, "${value}")) != d) ? ___ : _.1
-               _.2 := ((___ := RegExReplace(d, q1    "(v(ertical)?)"      q2, "${value}")) != d) ? ___ : _.2
-               _.3 := ((___ := RegExReplace(d, q1    "(b(lur)?)"          q2, "${value}")) != d) ? ___ : _.3
-               _.4 := ((___ := RegExReplace(d, q1    "(c(olor)?)"         q2, "${value}")) != d) ? ___ : _.4
-               _.5 := ((___ := RegExReplace(d, q1    "(o(pacity)?)"       q2, "${value}")) != d) ? ___ : _.5
-               _.6 := ((___ := RegExReplace(d, q1    "(s(ize)?)"          q2, "${value}")) != d) ? ___ : _.6
-               d := _
-            }
-            else return {"void":true, 1:0, 2:0, 3:0, 4:0, 5:0, 6:0}
-
-            for key, value in d {
-               if (key = 4) ; Don't mess with color data.
-                  continue
-               d[key] := (d[key] ~= valid) ? RegExReplace(d[key], "\s", "") : 0 ; Default for everything is 0.
-               d[key] := (d[key] ~= "i)(pt|px)$") ? SubStr(d[key], 1, -2) : d[key]
-               d[key] := (d[key] ~= "i)vw$") ? RegExReplace(d[key], "i)vw$", "") * this.vw : d[key]
-               d[key] := (d[key] ~= "i)vh$") ? RegExReplace(d[key], "i)vh$", "") * this.vh : d[key]
-               d[key] := (d[key] ~= "i)vmin$") ? RegExReplace(d[key], "i)vmin$", "") * this.vmin : d[key]
-            }
-
-            d.1 := (d.1 ~= "%$") ? SubStr(d.1, 1, -1) * 0.01 * x_simulated : d.1
-            d.2 := (d.2 ~= "%$") ? SubStr(d.2, 1, -1) * 0.01 * y_simulated : d.2
-            d.3 := (d.3 ~= "%$") ? SubStr(d.3, 1, -1) * 0.01 * font_size : d.3
-            d.4 := this.color(d.4, 0xFFFF0000) ; Default color is red.
-            d.5 := (d.5 ~= "%$") ? SubStr(d.5, 1, -1) / 100 : d.5
-            d.5 := (d.5 <= 0 || d.5 > 1) ? 1 : d.5 ; Range Opacity is a float from 0-1.
-            d.6 := (d.6 ~= "%$") ? SubStr(d.6, 1, -1) * 0.01 * font_size : d.6
-            return d
+         Recover(pGraphics) {
+            loop % this.layers.maxIndex()
+               this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
          }
 
-         font(f, default := "Arial"){
+         /*
+         Bitmap(x := "", y := "", w := "", h := "") {
+            x := (x != "") ? x : this.x
+            y := (y != "") ? y : this.y
+            w := (w != "") ? w : this.xx - this.x
+            h := (h != "") ? h : this.yy - this.y
 
+            pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
+            pGraphics := Gdip_GraphicsFromImage(pBitmap)
+            loop % this.layers.maxIndex()
+               this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
+            Gdip_DeleteGraphics(pGraphics)
+            pBitmapCopy := Gdip_CloneBitmapArea(pBitmap, x, y, w, h)
+            Gdip_DisposeImage(pBitmap)
+            return pBitmapCopy ; Please dispose of this image responsibly.
+         }
+         */
+
+         CreateDIBSection(w, h, hdc:="", bpp:=32, ByRef ppvBits:=0)
+         {
+            Ptr := A_PtrSize ? "UPtr" : "UInt"
+
+            hdc2 := hdc ? hdc : GetDC()
+            VarSetCapacity(bi, 40, 0)
+
+            NumPut(w, bi, 4, "uint")
+            , NumPut(-h, bi, 8, "int")
+            , NumPut(40, bi, 0, "uint")
+            , NumPut(1, bi, 12, "ushort")
+            , NumPut(0, bi, 16, "uInt")
+            , NumPut(bpp, bi, 14, "ushort")
+
+            hbm := DllCall("CreateDIBSection"
+                                 , Ptr, hdc2
+                                 , Ptr, &bi
+                                 , "uint", 0
+                                 , A_PtrSize ? "UPtr*" : "uint*", ppvBits
+                                 , Ptr, 0
+                                 , "uint", 0, Ptr)
+
+            if !hdc
+                  ReleaseDC(hdc2)
+            return hbm
          }
 
-         outline(o, font_size, font_color) {
-            static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
-            static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
-            static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         hBitmap() {
+            if !(this.hbm3) {
+               this.hbm3 := this.CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
+               this.hdc3 := CreateCompatibleDC()
+               this.obm3 := SelectObject(this.hdc3, this.hbm3)
+               this.pGraphics3 := Gdip_GraphicsFromHDC(this.hdc3)
+               this.Recover(this.pGraphics3)
 
-            if IsObject(o) {
-               o.1 := (o.1) ? o.1 : (o.stroke != "") ? o.stroke : o.s
-               o.2 := (o.2) ? o.2 : (o.color  != "") ? o.color  : o.c
-               o.3 := (o.3) ? o.3 : (o.glow   != "") ? o.glow   : o.g
-               o.4 := (o.4) ? o.4 : (o.tint   != "") ? o.tint   : o.t
-            } else if (o != "") {
-               _ := RegExReplace(o, ":\s+", ":")
-               _ := RegExReplace(_, "\s+", " ")
-               _ := StrSplit(_, " ")
-               _.1 := ((___ := RegExReplace(o, q1    "(s(troke)?)"        q2, "${value}")) != o) ? ___ : _.1
-               _.2 := ((___ := RegExReplace(o, q1    "(c(olor)?)"         q2, "${value}")) != o) ? ___ : _.2
-               _.3 := ((___ := RegExReplace(o, q1    "(g(low)?)"          q2, "${value}")) != o) ? ___ : _.3
-               _.4 := ((___ := RegExReplace(o, q1    "(t(int)?)"          q2, "${value}")) != o) ? ___ : _.4
-               o := _
+               Gdip_DeleteGraphics(this.pGraphics3)
+               SelectObject(this.hdc3, this.obm3)
+               DeleteDC(this.hdc3)
             }
-            else return {"void":true, 1:0, 2:0, 3:0, 4:0}
+            return this.hbm3
+         }
 
-            for key, value in o {
-               if (key = 2) || (key = 4) ; Don't mess with color data.
-                  continue
-               o[key] := (o[key] ~= valid_positive) ? RegExReplace(o[key], "\s", "") : 0 ; Default for everything is 0.
-               o[key] := (o[key] ~= "i)(pt|px)$") ? SubStr(o[key], 1, -2) : o[key]
-               o[key] := (o[key] ~= "i)vw$") ? RegExReplace(o[key], "i)vw$", "") * this.vw : o[key]
-               o[key] := (o[key] ~= "i)vh$") ? RegExReplace(o[key], "i)vh$", "") * this.vh : o[key]
-               o[key] := (o[key] ~= "i)vmin$") ? RegExReplace(o[key], "i)vmin$", "") * this.vmin : o[key]
+         Bitmap1() {
+            x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
+            pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
+            pGraphics := Gdip_GraphicsFromImage(pBitmap)
+            loop % this.layers.maxIndex()
+               this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
+            Gdip_DeleteGraphics(pGraphics)
+            return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
+         }
+
+         /*
+         #include <GdiPlus.h>
+         #include <memory>
+
+         Gdiplus::Status HBitmapToBitmap( HBITMAP source, Gdiplus::PixelFormat pixel_format, Gdiplus::Bitmap** result_out )
+         {
+           BITMAP source_info = { 0 };
+           if( !::GetObject( source, sizeof( source_info ), &source_info ) )
+             return Gdiplus::GenericError;
+
+           Gdiplus::Status s;
+
+           std::auto_ptr< Gdiplus::Bitmap > target( new Gdiplus::Bitmap( source_info.bmWidth, source_info.bmHeight, pixel_format ) );
+           if( !target.get() )
+             return Gdiplus::OutOfMemory;
+           if( ( s = target->GetLastStatus() ) != Gdiplus::Ok )
+             return s;
+
+           Gdiplus::BitmapData target_info;
+           Gdiplus::Rect rect( 0, 0, source_info.bmWidth, source_info.bmHeight );
+
+           s = target->LockBits( &rect, Gdiplus::ImageLockModeWrite, pixel_format, &target_info );
+           if( s != Gdiplus::Ok )
+             return s;
+
+           if( target_info.Stride != source_info.bmWidthBytes )
+             return Gdiplus::InvalidParameter; // pixel_format is wrong!
+
+           CopyMemory( target_info.Scan0, source_info.bmBits, source_info.bmWidthBytes * source_info.bmHeight );
+
+           s = target->UnlockBits( &target_info );
+           if( s != Gdiplus::Ok )
+             return s;
+
+           *result_out = target.release();
+
+           return Gdiplus::Ok;
+         }
+         */
+
+         Bitmap2() {
+            static x64 := "
+            (LTrim
+               VUiJ5UiD7BBIiU0QSIlVGESJRSBEiU0ox0X8AAAAAOthx0X4AAAAAOtMi0X4D69F
+               IInCi0X8AdCJRfSLRfRImEiNFIUAAAAASItFEEgB0IsAwegYhcB1GotF9EiYSI0U
+               hQAAAABIi0UQSAHQxwAAAAAAg0X4AYtF+DtFKHKsg0X8AYtF/DtFIHKXSIPEEF3D
+            )"
+
+            static dibSize := (A_PtrSize == 4) ? 84 : 104      ; sizeof(DIBSECTION) = 76+2*(A_PtrSize=8?4:0)+2*A_PtrSize
+            VarSetCapacity(dib, dibSize)
+            DllCall("GetObject", "ptr",this.hbm, "int",dibSize, "ptr",&dib)
+            width := NumGet(dib, 4, "uint"), height := NumGet(dib, 8, "uint"), Stride2 := NumGet(dib, 12, "int")
+            Scan02 := NumGet(dib, 20 + (A_PtrSize = 8 ? 4 : 0))      ; padding
+
+            MsgBox % Format("0x{:08x}", NumGet(Scan02, 0, "int"))
+            MsgBox % Format("0x{:08x}", NumGet(Scan02, 1, "int"))
+            MsgBox % Format("0x{:08x}", NumGet(Scan02, 2, "int"))
+            MsgBox % Format("0x{:08x}", NumGet(Scan02, 3, "int"))
+            MsgBox % Format("0x{:08x}", NumGet(Scan02, 4, "int"))
+            MsgBox % Format("0x{:08x}", NumGet(Scan02, 5, "int"))
+            MsgBox % Format("0x{:08x}", NumGet(Scan02, 6, "int"))
+            MsgBox % Format("0x{:08x}", NumGet(Scan02, 7, "int"))
+
+            pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
+            E1 := Gdip_LockBits(pBitmap, 0, 0, this.ScreenWidth, this.ScreenHeight, Stride1, Scan01, BitmapData1)
+            size := Stride2 * height
+            DllCall("RtlCopyMemory", "ptr", Scan01+0, "ptr", Scan02+0, "uint", size)
+            /*
+            DllCall("crypt32\CryptStringToBinary", "str",(A_PtrSize == 8) ? x64 : x86, "uint",0, "uint",0x1, "ptr",0, "uint*",s, "ptr",0, "ptr",0)
+            p := DllCall("GlobalAlloc", "uint",0, "ptr",s, "ptr")
+            if (A_PtrSize == 8)
+               DllCall("VirtualProtect", "ptr",p, "ptr",s, "uint",0x40, "uint*",op)
+            DllCall("crypt32\CryptStringToBinary", "str",(A_PtrSize == 8) ? x64 : x86, "uint",0, "uint",0x1, "ptr",p, "uint*",s, "ptr",0, "ptr",0)
+            MsgBox % "value: " value := DllCall(p, "ptr",Scan02, "ptr",Scan01 ,"uint",this.ScreenWidth, "uint",this.ScreenHeight, "uint",Stride2)
+            DllCall("GlobalFree", "ptr", p)
+            */
+            Gdip_UnlockBits(pBitmap, BitmapData1)
+            return pBitmap
+            return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
+         }
+
+         Bitmap7() {
+            static x86 := "
+            (LTrim
+            )"
+            static x64 := "
+            (LTrim
+               VUiJ5UiD7BBIiU0QSIlVGESJRSBEiU0ox0X8AAAAAOthx0X4AAAAAOtMi0X4D69F
+               IInCi0X8AdCJRfSLRfRImEiNFIUAAAAASItFEEgB0IsAwegYhcB1GotF9EiYSI0U
+               hQAAAABIi0UQSAHQxwAAAAAAg0X4AYtF+DtFKHKsg0X8AYtF/DtFIHKXSIPEEF3D
+            )"
+
+            ; struct bitmap     https://docs.microsoft.com/en-us/windows/desktop/api/wingdi/ns-wingdi-tagbitmap
+            static dibSize := (A_PtrSize == 4) ? 84 : 104      ; sizeof(DIBSECTION) = 76+2*(A_PtrSize=8?4:0)+2*A_PtrSize
+            VarSetCapacity(dib, dibSize)
+            DllCall("GetObject", "ptr",this.hbm, "int",dibSize, "ptr",&dib)
+            Stride := NumGet(dib, 12, "int")
+            Pix := NumGet(dib, 20 + (A_PtrSize = 8 ? 4 : 0))   ; padding
+
+            size := Stride * this.ScreenHeight
+            VarSetCapacity(Scan0, size, 0xFF)
+            MsgBox % NumGet(Pix, 0, "uchar")
+            MsgBox % NumGet(Scan0, 0, "uchar")
+
+            DllCall("crypt32\CryptStringToBinary", "str",(A_PtrSize == 8) ? x64 : x86, "uint",0, "uint",0x1, "ptr",0, "uint*",s, "ptr",0, "ptr",0)
+            p := DllCall("GlobalAlloc", "uint",0, "ptr",s, "ptr")
+            if (A_PtrSize == 8)
+               DllCall("VirtualProtect", "ptr",p, "ptr",s, "uint",0x40, "uint*",op)
+            DllCall("crypt32\CryptStringToBinary", "str",(A_PtrSize == 8) ? x64 : x86, "uint",0, "uint",0x1, "ptr",p, "uint*",s, "ptr",0, "ptr",0)
+            MsgBox % "value: " value := DllCall(p, "ptr",Pix, "ptr",&Scan0 ,"uint",this.ScreenWidth, "uint",this.ScreenHeight, "uint",Stride)
+            DllCall("GlobalFree", "ptr", p)
+
+            MsgBox % NumGet(Pix, 0, "uchar")
+            MsgBox % NumGet(Scan0, 0, "uchar")
+
+            DllCall("gdiplus\GdipCreateBitmapFromScan0"
+               , "int",   this.ScreenWidth
+               , "int",   this.ScreenHeight
+               , "int",   Stride
+               , "int",   0x26200A
+               , "ptr",   Scan0
+               , "uptr*", pBitmap)
+
+            return pBitmap
+         }
+
+         Bitmap6() {
+            pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
+            pGraphics := Gdip_GraphicsFromImage(pBitmap)
+            mdc := Gdip_GetDC(pGraphics)
+            VarSetCapacity(blend, 4, 0)
+            NumPut(blend, 0, 0x00, "uchar") ; AC_SRC_OVER
+            NumPut(blend, 1, 0x00, "uchar") ; Must be zero.
+            NumPut(blend, 2, 0xFF, "uchar") ; SourceConstantAlpha value to 255 (opaque)
+            NumPut(blend, 3, 0x00, "uchar") ; AC_SRC_ALPHA = 1
+            ;MsgBox % DllCall("msimg32\AlphaBlend", "ptr",mdc, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight
+            ;   , "ptr",this.hdc, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight, "ptr",blend)
+            BitBlt(mdc, 0, 0, this.ScreenWidth, this.ScreenHeight, this.hdc, 0, 0)
+            ;DllCall("TransparentBlt", "ptr",mdc, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight
+            ;   , "ptr",this.hdc, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight, "uint",0x00CC0020)
+            ;Gdip_ReleaseDC(pGraphics, mdc)
+            ;Gdip_DeleteGraphics(pGraphics)
+            return pBitmap
+         }
+
+         ; struct bitmap     https://docs.microsoft.com/en-us/windows/desktop/api/wingdi/ns-wingdi-tagbitmap
+         ; struct bitmapinfo https://docs.microsoft.com/en-us/windows/desktop/api/wingdi/ns-wingdi-tagbitmapinfo
+         Bitmap5() {
+            static dibSize := 76+2*(A_PtrSize=8?4:0)+2*A_PtrSize ; sizeof(DIBSECTION) = x86:84, x64:104
+            VarSetCapacity(dib, dibSize)
+            DllCall("GetObject", "ptr",this.hbm, "int",dibSize, "ptr",&dib)
+            MsgBox % "Type: " Type := NumGet(dib, 0, "uint")
+            MsgBox % "Width: " Width := NumGet(dib, 4, "uint")
+            MsgBox % "Height: " Height := NumGet(dib, 8, "int")
+            MsgBox % "Stride: " Stride := NumGet(dib, 12, "int")
+            MsgBox % "Planes: " Planes := NumGet(dib, 16, "ushort")
+            MsgBox % "Bits: " Bits := NumGet(dib, 18, "ushort")
+            MsgBox % "Pix: " Pix := NumGet(dib, 20 + (A_PtrSize = 8 ? 4 : 0)) ; padding
+
+            VarSetCapacity(bi, 40, 0)
+            NumPut(this.ScreenWidth, bi, 4, "uint")
+            , NumPut(this.ScreenHeight, bi, 8, "uint")
+            , NumPut(40, bi, 0, "uint")
+            , NumPut(1, bi, 12, "ushort")
+            , NumPut(0, bi, 16, "uint")
+            , NumPut(32, bi, 14, "ushort")
+            DllCall("gdiplus\GdipCreateBitmapFromGdiDib", "ptr",&bi, "ptr",Pix, "uptr*",pBitmap)
+            ;Scan0 := Pix + (Stride * (Height-1))
+            ;DllCall("gdiplus\GdipCreateBitmapFromScan0", "int",this.ScreenWidth, "int",this.ScreenHeight, "int",Stride, "int",0x26200A, "ptr",Pix, "uptr*",pBitmap)
+            return pBitmap
+            x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
+            return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
+         }
+
+         Bitmap4() {
+            ; GdipCreateBitmapFromGraphics ?
+            /*
+            pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
+            pGraphics := Gdip_GraphicsFromImage(pBitmap)
+            mdc := Gdip_GetDC(pGraphics)
+            ;BitBlt(mdc, 0, 0, this.ScreenWidth, this.ScreenHeight, this.hdc, 0, 0)
+            DllCall("TransparentBlt", "ptr",mdc, "int",0, "int",0, "int",this.ScreenWidth, "int",this.SCreenHeight, "ptr",this.hdc, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight, "uint",0x00CC0020)
+            Gdip_ReleaseDC(pGraphics, mdc)
+            Gdip_DeleteGraphics(pGraphics)
+            return pBitmap
+            ;msimg32.dll\
+               return
+            */
+            /*
+            static dibSize := 76+2*(A_PtrSize=8?4:0)+2*A_PtrSize     ; sizeof(DIBSECTION) = x86:84, x64:104
+            VarSetCapacity(dib, dibSize)
+            DllCall("GetObject", "ptr",this.hbm, "int",dibSize, "ptr",&dib)
+            width := NumGet(dib, 4, "uint"), height := NumGet(dib, 8, "uint"), Stride2 := NumGet(dib, 12, "int")
+            Scan02 := NumGet(dib, 20 + (A_PtrSize = 8 ? 4 : 0))      ; padding
+
+            pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
+            E1 := Gdip_LockBits(pBitmap, 0, 0, this.ScreenWidth, this.ScreenHeight, Stride1, Scan01, BitmapData1)
+            MsgBox % size := Stride2 * height
+            DllCall("RtlCopyMemory", "ptr", Scan01+0, "ptr", Scan02+0, "uint", size)
+            Gdip_UnlockBits(pBitmap, BitmapData1)
+            return pBitmap
+            return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
+            */
+
+            static dibSize := 76+2*(A_PtrSize=8?4:0)+2*A_PtrSize ; sizeof(DIBSECTION) = x86:84, x64:104
+            VarSetCapacity(dib, dibSize)
+            DllCall("GetObject", "ptr",this.hbm, "int",dibSize, "ptr",&dib)
+            ;MsgBox % Type := NumGet(dib, 0, "uint")
+            ;MsgBox % Width := NumGet(dib, 4, "uint")
+            ;MsgBox % Height := NumGet(dib, 8, "uint")
+            MsgBox % Stride := NumGet(dib, 12, "int")
+            ;MsgBox % Planes := NumGet(dib, 16, "ushort")
+            ;MsgBox % Bits := NumGet(dib, 18, "ushort")
+            MsgBox % Scan0 := NumGet(dib, 20 + (A_PtrSize = 8 ? 4 : 0)) ; padding
+            ;MsgBox % DllCall("gdiplus\GdipCreateBitmapFromGdiDib", "ptr",&dib, "ptr",Scan0, "uptr*",pBitmapOld)
+            DllCall("gdiplus\GdipCreateBitmapFromScan0", "int",this.ScreenWidth, "int",this.ScreenHeight, "int",-Stride, "int",0x26200A, "ptr",Scan0, "uptr*",pBitmapOld)
+            return pBitmapOld
+            x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
+            return Gdip_CloneBitmapArea(pBitmapOld, x, y, w, h), Gdip_DisposeImage(pBitmapOld)
+
+
+            pBitmap := Gdip_CreateBitmap(Width, Height)
+            _G := Gdip_GraphicsFromImage(pBitmap)
+            , Gdip_DrawImage(_G, pBitmapOld, 0, 0, Width, Height, 0, 0, Width, Height)
+            SelectObject(hdc, obm), DeleteObject(hbm), DeleteDC(hdc)
+            Gdip_DeleteGraphics(_G), Gdip_DisposeImage(pBitmapOld)
+            DestroyIcon(hIcon)
+            */
+
+
+            return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
+         }
+
+         Bitmap3() {
+            x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
+            chdc := CreateCompatibleDC()
+            hbm := CreateDIBSection(w, h, chdc)
+            obm := SelectObject(chdc, hbm)
+            hhdc := GetDC()
+            BitBlt(chdc, 0, 0, w, h, hhdc, x, y)
+            ReleaseDC(hhdc)
+            pBitmap := Gdip_CreateBitmapFromHBITMAP(hbm)
+            SelectObject(chdc, obm), DeleteObject(hbm), DeleteDC(hhdc), DeleteDC(chdc)
+            return pBitmap
+         }
+
+         Save(filename := "", quality := 92) {
+            filename := (filename ~= "i)\.(bmp|dib|rle|jpg|jpeg|jpe|jfif|gif|tif|tiff|png)$") ? filename
+                     : (filename != "") ? filename ".png" : this.title ".png"
+            pBitmap := this.Bitmap()
+            Gdip_SaveBitmapToFile(pBitmap, filename, quality)
+            Gdip_DisposeImage(pBitmap)
+            return this
+         }
+
+         ; 3) Just takes a picture of the screen!
+         Screenshot(filename := "", quality := 92) {
+            filename := (filename ~= "i)\.(bmp|dib|rle|jpg|jpeg|jpe|jfif|gif|tif|tiff|png)$") ? filename
+                     : (filename != "") ? filename ".png" : this.title ".png"
+            pBitmap := Gdip_BitmapFromScreen(this.x "|" this.y "|" this.xx - this.x "|" this.yy - this.y)
+            Gdip_SaveBitmapToFile(pBitmap, filename, quality)
+            Gdip_DisposeImage(pBitmap)
+            return this
+         }
+
+         ; This is really stupid because it calls .Draw() twice for every action.
+         ; To be fair, .Draw() ALWAYS draws on the screen by default.
+         RenderToBitmap(text := "", style1 := "", style2 := "") {
+            if (!this.hwnd)
+               return (new this).RenderToBitmap(text, style1, style2)
+
+            this.Render(text, style1, style2, false)
+            return this.Bitmap()
+         }
+
+         Reposition() {
+            CoordMode, Mouse, Screen
+            MouseGetPos, x_mouse, y_mouse
+            this.LButton := GetKeyState("LButton", "P") ? 1 : 0
+            this.keypress := (this.LButton && DllCall("GetForegroundWindow") == this.hwnd) ? ((!this.keypress) ? 1 : -1) : ((this.keypress == -1) ? 2 : 0)
+
+            if (this.keypress == 1) {
+               this.x_mouse := x_mouse, this.y_mouse := y_mouse
+               this.hbm2 := CreateDIBSection(A_ScreenWidth, A_ScreenHeight)
+               this.hdc2 := CreateCompatibleDC()
+               this.obm2 := SelectObject(this.hdc2, this.hbm2)
+               this.G2 := Gdip_GraphicsFromHDC(this.hdc2)
             }
 
-            o.1 := (o.1 ~= "%$") ? SubStr(o.1, 1, -1) * 0.01 * font_size : o.1
-            o.2 := this.color(o.2, font_color) ; Default color is the text font color.
-            o.3 := (o.3 ~= "%$") ? SubStr(o.3, 1, -1) * 0.01 * font_size : o.3
-            o.4 := this.color(o.4, o.2) ; Default color is outline color.
-            return o
+            if (this.keypress == -1) {
+               dx := x_mouse - this.x_mouse
+               dy := y_mouse - this.y_mouse
+               safe_x := (0 + dx <= 0) ? 0 : 0 + dx
+               safe_y := (0 + dy <= 0) ? 0 : 0 + dy
+               safe_w := (0 + this.ScreenWidth + dx >= this.ScreenWidth) ? this.ScreenWidth : 0 + this.ScreenWidth + dx
+               safe_h := (0 + this.ScreenHeight + dy >= this.ScreenHeight) ? this.ScreenHeight : 0 + this.ScreenHeight + dy
+               source_x := (dx < 0) ? -dx : 0
+               source_y := (dy < 0) ? -dy : 0
+               ;Tooltip % dx ", " dy "`n" safe_x ", " safe_y ", " safe_w ", " safe_h
+               Gdip_GraphicsClear(this.G2)
+               BitBlt(this.hdc2, safe_x, safe_y, safe_w, safe_h, this.hdc, source_x, source_y)
+               UpdateLayeredWindow(this.hwnd, this.hdc2, 0, 0, this.ScreenWidth, this.ScreenHeight)
+            }
+
+            if (this.keypress == 2) {
+               Gdip_DeleteGraphics(this.G)
+               SelectObject(this.hdc, this.obm)
+               DeleteObject(this.hbm)
+               DeleteDC(this.hdc)
+               this.hdc := this.hdc2
+               this.obm := this.obm2
+               this.hbm := this.hbm2
+               this.G := Gdip_GraphicsFromHDC(this.hdc2)
+            }
+
+            Reposition := ObjBindMethod(this, "Reposition")
+            SetTimer, % Reposition, -10
          }
 
          x1() {
@@ -3975,7 +4580,7 @@ class Vis2 {
          for i in strings {
             ; (L) If a string is longer than 40 characters...
             ;strings[i] := RegExReplace(strings[i], "[^\s]{40,}", "")
-            ; (A) If a string’s ratio of alphanumeric characters to total characters is less than 50%...
+            ; (A) If a string�s ratio of alphanumeric characters to total characters is less than 50%...
             alnum_thresholds := {1: 0     ; single chars can be non-alphanumeric
                     ,2: 0     ; so can doublets
                     ,3: 0.32  ; at least one of three should be alnum
@@ -4070,7 +4675,7 @@ class Vis2 {
          i := 1
          Loop, Parse, % data, `r`n
          {
-            temp := RegExReplace(A_LoopField, "^\s*(.*?)\s*$", "$1")
+            temp := Trim(A_LoopField)
             if (temp != "") {
                copy .= (copy) ? ("`n" . temp) : temp
                i++
@@ -4121,10 +4726,14 @@ Class CreateFormData {
 
    __New(ByRef retData, ByRef retHeader, objParam) {
 
-      CRLF := "`r`n"
+      static CRLF := "`r`n"
 
-      Boundary := this.RandomBoundary()
-      BoundaryLine := "------------------------------" . Boundary
+      ; Generate a random boundary.
+      boundary := "0|1|2|3|4|5|6|7|8|9|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z"
+      Sort, boundary, D| Random
+      boundary := StrReplace(boundary, "|")
+      boundary := SubStr(boundary, 1, 12)
+      boundaryLine := "------------------------------" . boundary
 
       ; Loop input paramters
       binArrs := []
@@ -4134,16 +4743,16 @@ Class CreateFormData {
             For i, FileName in v
             {
                str := BoundaryLine . CRLF
-                    . "Content-Disposition: form-data; name=""" . k . """; filename=""" . FileName . """" . CRLF
-                    . "Content-Type: " . this.MimeType(FileName) . CRLF . CRLF
+                  . "Content-Disposition: form-data; name=""" . k . """; filename=""" . FileName . """" . CRLF
+                  . "Content-Type: " . this.MimeType(FileName) . CRLF . CRLF
                binArrs.Push( BinArr_FromString(str) )
                binArrs.Push( BinArr_FromFile(FileName) )
                binArrs.Push( BinArr_FromString(CRLF) )
             }
-         } Else {
+         } else {
             str := BoundaryLine . CRLF
-                 . "Content-Disposition: form-data; name=""" . k """" . CRLF . CRLF
-                 . v . CRLF
+               . "Content-Disposition: form-data; name=""" . k """" . CRLF . CRLF
+               . v . CRLF
             binArrs.Push( BinArr_FromString(str) )
          }
       }
@@ -4153,13 +4762,6 @@ Class CreateFormData {
 
       retData := BinArr_Join(binArrs*)
       retHeader := "multipart/form-data; boundary=----------------------------" . Boundary
-   }
-
-   RandomBoundary() {
-      str := "0|1|2|3|4|5|6|7|8|9|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z"
-      Sort, str, D| Random
-      str := StrReplace(str, "|")
-      Return SubStr(str, 1, 12)
    }
 
    MimeType(FileName) {
@@ -4172,67 +4774,66 @@ Class CreateFormData {
            : (n&0xFFFF = 0x4D4D    ) ? "image/tiff"
            : "application/octet-stream"
    }
-
 }
 
 ; Update: 2015-6-4 - Added BinArr_ToFile()
 
 BinArr_FromString(str) {
-	oADO := ComObjCreate("ADODB.Stream")
+   oADO := ComObjCreate("ADODB.Stream")
 
-	oADO.Type := 2 ; adTypeText
-	oADO.Mode := 3 ; adModeReadWrite
-	oADO.Open
-	oADO.Charset := "UTF-8"
-	oADO.WriteText(str)
+   oADO.Type := 2 ; adTypeText
+   oADO.Mode := 3 ; adModeReadWrite
+   oADO.Open
+   oADO.Charset := "UTF-8"
+   oADO.WriteText(str)
 
-	oADO.Position := 0
-	oADO.Type := 1 ; adTypeBinary
-	oADO.Position := 3 ; Skip UTF-8 BOM
-	return oADO.Read, oADO.Close
+   oADO.Position := 0
+   oADO.Type := 1 ; adTypeBinary
+   oADO.Position := 3 ; Skip UTF-8 BOM
+   return oADO.Read, oADO.Close
 }
 
 BinArr_FromFile(FileName) {
-	oADO := ComObjCreate("ADODB.Stream")
+   oADO := ComObjCreate("ADODB.Stream")
 
-	oADO.Type := 1 ; adTypeBinary
-	oADO.Open
-	oADO.LoadFromFile(FileName)
-	return oADO.Read, oADO.Close
+   oADO.Type := 1 ; adTypeBinary
+   oADO.Open
+   oADO.LoadFromFile(FileName)
+   return oADO.Read, oADO.Close
 }
 
 BinArr_Join(Arrays*) {
-	oADO := ComObjCreate("ADODB.Stream")
+   oADO := ComObjCreate("ADODB.Stream")
 
-	oADO.Type := 1 ; adTypeBinary
-	oADO.Mode := 3 ; adModeReadWrite
-	oADO.Open
-	For i, arr in Arrays
-		oADO.Write(arr)
-	oADO.Position := 0
-	return oADO.Read, oADO.Close
+   oADO.Type := 1 ; adTypeBinary
+   oADO.Mode := 3 ; adModeReadWrite
+   oADO.Open
+   For i, arr in Arrays
+      oADO.Write(arr)
+   oADO.Position := 0
+   return oADO.Read, oADO.Close
 }
 
 BinArr_ToString(BinArr, Encoding := "UTF-8") {
-	oADO := ComObjCreate("ADODB.Stream")
+   oADO := ComObjCreate("ADODB.Stream")
 
-	oADO.Type := 1 ; adTypeBinary
-	oADO.Mode := 3 ; adModeReadWrite
-	oADO.Open
-	oADO.Write(BinArr)
+   oADO.Type := 1 ; adTypeBinary
+   oADO.Mode := 3 ; adModeReadWrite
+   oADO.Open
+   oADO.Write(BinArr)
 
-	oADO.Position := 0
-	oADO.Type := 2 ; adTypeText
-	oADO.Charset  := Encoding
-	return oADO.ReadText, oADO.Close
+   oADO.Position := 0
+   oADO.Type := 2 ; adTypeText
+   oADO.Charset  := Encoding
+   return oADO.ReadText, oADO.Close
 }
 
 BinArr_ToFile(BinArr, FileName) {
-	oADO := ComObjCreate("ADODB.Stream")
+   oADO := ComObjCreate("ADODB.Stream")
 
-	oADO.Type := 1 ; adTypeBinary
-	oADO.Open
-	oADO.Write(BinArr)
-	oADO.SaveToFile(FileName, 2)
-	oADO.Close
+   oADO.Type := 1 ; adTypeBinary
+   oADO.Open
+   oADO.Write(BinArr)
+   oADO.SaveToFile(FileName, 2)
+   oADO.Close
 }
