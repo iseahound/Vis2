@@ -47,16 +47,18 @@ class Graphics {
 
    class object {
 
-      ; IMPORTANT! - Capture and internalize environmental data.
-      Environment() {
+      ; IO - Capture input and internalize environmental data.
+      IO(terms*) {
          this.TickCount := A_TickCount
          this.ScreenWidth := A_ScreenWidth
          this.ScreenHeight := A_ScreenHeight
+         this.IsAdmin := A_IsAdmin
+         return this.arg := terms
       }
 
       ; Duality #1 - Safe wrapper for the GDI+ library during object instantiation.
       __New(terms*) {
-         this.Environment()
+         this.IO(terms*)
 
          global pToken
          if !(this.outer.Startup())
@@ -83,7 +85,11 @@ class Graphics {
 
       ; Duality #2 - Creates a window.
       Create(title := "", window := "", activate := "") {
-         window := " +AlwaysOnTop -Caption +ToolWindow"
+         title    := (title != "")    ? title    : this.arg.1
+         window   := (window != "")   ? window   : this.arg.2
+         activate := (activate != "") ? activate : this.arg.3
+
+         window := (window != "") ? window : " +AlwaysOnTop -Caption +ToolWindow"
          window .= " +LastFound -DPIScale +E0x80000 +hwndhwnd"
 
          ; https://www.autohotkey.com/boards/viewtopic.php?t=31759
@@ -91,6 +97,8 @@ class Graphics {
          ; SS_BITMAP 0xE
 
          Gui, New, % window
+         ;if (window ~= "i)\+Caption")
+         ;   Gui, Add, Picture, hwndpicID +0xE ; SS_BITMAP
          Gui, Show, % (this.activateOnAdmin && !this.isDrawable()) ? "" : "NoActivate"
          this.hwnd := hwnd
          this.title := (title != "") ? title : RegExReplace(this.__class, "(.*\.)*(.*)$", "$2") "_" this.hwnd
@@ -116,15 +124,17 @@ class Graphics {
          VarSetCapacity(bi, 40, 0)
             , NumPut(size := 40                , bi,  0, "uint")
             , NumPut(this.ScreenWidth          , bi,  4, "uint")
-            , NumPut(-(this.ScreenHeight)      , bi,  8, "int")
+            , NumPut((this.ScreenHeight)      , bi,  8, "int")
             , NumPut(planes := 1               , bi, 12, "ushort")
             , NumPut(bpp := 32                 , bi, 14, "ushort")
             , NumPut(0                         , bi, 16, "uint")
-         this.hbm := DllCall("CreateDIBSection", "ptr",this.hdc, "ptr",&bi, "uint",0, "ptr*",pBits, "ptr",0, "uint",0, "ptr")
-         this.dib := {"hbm":this.hbm, "pBits":pBits, "width":this.ScreenWidth, "height":this.ScreenHeight, "bpp":bpp}
+         this.hbm := DllCall("CreateDIBSection", "ptr",this.hdc, "ptr",&bi, "uint",0, "ptr*",bits, "ptr",0, "uint",0, "ptr")
+         this.bits := bits
          this.obm := SelectObject(this.hdc, this.hbm)
          this.G := Gdip_GraphicsFromHDC(this.hdc)
          this.state := new this.outer.queue()
+
+         Tooltip % A_TickCount - this.TickCount
          return this
       }
 
@@ -134,11 +144,11 @@ class Graphics {
          SelectObject(this.hdc, this.obm)
          DeleteObject(this.hbm)
          DeleteDC(this.hdc)
-         this.G := this.obm := this.hbm := this.hdc := ""
+         this.G := this.obm := this.bits := this.hbm := this.hdc := ""
          return this
       }
 
-      UpdateOnScreenResolutionChange(width := 0, height := 0) {
+      UpdateMemory(width := 0, height := 0) {
          width := (width) ? width : A_ScreenWidth
          height := (height) ? height : A_ScreenHeight
 
@@ -148,6 +158,70 @@ class Graphics {
          this.ScreenWidth := width
          this.ScreenHeight := height
          return this.FreeMemory().LoadMemory().Recover()
+      }
+
+      Render(terms*) {
+         this.Draw(terms*)
+
+         if (this.allowDrag == true)
+            this.Reposition()
+
+         UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+
+         if (this.time) {
+            self_destruct := ObjBindMethod(this, "Destroy")
+            SetTimer, % self_destruct, % -1 * this.time
+         }
+         return this.Clear()
+      }
+
+      Draw(terms*) {
+         this.Clear(true)
+         if (terms.2 == "" && terms.3 == "")
+            terms.2 := this.layer.2, terms.3 := this.layer.3
+         this.layer := terms
+         this.layers.push(terms)
+         this.DrawRaw(this.G, this.ScreenWidth, this.ScreenHeight, terms*)
+         return this
+      }
+
+      Clear(check := "") {
+         static i
+         if !(check)
+            i := true
+         if (check && i) {
+            i := false
+            this.layers := {}
+            this.x := this.y := this.xx := this.yy := "" ; not 0!
+            Gdip_GraphicsClear(this.G)
+         }
+
+         return this.UpdateMemory()
+      }
+
+      Bitmap() {
+         DllCall("gdiplus\GdipCreateBitmapFromScan0"
+                  , "int", this.ScreenWidth
+                  , "int", this.ScreenHeight
+                  , "int", 4*this.ScreenWidth
+                  , "int", 0x26200A
+                  , "ptr", this.bits
+                  , "ptr*", pBitmap)
+         return pBitmap
+      }
+
+      Bitmap2() {
+         VarSetCapacity(bi, 40, 0)
+         , NumPut(this.ScreenWidth, bi, 4, "uint")
+         , NumPut(this.ScreenHeight, bi, 8, "uint")
+         , NumPut(40, bi, 0, "uint")
+         , NumPut(1, bi, 12, "ushort")
+         , NumPut(0, bi, 16, "uint")
+         , NumPut(32, bi, 14, "ushort")
+         DllCall("gdiplus\GdipCreateBitmapFromGdiDib", "ptr",&bi, "ptr",this.bits, "uptr*",pBitmap)
+         ;Scan0 := Pix + (Stride * (Height-1))
+         ;DllCall("gdiplus\GdipCreateBitmapFromScan0", "int",this.ScreenWidth, "int",this.ScreenHeight, "int",Stride, "int",0x26200A, "ptr",Pix, "uptr*",pBitmap)
+         return pBitmap
       }
 
       isDrawable(win := "A") {
@@ -251,6 +325,9 @@ class Graphics {
          DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",1)
          return this
       }
+   }
+
+   class parse {
 
       color(c, default := 0xDD424242) {
          static colorRGB  := "^0x([0-9A-Fa-f]{6})$"
@@ -428,10 +505,11 @@ class Graphics {
          return map[c]
       }
 
-      dropShadow(d, x_simulated, y_simulated, font_size) {
+      dropShadow(d, vw, vh, x_simulated, y_simulated, font_size) {
          static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
          static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
          static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         vmin := (vw < vh) ? vw : vh
 
          if IsObject(d) {
             d.1 := (d.1) ? d.1 : (d.horizontal != "") ? d.horizontal : d.h
@@ -459,9 +537,9 @@ class Graphics {
                continue
             d[key] := (d[key] ~= valid) ? RegExReplace(d[key], "\s", "") : 0 ; Default for everything is 0.
             d[key] := (d[key] ~= "i)(pt|px)$") ? SubStr(d[key], 1, -2) : d[key]
-            d[key] := (d[key] ~= "i)vw$") ? RegExReplace(d[key], "i)vw$", "") * this.vw : d[key]
-            d[key] := (d[key] ~= "i)vh$") ? RegExReplace(d[key], "i)vh$", "") * this.vh : d[key]
-            d[key] := (d[key] ~= "i)vmin$") ? RegExReplace(d[key], "i)vmin$", "") * this.vmin : d[key]
+            d[key] := (d[key] ~= "i)vw$") ? RegExReplace(d[key], "i)vw$", "") * vw : d[key]
+            d[key] := (d[key] ~= "i)vh$") ? RegExReplace(d[key], "i)vh$", "") * vh : d[key]
+            d[key] := (d[key] ~= "i)vmin$") ? RegExReplace(d[key], "i)vmin$", "") * vmin : d[key]
          }
 
          d.1 := (d.1 ~= "%$") ? SubStr(d.1, 1, -1) * 0.01 * x_simulated : d.1
@@ -575,10 +653,11 @@ class Graphics {
          return Round(v*255)
       }
 
-      margin_and_padding(m, default := 0) {
+      margin_and_padding(m, vw, vh, default := 0) {
          static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
          static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
          static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         vmin := (vw < vh) ? vw : vh
 
          if IsObject(m) {
             m.1 := (m.top    != "") ? m.top    : m.t
@@ -608,21 +687,22 @@ class Graphics {
          for key, value in m {
             m[key] := (m[key] ~= valid) ? RegExReplace(m[key], "\s", "") : default
             m[key] := (m[key] ~= "i)(pt|px)$") ? SubStr(m[key], 1, -2) : m[key]
-            m[key] := (m[key] ~= "i)vw$") ? RegExReplace(m[key], "i)vw$", "") * this.vw : m[key]
-            m[key] := (m[key] ~= "i)vh$") ? RegExReplace(m[key], "i)vh$", "") * this.vh : m[key]
-            m[key] := (m[key] ~= "i)vmin$") ? RegExReplace(m[key], "i)vmin$", "") * this.vmin : m[key]
+            m[key] := (m[key] ~= "i)vw$") ? RegExReplace(m[key], "i)vw$", "") * vw : m[key]
+            m[key] := (m[key] ~= "i)vh$") ? RegExReplace(m[key], "i)vh$", "") * vh : m[key]
+            m[key] := (m[key] ~= "i)vmin$") ? RegExReplace(m[key], "i)vmin$", "") * vmin : m[key]
          }
-         m.1 := (m.1 ~= "%$") ? SubStr(m.1, 1, -1) * this.vh : m.1
-         m.2 := (m.2 ~= "%$") ? SubStr(m.2, 1, -1) * (exception ? this.vh : this.vw) : m.2
-         m.3 := (m.3 ~= "%$") ? SubStr(m.3, 1, -1) * this.vh : m.3
-         m.4 := (m.4 ~= "%$") ? SubStr(m.4, 1, -1) * (exception ? this.vh : this.vw) : m.4
+         m.1 := (m.1 ~= "%$") ? SubStr(m.1, 1, -1) * vh : m.1
+         m.2 := (m.2 ~= "%$") ? SubStr(m.2, 1, -1) * (exception ? vh : vw) : m.2
+         m.3 := (m.3 ~= "%$") ? SubStr(m.3, 1, -1) * vh : m.3
+         m.4 := (m.4 ~= "%$") ? SubStr(m.4, 1, -1) * (exception ? vh : vw) : m.4
          return m
       }
 
-      outline(o, font_size, font_color) {
+      outline(o, vw, vh, font_size, font_color) {
          static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
          static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
          static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         vmin := (vw < vh) ? vw : vh
 
          if IsObject(o) {
             o.1 := (o.1) ? o.1 : (o.stroke != "") ? o.stroke : o.s
@@ -646,9 +726,9 @@ class Graphics {
                continue
             o[key] := (o[key] ~= valid_positive) ? RegExReplace(o[key], "\s", "") : 0 ; Default for everything is 0.
             o[key] := (o[key] ~= "i)(pt|px)$") ? SubStr(o[key], 1, -2) : o[key]
-            o[key] := (o[key] ~= "i)vw$") ? RegExReplace(o[key], "i)vw$", "") * this.vw : o[key]
-            o[key] := (o[key] ~= "i)vh$") ? RegExReplace(o[key], "i)vh$", "") * this.vh : o[key]
-            o[key] := (o[key] ~= "i)vmin$") ? RegExReplace(o[key], "i)vmin$", "") * this.vmin : o[key]
+            o[key] := (o[key] ~= "i)vw$") ? RegExReplace(o[key], "i)vw$", "") * vw : o[key]
+            o[key] := (o[key] ~= "i)vh$") ? RegExReplace(o[key], "i)vh$", "") * vh : o[key]
+            o[key] := (o[key] ~= "i)vmin$") ? RegExReplace(o[key], "i)vmin$", "") * vmin : o[key]
          }
 
          o.1 := (o.1 ~= "%$") ? SubStr(o.1, 1, -1) * 0.01 * font_size : o.1
@@ -657,6 +737,7 @@ class Graphics {
          o.4 := this.color(o.4, o.2) ; Default color is outline color.
          return o
       }
+
    }
 
    class safe_bitmap {
@@ -1031,18 +1112,18 @@ class Graphics {
          return this
       }
 
-      Render(color := "", style := "", empty := "", update := true) {
-         if (!this.hwnd)
-            return (new this).Render(color, style, empty)
+      Render(terms*) {
+         if !(this.hwnd)
+            return (new this).Render(terms*)
 
          this.state.new(A_ThisFunc)
 
          Gdip_GraphicsClear(this.__screen.G)
 
-         this.UpdateOnScreenResolutionChange()
-         this.Draw(color, style, empty)
-         if (update)
-            UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+         this.UpdateMemory()
+         this.Draw(terms*)
+
+         UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
 
          if (this.time) {
             self_destruct := ObjBindMethod(this, "Destroy")
@@ -1057,7 +1138,7 @@ class Graphics {
       }
 
       Redraw(x, y, w, h) {
-         ;this.UpdateOnScreenResolutionChange()
+         ;this.UpdateMemory()
          Gdip_SetSmoothingMode(this.__screen.G, 4) ;Adds one clickable pixel to the edge.
          pBrush := Gdip_BrushCreateSolid(this.color)
 
@@ -1099,7 +1180,7 @@ class Graphics {
          Gdip_DeleteBrush(pBrush)
       }
 
-      Draw(color := "", style := "", empty := "", pGraphics := "") {
+      Draw(color := "", style := "") {
 
          ; Note that only the second layer is drawn on. The first layer is the reference layer.
          if (pGraphics == "") {
@@ -1155,9 +1236,9 @@ class Graphics {
          static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
          static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
 
-         this.vw := 0.01 * this.ScreenWidth    ; 1% of viewport width.
-         this.vh := 0.01 * this.ScreenHeight   ; 1% of viewport height.
-         this.vmin := (this.vw < this.vh) ? this.vw : this.vh ; 1vw or 1vh, whichever is smaller.
+         vw := 0.01 * this.ScreenWidth    ; 1% of viewport width.
+         vh := 0.01 * this.ScreenHeight   ; 1% of viewport height.
+         vmin := (vw < vh) ? vw : vh ; 1vw or 1vh, whichever is smaller.
 
          ; Default = 0, LowQuality = 1, HighQuality = 2, Bilinear = 3
          ; Bicubic = 4, NearestNeighbor = 5, HighQualityBilinear = 6, HighQualityBicubic = 7
@@ -1166,16 +1247,16 @@ class Graphics {
 
          w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : width ; Default width is image width.
          w  := ( w ~= "i)(pt|px)$") ? SubStr( w, 1, -2) :  w
-         w  := ( w ~= "i)vw$") ? RegExReplace( w, "i)vw$", "") * this.vw :  w
-         w  := ( w ~= "i)vh$") ? RegExReplace( w, "i)vh$", "") * this.vh :  w
-         w  := ( w ~= "i)vmin$") ? RegExReplace( w, "i)vmin$", "") * this.vmin :  w
+         w  := ( w ~= "i)vw$") ? RegExReplace( w, "i)vw$", "") * vw :  w
+         w  := ( w ~= "i)vh$") ? RegExReplace( w, "i)vh$", "") * vh :  w
+         w  := ( w ~= "i)vmin$") ? RegExReplace( w, "i)vmin$", "") * vmin :  w
          w  := ( w ~= "%$") ? RegExReplace( w, "%$", "") * 0.01 * width :  w
 
          h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : height ; Default height is image height.
          h  := ( h ~= "i)(pt|px)$") ? SubStr( h, 1, -2) :  h
-         h  := ( h ~= "i)vw$") ? RegExReplace( h, "i)vw$", "") * this.vw :  h
-         h  := ( h ~= "i)vh$") ? RegExReplace( h, "i)vh$", "") * this.vh :  h
-         h  := ( h ~= "i)vmin$") ? RegExReplace( h, "i)vmin$", "") * this.vmin :  h
+         h  := ( h ~= "i)vw$") ? RegExReplace( h, "i)vw$", "") * vw :  h
+         h  := ( h ~= "i)vh$") ? RegExReplace( h, "i)vh$", "") * vh :  h
+         h  := ( h ~= "i)vmin$") ? RegExReplace( h, "i)vmin$", "") * vmin :  h
          h  := ( h ~= "%$") ? RegExReplace( h, "%$", "") * 0.01 * height :  h
 
          ; If size is "auto" automatically downscale by a multiple of 2. Ex: 50%, 25%, 12.5%...
@@ -1194,9 +1275,9 @@ class Graphics {
 
          s  := ( s ~= valid_positive) ? RegExReplace( s, "\s", "") : 1 ; Default size is 1.00.
          s  := ( s ~= "i)(pt|px)$") ? SubStr( s, 1, -2) :  s
-         s  := ( s ~= "i)vw$") ? RegExReplace( s, "i)vw$", "") * this.vw / width :  s
-         s  := ( s ~= "i)vh$") ? RegExReplace( s, "i)vh$", "") * this.vh / height:  s
-         s  := ( s ~= "i)vmin$") ? RegExReplace( s, "i)vmin$", "") * this.vmin / minimum :  s
+         s  := ( s ~= "i)vw$") ? RegExReplace( s, "i)vw$", "") * vw / width :  s
+         s  := ( s ~= "i)vh$") ? RegExReplace( s, "i)vh$", "") * vh / height:  s
+         s  := ( s ~= "i)vmin$") ? RegExReplace( s, "i)vmin$", "") * vmin / minimum :  s
          s  := ( s ~= "%$") ? RegExReplace( s, "%$", "") * 0.01 :  s
 
          ; Scale width and height.
@@ -1221,15 +1302,15 @@ class Graphics {
          ; Validate x and y, convert to pixels.
          x  := ( x ~= valid) ? RegExReplace( x, "\s", "") : 0 ; Default x is 0.
          x  := ( x ~= "i)(pt|px)$") ? SubStr( x, 1, -2) :  x
-         x  := ( x ~= "i)(%|vw)$") ? RegExReplace( x, "i)(%|vw)$", "") * this.vw :  x
-         x  := ( x ~= "i)vh$") ? RegExReplace( x, "i)vh$", "") * this.vh :  x
-         x  := ( x ~= "i)vmin$") ? RegExReplace( x, "i)vmin$", "") * this.vmin :  x
+         x  := ( x ~= "i)(%|vw)$") ? RegExReplace( x, "i)(%|vw)$", "") * vw :  x
+         x  := ( x ~= "i)vh$") ? RegExReplace( x, "i)vh$", "") * vh :  x
+         x  := ( x ~= "i)vmin$") ? RegExReplace( x, "i)vmin$", "") * vmin :  x
 
          y  := ( y ~= valid) ? RegExReplace( y, "\s", "") : 0 ; Default y is 0.
          y  := ( y ~= "i)(pt|px)$") ? SubStr( y, 1, -2) :  y
-         y  := ( y ~= "i)vw$") ? RegExReplace( y, "i)vw$", "") * this.vw :  y
-         y  := ( y ~= "i)(%|vh)$") ? RegExReplace( y, "i)(%|vh)$", "") * this.vh :  y
-         y  := ( y ~= "i)vmin$") ? RegExReplace( y, "i)vmin$", "") * this.vmin :  y
+         y  := ( y ~= "i)vw$") ? RegExReplace( y, "i)vw$", "") * vw :  y
+         y  := ( y ~= "i)(%|vh)$") ? RegExReplace( y, "i)(%|vh)$", "") * vh :  y
+         y  := ( y ~= "i)vmin$") ? RegExReplace( y, "i)vmin$", "") * vmin :  y
 
          ; Modify x and y values with the anchor, so that the image has a new point of origin.
          x  -= (mod(a-1,3) == 0) ? 0 : (mod(a-1,3) == 1) ? w/2 : (mod(a-1,3) == 2) ? w : 0
@@ -1239,7 +1320,7 @@ class Graphics {
          x := Floor(x)
          y := Floor(y)
 
-         m := this.margin_and_padding(m)
+         m := this.outer.parse.margin_and_padding(m, vw, vh)
 
          ; Calculate border using margin.
          _x  := x - (m.4)
@@ -1255,7 +1336,7 @@ class Graphics {
 
          if (image != "") {
             ; Draw border.
-            c := this.color(c, 0xFF000000) ; Default color is black.
+            c := this.outer.parse.color(c, 0xFF000000) ; Default color is black.
             pBrush := Gdip_BrushCreateSolid(c)
             Gdip_FillRectangle(pGraphics, pBrush, _x, _y, _w, _h)
             Gdip_DeleteBrush(pBrush)
@@ -1531,41 +1612,22 @@ class Graphics {
       ; Strings: File, URL, Window Title (ahk_class...), base64
       ; Numbers: hwnd, GDI Bitmap, GDI HBitmap
 
-      Render(image := "", style := "", polygons := "") {
-         if (!this.hwnd)
-            return (new this).Render(image, style, polygons)
-
-         this.UpdateOnScreenResolutionChange()
-         Gdip_GraphicsClear(this.G)
-         this.Draw(image, style, polygons)
-         UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-         if (this.time) {
-            self_destruct := ObjBindMethod(this, "Destroy")
-            SetTimer, % self_destruct, % -1 * this.time
-         }
-         return this
-      }
-
-      Draw(image := "", style := "", polygons := "", pGraphics := "") {
-         if (pGraphics == "")
-            pGraphics := this.G
-
+      DrawRaw(pGraphics, ScreenWidth, ScreenHeight, image := "", style := "", polygons := "") {
+         ; Preprocess image to a native GDI bitmap.
          if (image != "") {
             if !(type := this.DontVerifyImageType(image))
                type := this.ImageType(image)
             pBitmap := this.toBitmap(type, image)
          }
 
+         ; Remove excess whitespace for proper RegEx detection.
          style := !IsObject(style) ? RegExReplace(style, "\s+", " ") : style
 
-         if (style == "")
-            style := this.style
-         else
-            this.style := style
-
+         ; RegEx help? https://regex101.com/r/xLzZzO/2
          static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
          static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
 
+         ; Extract styles to variables.
          if IsObject(style) {
             t  := (style.time != "")        ? style.time        : style.t
             a  := (style.anchor != "")      ? style.anchor      : style.a
@@ -1590,6 +1652,7 @@ class Graphics {
             q  := ((___ := RegExReplace(style, q1    "(q(uality)?)"       q2, "${value}")) != style) ? ___ : ""
          }
 
+         ; Extract the time variable and save it for a later when we Render() everything.
          static times := "(?i)^\s*(\d+)\s*(ms|mil(li(second)?)?|s(ec(ond)?)?|m(in(ute)?)?|h(our)?|d(ay)?)?s?\s*$"
          t  := ( t ~= times) ? RegExReplace( t, "\s", "") : 0 ; Default time is zero.
          t  := ((___ := RegExReplace( t, "i)(\d+)(ms|mil(li(second)?)?)s?$", "$1")) !=  t) ? ___ *        1 : t
@@ -1597,46 +1660,45 @@ class Graphics {
          t  := ((___ := RegExReplace( t, "i)(\d+)m(in(ute)?)?s?$"          , "$1")) !=  t) ? ___ *    60000 : t
          t  := ((___ := RegExReplace( t, "i)(\d+)h(our)?s?$"               , "$1")) !=  t) ? ___ *  3600000 : t
          t  := ((___ := RegExReplace( t, "i)(\d+)d(ay)?s?$"                , "$1")) !=  t) ? ___ * 86400000 : t
-         this.time := t
 
+         ; These are the type checkers.
          static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
          static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
 
-         this.vw := 0.01 * this.ScreenWidth    ; 1% of viewport width.
-         this.vh := 0.01 * this.ScreenHeight   ; 1% of viewport height.
-         this.vmin := (this.vw < this.vh) ? this.vw : this.vh ; 1vw or 1vh, whichever is smaller.
-
-         ; Default = 0, LowQuality = 1, HighQuality = 2, Bilinear = 3
-         ; Bicubic = 4, NearestNeighbor = 5, HighQualityBilinear = 6, HighQualityBicubic = 7
-         q := (q >= 0 && q <= 7) ? q : 7       ; Default InterpolationMode is HighQualityBicubic.
-         Gdip_SetInterpolationMode(pGraphics, q)
+         ; Define viewport width and height. This is the visible screen area.
+         vw := 0.01 * ScreenWidth    ; 1% of viewport width.
+         vh := 0.01 * ScreenHeight   ; 1% of viewport height.
+         vmin := (vw < vh) ? vw : vh ; 1vw or 1vh, whichever is smaller.
 
          ; Get original image width and height.
          width := Gdip_GetImageWidth(pBitmap)
          height := Gdip_GetImageHeight(pBitmap)
          minimum := (width < height) ? width : height
 
-         w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : width ; Default width is image width.
+         ; Get background width and height. Default width and height are image width and height.
+         w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : width ; Default
          w  := ( w ~= "i)(pt|px)$") ? SubStr( w, 1, -2) :  w
-         w  := ( w ~= "i)vw$") ? RegExReplace( w, "i)vw$", "") * this.vw :  w
-         w  := ( w ~= "i)vh$") ? RegExReplace( w, "i)vh$", "") * this.vh :  w
-         w  := ( w ~= "i)vmin$") ? RegExReplace( w, "i)vmin$", "") * this.vmin :  w
+         w  := ( w ~= "i)vw$") ? RegExReplace( w, "i)vw$", "") * vw :  w
+         w  := ( w ~= "i)vh$") ? RegExReplace( w, "i)vh$", "") * vh :  w
+         w  := ( w ~= "i)vmin$") ? RegExReplace( w, "i)vmin$", "") * vmin :  w
          w  := ( w ~= "%$") ? RegExReplace( w, "%$", "") * 0.01 * width :  w
+         ; Output is a decimal with pixel units.
 
-         h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : height ; Default height is image height.
+         h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : height ; Default
          h  := ( h ~= "i)(pt|px)$") ? SubStr( h, 1, -2) :  h
-         h  := ( h ~= "i)vw$") ? RegExReplace( h, "i)vw$", "") * this.vw :  h
-         h  := ( h ~= "i)vh$") ? RegExReplace( h, "i)vh$", "") * this.vh :  h
-         h  := ( h ~= "i)vmin$") ? RegExReplace( h, "i)vmin$", "") * this.vmin :  h
+         h  := ( h ~= "i)vw$") ? RegExReplace( h, "i)vw$", "") * vw :  h
+         h  := ( h ~= "i)vh$") ? RegExReplace( h, "i)vh$", "") * vh :  h
+         h  := ( h ~= "i)vmin$") ? RegExReplace( h, "i)vmin$", "") * vmin :  h
          h  := ( h ~= "%$") ? RegExReplace( h, "%$", "") * 0.01 * height :  h
+         ; Output is a decimal with pixel units.
 
-         ; If size is "auto" automatically downscale by a multiple of 2. Ex: 50%, 25%, 12.5%...
+         ; If size is "auto" automatically downscale by the harmonic series. Ex: 50%, 33%, 25%, 20%...
          if (s = "auto") {
             ; Determine what is smaller: declared width and height or screen width and height.
             ; Since the declared w and h are overwritten by the size, they now determine the bounds.
             ; Default bounds are the ScreenWidth and ScreenHeight, and can be decreased, never increased.
-            visible_w := (w > this.ScreenWidth) ? this.ScreenWidth : w
-            visible_h := (h > this.ScreenHeight) ? this.ScreenHeight : h
+            visible_w := (w > ScreenWidth) ? ScreenWidth : w
+            visible_h := (h > ScreenHeight) ? ScreenHeight : h
             auto_w := (width > visible_w) ? width // visible_w + 1 : 1
             auto_h := (height > visible_h) ? height // visible_h + 1 : 1
             s := (auto_w > auto_h) ? (1 / auto_w) : (1 / auto_h)
@@ -1646,9 +1708,9 @@ class Graphics {
 
          s  := ( s ~= valid_positive) ? RegExReplace( s, "\s", "") : 1 ; Default size is 1.00.
          s  := ( s ~= "i)(pt|px)$") ? SubStr( s, 1, -2) :  s
-         s  := ( s ~= "i)vw$") ? RegExReplace( s, "i)vw$", "") * this.vw / width :  s
-         s  := ( s ~= "i)vh$") ? RegExReplace( s, "i)vh$", "") * this.vh / height:  s
-         s  := ( s ~= "i)vmin$") ? RegExReplace( s, "i)vmin$", "") * this.vmin / minimum :  s
+         s  := ( s ~= "i)vw$") ? RegExReplace( s, "i)vw$", "") * vw / width :  s
+         s  := ( s ~= "i)vh$") ? RegExReplace( s, "i)vh$", "") * vh / height:  s
+         s  := ( s ~= "i)vmin$") ? RegExReplace( s, "i)vmin$", "") * vmin / minimum :  s
          s  := ( s ~= "%$") ? RegExReplace( s, "%$", "") * 0.01 :  s
 
          ; Scale width and height.
@@ -1667,21 +1729,21 @@ class Graphics {
          a  := ( y ~= "i)top") ? 1+(mod( a-1,3)) : ( y ~= "i)cent(er|re)") ? 4+(mod( a-1,3)) : ( y ~= "i)bottom") ? 7+(mod( a-1,3)) :  a
 
          ; Convert English words to numbers. Don't mess with these values any further.
-         x  := ( x ~= "i)left") ? 0 : (x ~= "i)cent(er|re)") ? 0.5*this.ScreenWidth : (x ~= "i)right") ? this.ScreenWidth : x
-         y  := ( y ~= "i)top") ? 0 : (y ~= "i)cent(er|re)") ? 0.5*this.ScreenHeight : (y ~= "i)bottom") ? this.ScreenHeight : y
+         x  := ( x ~= "i)left") ? 0 : (x ~= "i)cent(er|re)") ? 0.5*ScreenWidth : (x ~= "i)right") ? ScreenWidth : x
+         y  := ( y ~= "i)top") ? 0 : (y ~= "i)cent(er|re)") ? 0.5*ScreenHeight : (y ~= "i)bottom") ? ScreenHeight : y
 
          ; Validate x and y, convert to pixels.
          x  := ( x ~= valid) ? RegExReplace( x, "\s", "") : 0 ; Default x is 0.
          x  := ( x ~= "i)(pt|px)$") ? SubStr( x, 1, -2) :  x
-         x  := ( x ~= "i)(%|vw)$") ? RegExReplace( x, "i)(%|vw)$", "") * this.vw :  x
-         x  := ( x ~= "i)vh$") ? RegExReplace( x, "i)vh$", "") * this.vh :  x
-         x  := ( x ~= "i)vmin$") ? RegExReplace( x, "i)vmin$", "") * this.vmin :  x
+         x  := ( x ~= "i)(%|vw)$") ? RegExReplace( x, "i)(%|vw)$", "") * vw :  x
+         x  := ( x ~= "i)vh$") ? RegExReplace( x, "i)vh$", "") * vh :  x
+         x  := ( x ~= "i)vmin$") ? RegExReplace( x, "i)vmin$", "") * vmin :  x
 
          y  := ( y ~= valid) ? RegExReplace( y, "\s", "") : 0 ; Default y is 0.
          y  := ( y ~= "i)(pt|px)$") ? SubStr( y, 1, -2) :  y
-         y  := ( y ~= "i)vw$") ? RegExReplace( y, "i)vw$", "") * this.vw :  y
-         y  := ( y ~= "i)(%|vh)$") ? RegExReplace( y, "i)(%|vh)$", "") * this.vh :  y
-         y  := ( y ~= "i)vmin$") ? RegExReplace( y, "i)vmin$", "") * this.vmin :  y
+         y  := ( y ~= "i)vw$") ? RegExReplace( y, "i)vw$", "") * vw :  y
+         y  := ( y ~= "i)(%|vh)$") ? RegExReplace( y, "i)(%|vh)$", "") * vh :  y
+         y  := ( y ~= "i)vmin$") ? RegExReplace( y, "i)vmin$", "") * vmin :  y
 
          ; Modify x and y values with the anchor, so that the image has a new point of origin.
          x  -= (mod(a-1,3) == 0) ? 0 : (mod(a-1,3) == 1) ? w/2 : (mod(a-1,3) == 2) ? w : 0
@@ -1691,7 +1753,7 @@ class Graphics {
          x := Floor(x)
          y := Floor(y)
 
-         m := this.margin_and_padding(m)
+         m := this.outer.parse.margin_and_padding(m, vw, vh)
 
          ; Calculate border using margin.
          _x  := x - (m.4)
@@ -1699,61 +1761,96 @@ class Graphics {
          _w  := w + (m.2 + m.4)
          _h  := h + (m.1 + m.3)
 
-         ; Save size.
+         ; Save original Graphics settings.
+         DllCall("gdiplus\GdipGetPixelOffsetMode",   "ptr",pGraphics, "int*",PixelOffsetMode)
+         DllCall("gdiplus\GdipGetCompositingMode",   "ptr",pGraphics, "int*",CompositingMode)
+         DllCall("gdiplus\GdipGetSmoothingMode",     "ptr",pGraphics, "int*",SmoothingMode)
+         DllCall("gdiplus\GdipGetInterpolationMode", "ptr",pGraphics, "int*",InterpolationMode)
+
+         ; Begin drawing the image onto the canvas.
+         if (image != "") {
+            DllCall("gdiplus\GdipSetPixelOffsetMode",   "ptr",pGraphics, "int",0) ; No pixel offset.
+            DllCall("gdiplus\GdipSetCompositingMode",   "ptr",pGraphics, "int",1) ; Overwrite/SourceCopy.
+            DllCall("gdiplus\GdipSetSmoothingMode",     "ptr",pGraphics, "int",0) ; No anti-alias.
+
+            ; Draw border.
+            c := this.outer.parse.color(c, 0xFF000000) ; Default color is black.
+            pBrush := Gdip_BrushCreateSolid(c)
+            Gdip_FillRectangle(pGraphics, pBrush, _x, _y, _w, _h)
+            Gdip_DeleteBrush(pBrush)
+
+            q := (q >= 0 && q <= 7) ? q : 7       ; Default InterpolationMode is HighQualityBicubic.
+
+            DllCall("gdiplus\GdipSetPixelOffsetMode",   "ptr",pGraphics, "int",2) ; Half pixel offset.
+            DllCall("gdiplus\GdipSetCompositingMode",   "ptr",pGraphics, "int",1) ; Overwrite/SourceCopy.
+            DllCall("gdiplus\GdipSetSmoothingMode",     "ptr",pGraphics, "int",0) ; No anti-alias.
+            DllCall("gdiplus\GdipSetInterpolationMode", "ptr",pGraphics, "int",q) ; Default bicubic.
+
+            ; WrapModeTile         = 0
+            ; WrapModeTileFlipX    = 1
+            ; WrapModeTileFlipY    = 2
+            ; WrapModeTileFlipXY   = 3
+            ; WrapModeClamp        = 4
+            ; Values outside this range downgrades from HighQualityBicubic to something horrible.
+            ; Downgrading removes the pre-filtering on the algorithm, and the need for edge cases.
+            DllCall("gdiplus\GdipCreateImageAttributes", "ptr*",ImageAttr)
+            DllCall("gdiplus\GdipSetImageAttributesWrapMode", "ptr",ImageAttr, "int",3)
+            DllCall("gdiplus\GdipDrawImageRectRectI"
+                     , "ptr", pGraphics
+                     , "ptr", pBitmap
+                     , "int", x           ; destination
+                     , "int", y
+                     , "int", w
+                     , "int", h
+                     , "int", 0           ; source
+                     , "int", 0
+                     , "int", width
+                     , "int", height
+                     , "int", 2
+                     , "ptr", ImageAttr
+                     , "ptr", 0
+                     , "ptr", 0)
+            DllCall("gdiplus\GdipDisposeImageAttributes", "ptr",ImageAttr)
+         }
+
+         ; Begin drawing the polygons onto the canvas.
+         if (polygons != "") {
+            DllCall("gdiplus\GdipSetPixelOffsetMode",   "ptr",pGraphics, "int",0) ; No pixel offset.
+            DllCall("gdiplus\GdipSetCompositingMode",   "ptr",pGraphics, "int",1) ; Overwrite/SourceCopy.
+            DllCall("gdiplus\GdipSetSmoothingMode",     "ptr",pGraphics, "int",2) ; Use anti-alias.
+
+            pPen := Gdip_CreatePen(0xFFFF0000, 1)
+
+            for i, polygon in polygons {
+               DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
+               VarSetCapacity(pointf, 8*polygons[i].polygon.maxIndex(), 0)
+               for j, point in polygons[i].polygon {
+                  NumPut(point.x*s + x, pointf, 8*(A_Index-1) + 0, "float")
+                  NumPut(point.y*s + y, pointf, 8*(A_Index-1) + 4, "float")
+               }
+               DllCall("gdiplus\GdipAddPathPolygon", "ptr",pPath, "ptr",&pointf, "uint",polygons[i].polygon.maxIndex())
+               DllCall("gdiplus\GdipDrawPath", "ptr",pGraphics, "ptr",pPen, "ptr",pPath) ; DRAWING!
+            }
+
+            Gdip_DeletePen(pPen)
+         }
+
+         ; Restore original Graphics settings.
+         DllCall("gdiplus\GdipSetPixelOffsetMode",   "ptr",pGraphics, "int",PixelOffsetMode)
+         DllCall("gdiplus\GdipSetCompositingMode",   "ptr",pGraphics, "int",CompositingMode)
+         DllCall("gdiplus\GdipSetSmoothingMode",     "ptr",pGraphics, "int",SmoothingMode)
+         DllCall("gdiplus\GdipSetInterpolationMode", "ptr",pGraphics, "int",InterpolationMode)
+
+         if (type != "pBitmap")
+            Gdip_DisposeImage(pBitmap)
+
+         this.time := t
          this.x := _x
          this.y := _y
          this.w := _w
          this.h := _h
 
-         if (image != "") {
-            ; Draw border.
-            c := this.color(c, 0xFF000000) ; Default color is black.
-            pBrush := Gdip_BrushCreateSolid(c)
-            Gdip_FillRectangle(pGraphics, pBrush, _x, _y, _w, _h)
-            Gdip_DeleteBrush(pBrush)
-            ; Draw image.
-            Gdip_SetCompositingMode(pGraphics, 1) ; Turn off alpha blending
-            DllCall("gdiplus\GdipDrawImageRectRect"
-                     , "ptr", pGraphics
-                     , "ptr", pBitmap
-                     , "float", x
-                     , "float", y
-                     , "float", w
-                     , "float", h
-                     , "float", 0
-                     , "float", 0
-                     , "float", width
-                     , "float", height
-                     , "int", 2
-                     , "ptr", 0
-                     , "ptr", 0
-                     , "ptr", 0)
-
-            ;Gdip_DrawImage(pGraphics, pBitmap, x, y, w, h, 0, 0, width, height)
-            Gdip_SetCompositingMode(pGraphics, 0) ; Turn on alpha blending
-         }
-
-         ; POINTF
-         Gdip_SetSmoothingMode(pGraphics, 4)  ; None = 3, AntiAlias = 4
-         pPen := Gdip_CreatePen(0xFFFF0000, 1)
-
-         for i, polygon in polygons {
-            DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
-            VarSetCapacity(pointf, 8*polygons[i].polygon.maxIndex(), 0)
-            for j, point in polygons[i].polygon {
-               NumPut(point.x*s + x, pointf, 8*(A_Index-1) + 0, "float")
-               NumPut(point.y*s + y, pointf, 8*(A_Index-1) + 4, "float")
-            }
-            DllCall("gdiplus\GdipAddPathPolygon", "ptr",pPath, "ptr",&pointf, "uint",polygons[i].polygon.maxIndex())
-            DllCall("gdiplus\GdipDrawPath", "ptr",pGraphics, "ptr",pPen, "ptr",pPath) ; DRAWING!
-         }
-
-         Gdip_DeletePen(pPen)
-
-         if (type != "pBitmap")
-            Gdip_DisposeImage(pBitmap)
-
-         return (pGraphics == "") ? this : ""
+         return [_x,_y,_w,_h]
       }
 
       Preprocess(cotype, image, crop := "", scale := "", terms*) {
@@ -2320,53 +2417,23 @@ class Graphics {
 
       layers := {}
 
-      Render(text := "", style1 := "", style2 := "", update := true) {
-         if (!this.hwnd)
-            return (new this).Render(text, style1, style2, update)
-
-         this.Draw(text, style1, style2)
-         this.UpdateOnScreenResolutionChange()
-         if (this.allowDrag == true)
-            this.Reposition()
-         if (update == true) {
-            UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-         }
-         if (this.time) {
-            self_destruct := ObjBindMethod(this, "Destroy")
-            SetTimer, % self_destruct, % -1 * this.time
-         }
-         this.rendered := true
-         return this
+      /*
+      Render(terms*){
+         if !(this.hwnd)
+            return (new this).Render(terms*)
       }
+      */
 
-      Draw(text := "", style1 := "", style2 := "", pGraphics := "") {
-         ; If the image was previously rendered, reset everything like a new Subtitle object.
-         if (pGraphics == "") {
-            if (this.rendered == true) {
-               this.rendered := false
-               this.layers := {}
-               this.x := this.y := this.xx := this.yy := "" ; not 0!
-               Gdip_GraphicsClear(this.G)
-            }
-            this.layers.push([text, style1, style2]) ; Saves each call of Draw()
-            pGraphics := this.G
-         }
-
-         ; Remove excess whitespace. This is required for proper RegEx detection.
+      DrawRaw(pGraphics, ScreenWidth, ScreenHeight, text := "", style1 := "", style2 := "") {
+         ; Remove excess whitespace for proper RegEx detection.
          style1 := !IsObject(style1) ? RegExReplace(style1, "\s+", " ") : style1
          style2 := !IsObject(style2) ? RegExReplace(style2, "\s+", " ") : style2
-
-         ; Load saved styles if and only if both styles are blank.
-         if (style1 == "" && style2 == "")
-            style1 := this.style1, style2 := this.style2
-         else
-            this.style1 := style1, this.style2 := style2 ; Remember styles so that they can be loaded next time.
 
          ; RegEx help? https://regex101.com/r/xLzZzO/2
          static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
          static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
 
-         ; Extract styles from the background styles parameter.
+         ; Extract styles to variables.
          if IsObject(style1) {
             _t  := (style1.time != "")     ? style1.time     : style1.t
             _a  := (style1.anchor != "")   ? style1.anchor   : style1.a
@@ -2393,7 +2460,6 @@ class Graphics {
             _q  := ((___ := RegExReplace(style1, q1    "(q(uality)?)"       q2, "${value}")) != style1) ? ___ : ""
          }
 
-         ; Extract styles from the text styles parameter.
          if IsObject(style2) {
             t  := (style2.time != "")        ? style2.time        : style2.t
             a  := (style2.anchor != "")      ? style2.anchor      : style2.a
@@ -2436,7 +2502,7 @@ class Graphics {
             q  := ((___ := RegExReplace(style2, q1    "(q(uality)?)"       q2, "${value}")) != style2) ? ___ : ""
          }
 
-         ; Extract the time variable and save it for later when we Render() everything.
+         ; Extract the time variable and save it for a later when we Render() everything.
          static times := "(?i)^\s*(\d+)\s*(ms|mil(li(second)?)?|s(ec(ond)?)?|m(in(ute)?)?|h(our)?|d(ay)?)?s?\s*$"
          t  := (_t) ? _t : t
          t  := ( t ~= times) ? RegExReplace( t, "\s", "") : 0 ; Default time is zero.
@@ -2445,16 +2511,15 @@ class Graphics {
          t  := ((___ := RegExReplace( t, "i)(\d+)m(in(ute)?)?s?$"          , "$1")) !=  t) ? ___ *    60000 : t
          t  := ((___ := RegExReplace( t, "i)(\d+)h(our)?s?$"               , "$1")) !=  t) ? ___ *  3600000 : t
          t  := ((___ := RegExReplace( t, "i)(\d+)d(ay)?s?$"                , "$1")) !=  t) ? ___ * 86400000 : t
-         this.time := t
 
          ; These are the type checkers.
          static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
          static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
 
          ; Define viewport width and height. This is the visible screen area.
-         this.vw := 0.01 * this.ScreenWidth    ; 1% of viewport width.
-         this.vh := 0.01 * this.ScreenHeight   ; 1% of viewport height.
-         this.vmin := (this.vw < this.vh) ? this.vw : this.vh ; 1vw or 1vh, whichever is smaller.
+         vw := 0.01 * ScreenWidth    ; 1% of viewport width.
+         vh := 0.01 * ScreenHeight   ; 1% of viewport height.
+         vmin := (vw < vh) ? vw : vh ; 1vw or 1vh, whichever is smaller.
 
          ; Get Rendering Quality.
          _q := (_q >= 0 && _q <= 4) ? _q : 4          ; Default SmoothingMode is 4 if radius is set. See Draw 1.
@@ -2463,9 +2528,9 @@ class Graphics {
          ; Get Font size.
          s  := (s ~= valid_positive) ? RegExReplace(s, "\s", "") : "2.23vh"           ; Default font size is 2.23vh.
          s  := (s ~= "i)(pt|px)$") ? SubStr(s, 1, -2) : s                               ; Strip spaces, px, and pt.
-         s  := (s ~= "i)vh$") ? RegExReplace(s, "i)vh$", "") * this.vh : s                ; Relative to viewport height.
-         s  := (s ~= "i)vw$") ? RegExReplace(s, "i)vw$", "") * this.vw : s                ; Relative to viewport width.
-         s  := (s ~= "i)(%|vmin)$") ? RegExReplace(s, "i)(%|vmin)$", "") * this.vmin : s  ; Relative to viewport minimum.
+         s  := (s ~= "i)vh$") ? RegExReplace(s, "i)vh$", "") * vh : s                ; Relative to viewport height.
+         s  := (s ~= "i)vw$") ? RegExReplace(s, "i)vw$", "") * vw : s                ; Relative to viewport width.
+         s  := (s ~= "i)(%|vmin)$") ? RegExReplace(s, "i)(%|vmin)$", "") * vmin : s  ; Relative to viewport minimum.
 
          ; Get Bold, Italic, Underline, NoWrap, and Justification of text.
          style += (b) ? 1 : 0         ; bold
@@ -2477,8 +2542,9 @@ class Graphics {
 
          ; Later when text x and w are finalized and it is found that x + ReturnRC[3] exceeds the screen,
          ; then the _redrawBecauseOfCondensedFont flag is set to true.
-         if (this._redrawBecauseOfCondensedFont == true)
-            f:=z, z:=0, this._redrawBecauseOfCondensedFont := false
+         static _redrawBecauseOfCondensedFont
+         if (_redrawBecauseOfCondensedFont == true)
+            f:=z, z:=0, _redrawBecauseOfCondensedFont := false
 
          ; Create Font.
          f := (f) ? f : "Arial"  ; Default font is Arial.
@@ -2500,16 +2566,16 @@ class Graphics {
          ; Get background width and height. Default width and height are simulated width and height.
          _w := (_w ~= valid_positive) ? RegExReplace(_w, "\s", "") : ReturnRC[3]
          _w := (_w ~= "i)(pt|px)$") ? SubStr(_w, 1, -2) : _w
-         _w := (_w ~= "i)(%|vw)$") ? RegExReplace(_w, "i)(%|vw)$", "") * this.vw : _w
-         _w := (_w ~= "i)vh$") ? RegExReplace(_w, "i)vh$", "") * this.vh : _w
-         _w := (_w ~= "i)vmin$") ? RegExReplace(_w, "i)vmin$", "") * this.vmin : _w
+         _w := (_w ~= "i)(%|vw)$") ? RegExReplace(_w, "i)(%|vw)$", "") * vw : _w
+         _w := (_w ~= "i)vh$") ? RegExReplace(_w, "i)vh$", "") * vh : _w
+         _w := (_w ~= "i)vmin$") ? RegExReplace(_w, "i)vmin$", "") * vmin : _w
          ; Output is a decimal with pixel units.
 
          _h := (_h ~= valid_positive) ? RegExReplace(_h, "\s", "") : ReturnRC[4]
          _h := (_h ~= "i)(pt|px)$") ? SubStr(_h, 1, -2) : _h
-         _h := (_h ~= "i)vw$") ? RegExReplace(_h, "i)vw$", "") * this.vw : _h
-         _h := (_h ~= "i)(%|vh)$") ? RegExReplace(_h, "i)(%|vh)$", "") * this.vh : _h
-         _h := (_h ~= "i)vmin$") ? RegExReplace(_h, "i)vmin$", "") * this.vmin : _h
+         _h := (_h ~= "i)vw$") ? RegExReplace(_h, "i)vw$", "") * vw : _h
+         _h := (_h ~= "i)(%|vh)$") ? RegExReplace(_h, "i)(%|vh)$", "") * vh : _h
+         _h := (_h ~= "i)vmin$") ? RegExReplace(_h, "i)vmin$", "") * vmin : _h
          ; Output is a decimal with pixel units.
 
          ; Get background anchor. This is where the origin of the image is located.
@@ -2528,22 +2594,22 @@ class Graphics {
          _a  := (_y ~= "i)top") ? 1+(mod(_a-1,3)) : (_y ~= "i)cent(er|re)") ? 4+(mod(_a-1,3)) : (_y ~= "i)bottom") ? 7+(mod(_a-1,3)) : _a
 
          ; Convert English words to numbers. Don't mess with these values any further.
-         _x  := (_x ~= "i)left") ? 0 : (_x ~= "i)cent(er|re)") ? 0.5*this.ScreenWidth : (_x ~= "i)right") ? this.ScreenWidth : _x
-         _y  := (_y ~= "i)top") ? 0 : (_y ~= "i)cent(er|re)") ? 0.5*this.ScreenHeight : (_y ~= "i)bottom") ? this.ScreenHeight : _y
+         _x  := (_x ~= "i)left") ? 0 : (_x ~= "i)cent(er|re)") ? 0.5*ScreenWidth : (_x ~= "i)right") ? ScreenWidth : _x
+         _y  := (_y ~= "i)top") ? 0 : (_y ~= "i)cent(er|re)") ? 0.5*ScreenHeight : (_y ~= "i)bottom") ? ScreenHeight : _y
 
          ; Get _x value.
          _x := (_x ~= valid) ? RegExReplace(_x, "\s", "") : 0  ; Default _x is 0.
          _x := (_x ~= "i)(pt|px)$") ? SubStr(_x, 1, -2) : _x
-         _x := (_x ~= "i)(%|vw)$") ? RegExReplace(_x, "i)(%|vw)$", "") * this.vw : _x
-         _x := (_x ~= "i)vh$") ? RegExReplace(_x, "i)vh$", "") * this.vh : _x
-         _x := (_x ~= "i)vmin$") ? RegExReplace(_x, "i)vmin$", "") * this.vmin : _x
+         _x := (_x ~= "i)(%|vw)$") ? RegExReplace(_x, "i)(%|vw)$", "") * vw : _x
+         _x := (_x ~= "i)vh$") ? RegExReplace(_x, "i)vh$", "") * vh : _x
+         _x := (_x ~= "i)vmin$") ? RegExReplace(_x, "i)vmin$", "") * vmin : _x
 
          ; Get _y value.
          _y := (_y ~= valid) ? RegExReplace(_y, "\s", "") : 0  ; Default _y is 0.
          _y := (_y ~= "i)(pt|px)$") ? SubStr(_y, 1, -2) : _y
-         _y := (_y ~= "i)vw$") ? RegExReplace(_y, "i)vw$", "") * this.vw : _y
-         _y := (_y ~= "i)(%|vh)$") ? RegExReplace(_y, "i)(%|vh)$", "") * this.vh : _y
-         _y := (_y ~= "i)vmin$") ? RegExReplace(_y, "i)vmin$", "") * this.vmin : _y
+         _y := (_y ~= "i)vw$") ? RegExReplace(_y, "i)vw$", "") * vw : _y
+         _y := (_y ~= "i)(%|vh)$") ? RegExReplace(_y, "i)(%|vh)$", "") * vh : _y
+         _y := (_y ~= "i)vmin$") ? RegExReplace(_y, "i)vmin$", "") * vmin : _y
 
          ; Now let's modify the _x and _y values with the _anchor, so that the image has a new point of origin.
          ; We need our calculated _width and _height for this.
@@ -2558,16 +2624,16 @@ class Graphics {
          ; the user should use "vh" and "vw" whenever possible.
          w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : ReturnRC[3] ; Default is simulated text width.
          w  := ( w ~= "i)(pt|px)$") ? SubStr( w, 1, -2) :  w
-         w  := ( w ~= "i)vw$") ? RegExReplace( w, "i)vw$", "") * this.vw :  w
-         w  := ( w ~= "i)vh$") ? RegExReplace( w, "i)vh$", "") * this.vh :  w
-         w  := ( w ~= "i)vmin$") ? RegExReplace( w, "i)vmin$", "") * this.vmin :  w
+         w  := ( w ~= "i)vw$") ? RegExReplace( w, "i)vw$", "") * vw :  w
+         w  := ( w ~= "i)vh$") ? RegExReplace( w, "i)vh$", "") * vh :  w
+         w  := ( w ~= "i)vmin$") ? RegExReplace( w, "i)vmin$", "") * vmin :  w
          w  := ( w ~= "%$") ? RegExReplace( w, "%$", "") * 0.01 * _w :  w
 
          h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : ReturnRC[4] ; Default is simulated text height.
          h  := ( h ~= "i)(pt|px)$") ? SubStr( h, 1, -2) :  h
-         h  := ( h ~= "i)vw$") ? RegExReplace( h, "i)vw$", "") * this.vw :  h
-         h  := ( h ~= "i)vh$") ? RegExReplace( h, "i)vh$", "") * this.vh :  h
-         h  := ( h ~= "i)vmin$") ? RegExReplace( h, "i)vmin$", "") * this.vmin :  h
+         h  := ( h ~= "i)vw$") ? RegExReplace( h, "i)vw$", "") * vw :  h
+         h  := ( h ~= "i)vh$") ? RegExReplace( h, "i)vh$", "") * vh :  h
+         h  := ( h ~= "i)vmin$") ? RegExReplace( h, "i)vmin$", "") * vmin :  h
          h  := ( h ~= "%$") ? RegExReplace( h, "%$", "") * 0.01 * _h :  h
 
          ; If text justification is set but x is not, align the justified text relative to the center
@@ -2597,16 +2663,16 @@ class Graphics {
          ; Validate text x and y, convert to pixels.
          x  := ( x ~= valid) ? RegExReplace( x, "\s", "") : _x ; Default text x is background x.
          x  := ( x ~= "i)(pt|px)$") ? SubStr( x, 1, -2) :  x
-         x  := ( x ~= "i)vw$") ? RegExReplace( x, "i)vw$", "") * this.vw :  x
-         x  := ( x ~= "i)vh$") ? RegExReplace( x, "i)vh$", "") * this.vh :  x
-         x  := ( x ~= "i)vmin$") ? RegExReplace( x, "i)vmin$", "") * this.vmin :  x
+         x  := ( x ~= "i)vw$") ? RegExReplace( x, "i)vw$", "") * vw :  x
+         x  := ( x ~= "i)vh$") ? RegExReplace( x, "i)vh$", "") * vh :  x
+         x  := ( x ~= "i)vmin$") ? RegExReplace( x, "i)vmin$", "") * vmin :  x
          x  := ( x ~= "%$") ? RegExReplace( x, "%$", "") * 0.01 * _w :  x
 
          y  := ( y ~= valid) ? RegExReplace( y, "\s", "") : _y ; Default text y is background y.
          y  := ( y ~= "i)(pt|px)$") ? SubStr( y, 1, -2) :  y
-         y  := ( y ~= "i)vw$") ? RegExReplace( y, "i)vw$", "") * this.vw :  y
-         y  := ( y ~= "i)vh$") ? RegExReplace( y, "i)vh$", "") * this.vh :  y
-         y  := ( y ~= "i)vmin$") ? RegExReplace( y, "i)vmin$", "") * this.vmin :  y
+         y  := ( y ~= "i)vw$") ? RegExReplace( y, "i)vw$", "") * vw :  y
+         y  := ( y ~= "i)vh$") ? RegExReplace( y, "i)vh$", "") * vh :  y
+         y  := ( y ~= "i)vmin$") ? RegExReplace( y, "i)vmin$", "") * vmin :  y
          y  := ( y ~= "%$") ? RegExReplace( y, "%$", "") * 0.01 * _h :  y
 
          ; Modify text x and text y values with the anchor, so that the text has a new point of origin.
@@ -2620,10 +2686,10 @@ class Graphics {
          ; What does matter is if the margin/padding is a background style, the position of the text will not change.
          ; If the margin/padding is a text style, the text position will change.
          ; THERE REALLY IS NO DIFFERENCE BETWEEN MARGIN AND PADDING.
-         _p := this.margin_and_padding(_p)
-         _m := this.margin_and_padding(_m)
-         p  := this.margin_and_padding( p)
-         m  := this.margin_and_padding( m)
+         _p := this.outer.parse.margin_and_padding(_p, vw, vh)
+         _m := this.outer.parse.margin_and_padding(_m, vw, vh)
+         p  := this.outer.parse.margin_and_padding( p, vw, vh)
+         m  := this.outer.parse.margin_and_padding( m, vw, vh)
 
          ; Modify _x, _y, _w, _h with margin and padding, increasing the size of the background.
          if (_w || _h) {
@@ -2638,34 +2704,34 @@ class Graphics {
          y  += (m.1 + p.1)
 
          ; Re-run: Condense Text using a Condensed Font if simulated text width exceeds screen width.
-         if (Gdip_FontFamilyCreate(z)) {
-            if (ReturnRC[3] + x > this.ScreenWidth) {
-               this._redrawBecauseOfCondensedFont := true
-               return this.Draw(text, style1, style2, pGraphics)
+         if (z) {
+            if (ReturnRC[3] + x > ScreenWidth) {
+               _redrawBecauseOfCondensedFont := true
+               return this.DrawRaw(pGraphics, ScreenWidth, ScreenHeight, text, style1, style2)
             }
          }
 
          ; Define radius of rounded corners.
          _r := (_r ~= valid_positive) ? RegExReplace(_r, "\s", "") : 0  ; Default radius is 0, or square corners.
          _r := (_r ~= "i)(pt|px)$") ? SubStr(_r, 1, -2) : _r
-         _r := (_r ~= "i)vw$") ? RegExReplace(_r, "i)vw$", "") * this.vw : _r
-         _r := (_r ~= "i)vh$") ? RegExReplace(_r, "i)vh$", "") * this.vh : _r
-         _r := (_r ~= "i)vmin$") ? RegExReplace(_r, "i)vmin$", "") * this.vmin : _r
+         _r := (_r ~= "i)vw$") ? RegExReplace(_r, "i)vw$", "") * vw : _r
+         _r := (_r ~= "i)vh$") ? RegExReplace(_r, "i)vh$", "") * vh : _r
+         _r := (_r ~= "i)vmin$") ? RegExReplace(_r, "i)vmin$", "") * vmin : _r
          ; percentage is defined as a percentage of the smaller background width/height.
          _r := (_r ~= "%$") ? RegExReplace(_r, "%$", "") * 0.01 * ((_w > _h) ? _h : _w) : _r
          ; the radius cannot exceed the half width or half height, whichever is smaller.
-         _r  := (_r <= ((_w > _h) ? _h : _w) / 2) ? _r : 0
+         _r := (_r <= ((_w > _h) ? _h : _w) / 2) ? _r : 0
 
          ; Define color.
-         _c := this.color(_c, 0xDD424242) ; Default background color is transparent gray.
+         _c := this.outer.parse.color(_c, 0xDD424242) ; Default background color is transparent gray.
          SourceCopy := (c ~= "i)(delete|eraser?|overwrite|sourceCopy)") ? 1 : 0 ; Eraser brush for text.
          if (!c) ; Default text color changes between white and black.
-            c := (this.grayscale(_c) < 128) ? 0xFFFFFFFF : 0xFF000000
-         c  := (SourceCopy) ? 0x00000000 : this.color( c)
+            c := (this.outer.parse.grayscale(_c) < 128) ? 0xFFFFFFFF : 0xFF000000
+         c  := (SourceCopy) ? 0x00000000 : this.outer.parse.color( c)
 
          ; Define outline and dropShadow.
-         o := this.outline(o, s, c)
-         d := this.dropShadow(d, ReturnRC[3], ReturnRC[4], s)
+         o := this.outer.parse.outline(o, vw, vh, s, c)
+         d := this.outer.parse.dropShadow(d, vw, vh, ReturnRC[3], ReturnRC[4], s)
 
          ; Round 9 - Define Text
          if (!A_IsUnicode){
@@ -2763,7 +2829,7 @@ class Graphics {
 
             if (d.3) {
                Gdip_DeleteGraphics(DropShadowG)
-               this.GaussianBlur(DropShadow, d.3, d.5)
+               this.outer.parse.gaussianBlur(DropShadow, d.3, d.5)
                Gdip_SetInterpolationMode(pGraphics, 5) ; NearestNeighbor
                Gdip_SetSmoothingMode(pGraphics, 3) ; Turn off anti-aliasing
                Gdip_DrawImage(pGraphics, DropShadow, x + d.1 - offset2, y + d.2 - offset2, w + 2*offset2, h + 2*offset2) ; DRAWING!
@@ -2827,12 +2893,14 @@ class Graphics {
          Gdip_DeleteFont(hFont)
          Gdip_DeleteFontFamily(hFamily)
 
-         return (pGraphics == "") ? this : ""
+         this.time := t
+
+         return
       }
 
       Recover() {
          loop % this.layers.maxIndex()
-            this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, this.G)
+            this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
          return this
       }
 
@@ -2846,7 +2914,7 @@ class Graphics {
          pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
          pGraphics := Gdip_GraphicsFromImage(pBitmap)
          loop % this.layers.maxIndex()
-            this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
+            this.DrawRaw(pGraphics, this.ScreenWidth, this.ScreenHeight, this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
          Gdip_DeleteGraphics(pGraphics)
          pBitmapCopy := Gdip_CloneBitmapArea(pBitmap, x, y, w, h)
          Gdip_DisposeImage(pBitmap)
@@ -2901,7 +2969,7 @@ class Graphics {
          pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
          pGraphics := Gdip_GraphicsFromImage(pBitmap)
          loop % this.layers.maxIndex()
-            this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
+            this.DrawRaw(pGraphics, this.ScreenWidth, this.ScreenHeight, this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
          Gdip_DeleteGraphics(pGraphics)
          return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
       }
@@ -2911,7 +2979,7 @@ class Graphics {
          pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
          pGraphics := Gdip_GraphicsFromImage(pBitmap)
          loop % this.layers.maxIndex()
-            this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
+            this.DrawRaw(pGraphics, this.ScreenWidth, this.ScreenHeight, this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
          Gdip_DeleteGraphics(pGraphics)
          return pBitmap
       }
@@ -2921,7 +2989,7 @@ class Graphics {
          pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
          pGraphics := Gdip_GraphicsFromImage(pBitmap)
          loop % this.layers.maxIndex()
-            this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
+            this.DrawRaw(pGraphics, this.ScreenWidth, this.ScreenHeight, this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
          Gdip_DeleteGraphics(pGraphics)
          return pBitmap
       }
@@ -3205,7 +3273,7 @@ class Graphics {
          pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
          pGraphics := Gdip_GraphicsFromImage(pBitmap)
          loop % this.layers.maxIndex()
-            this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3, pGraphics)
+            this.DrawRaw(pGraphics, this.ScreenWidth, this.ScreenHeight, this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
          Gdip_DeleteGraphics(pGraphics)
          pBitmapCopy := Gdip_CloneBitmapArea(pBitmap, x, y, w, h)
          Gdip_DisposeImage(pBitmap)
@@ -3237,7 +3305,7 @@ class Graphics {
          if (!this.hwnd)
             return (new this).RenderToBitmap(text, style1, style2)
 
-         this.Render(text, style1, style2, false)
+         this.Render(text, style1, style2, false) ; BROKEN
          return this.Bitmap()
       }
 

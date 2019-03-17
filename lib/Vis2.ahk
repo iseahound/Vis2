@@ -36,7 +36,6 @@ ImageIdentify(image:="", option:="", crop:="", settings:=""){
 
 ; TextRecognize() - Convert pictures of text into text.
 TextRecognize(image:="", option:="", crop:="", settings:=""){
-   global startTime := A_TickCount
    return Vis2.Finding(A_ThisFunc, image, option, crop, settings)
 }
 ; Alias for TextRecognize()
@@ -1056,9 +1055,9 @@ class Vis2 {
          Graphics.Startup()
          state := {}
          state.selectMode := "Quick"
-         global StartTime
          state.subtitle := new Graphics.Subtitle("Vis2_Hermes")
-            .render(settings.tooltip A_Space . (A_TickCount - StartTime), settings.subtitle.background, settings.subtitle.text)
+            .render(settings.tooltip, settings.subtitle.background, settings.subtitle.text)
+         ;Tooltip % A_TickCount - state.subtitle.TickCount
          state.area := new Graphics.Area("Vis2_Aries")
          state.information := new Graphics.Subtitle("Vis2_Information")
          state.picture := new Graphics.Picture("Vis2_Kitsune")
