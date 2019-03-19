@@ -1230,7 +1230,7 @@ class Vis2 {
             ; Space Hotkeys
             if (state.action.Control_Space = 1) {
                if (settings.previewImage := !settings.previewImage) ; Toggle our new previewImage flag!
-                  state.picture.render(Vis2.ux.io.data.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData).show()
+                  state.picture.render(Vis2.ux.io.data.coimage, "scale:harmonic width:100vw height:33vh", Vis2.ux.io.data.FullData).show()
                else
                   state.picture.hide()
             } else if (state.action.Alt_Space = 1) {
@@ -1295,10 +1295,10 @@ class Vis2 {
                         state.information.render(c2, "a:centerright x:98.14vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000", "f:(Arial) j:center y:center s:2.23% c:White")
                      }
                      if (settings.previewImage)
-                        state.picture.render(Vis2.ux.io.data.coimage, "size:auto width:100vw height:33vh", Vis2.ux.io.data.FullData)
+                        state.picture.render(Vis2.ux.io.data.coimage, "scale:harmonic width:100vw height:33vh", Vis2.ux.io.data.FullData)
                      if (settings.previewBounds) {
                         xywh := StrSplit(state.coordinates, "|") ; use saved coordinates!
-                        state.polygon.render(, {"size":1/settings.upscale, "x":xywh.1, "y":xywh.2, "w":xywh.3, "h":xywh.4}, Vis2.ux.io.data.FullData)
+                        state.polygon.render(, {"scale":1/settings.upscale, "x":xywh.1, "y":xywh.2, "w":xywh.3, "h":xywh.4}, Vis2.ux.io.data.FullData)
                      }
                      Vis2.ux.process.display(state, (Vis2.ux.io.data.maxLines(3)) ? Vis2.ux.io.data.maxLines(3) : settings.alert)
                   }
@@ -1374,10 +1374,10 @@ class Vis2 {
                clipboard := Vis2.ux.io.data
 
             (settings.splashBounds) ? ImageRender(
-               , {"time":t, "size":1/settings.upscale, "x":state.area.x1(), "y":state.area.y1(), "w":state.area.width(), "h":state.area.height()}
+               , {"time":t, "scale":1/settings.upscale, "x":state.area.x1(), "y":state.area.y1(), "w":state.area.width(), "h":state.area.height()}
                , Vis2.ux.io.data.FullData).FreeMemory() : ""
             (settings.splashImage) ? ImageRender(Vis2.ux.io.data.coimage
-               , "time:" t " a:center x:center y:40.99vh margin:0.926vmin size:auto width:100vw height:80.13vh"
+               , "time:" t " a:center x:center y:40.99vh margin:0.926vmin scale:harmonic width:100vw height:80.13vh"
                , Vis2.ux.io.data.FullData).FreeMemory() : ""
             (settings.splashText) ? TextRender(Vis2.ux.io.data.maxLines(3)
                , state.style1_back.clone().set("time", t).set("color", "Black")

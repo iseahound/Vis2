@@ -133,8 +133,8 @@ class Graphics {
          this.obm := SelectObject(this.hdc, this.hbm)
          this.G := Gdip_GraphicsFromHDC(this.hdc)
          this.state := new this.outer.queue()
+         this.layers := {}
 
-         Tooltip % A_TickCount - this.TickCount
          return this
       }
 
@@ -160,68 +160,97 @@ class Graphics {
          return this.FreeMemory().LoadMemory().Recover()
       }
 
-      Render(terms*) {
-         this.Draw(terms*)
-
-         if (this.allowDrag == true)
-            this.Reposition()
-
-         UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-
-         if (this.time) {
-            self_destruct := ObjBindMethod(this, "Destroy")
-            SetTimer, % self_destruct, % -1 * this.time
-         }
-         return this.Clear()
-      }
-
-      Draw(terms*) {
-         this.Clear(true)
-         if (terms.2 == "" && terms.3 == "")
-            terms.2 := this.layer.2, terms.3 := this.layer.3
-         this.layer := terms
-         this.layers.push(terms)
-         this.DrawRaw(this.G, this.ScreenWidth, this.ScreenHeight, terms*)
+      Recover() {
+         loop % this.layers.maxIndex()
+            this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
          return this
       }
 
-      Clear(check := "") {
-         static i
-         if !(check)
-            i := true
-         if (check && i) {
-            i := false
+      Draw(data := "", styles*) {
+         this.Clear()
+         for i, style in styles
+            if (style != "") {
+               okay := true
+               break
+            }
+         if !(okay)
+            styles := this.styles
+         this.data := data
+         this.styles := styles
+         this.layers.push([data, styles*])
+         o := this.DrawRaw(this.G, this.ScreenWidth, this.ScreenHeight, data, styles*)
+         this.t := o.0
+         this.x := o.1
+         this.y := o.2
+         this.w := o.3
+         this.h := o.4
+         return this
+      }
+
+      Clear() {
+         if (this.final) {
             this.layers := {}
-            this.x := this.y := this.xx := this.yy := "" ; not 0!
+            this.x := this.y := this.w := this.h := "" ; not 0! BROKEN
             Gdip_GraphicsClear(this.G)
          }
 
          return this.UpdateMemory()
       }
 
-      Bitmap() {
-         DllCall("gdiplus\GdipCreateBitmapFromScan0"
-                  , "int", this.ScreenWidth
-                  , "int", this.ScreenHeight
-                  , "int", 4*this.ScreenWidth
-                  , "int", 0x26200A
-                  , "ptr", this.bits
-                  , "ptr*", pBitmap)
-         return pBitmap
+      Finalize() {
+         this.final := true
+         return this
       }
 
-      Bitmap2() {
-         VarSetCapacity(bi, 40, 0)
-         , NumPut(this.ScreenWidth, bi, 4, "uint")
-         , NumPut(this.ScreenHeight, bi, 8, "uint")
-         , NumPut(40, bi, 0, "uint")
-         , NumPut(1, bi, 12, "ushort")
-         , NumPut(0, bi, 16, "uint")
-         , NumPut(32, bi, 14, "ushort")
-         DllCall("gdiplus\GdipCreateBitmapFromGdiDib", "ptr",&bi, "ptr",this.bits, "uptr*",pBitmap)
-         ;Scan0 := Pix + (Stride * (Height-1))
-         ;DllCall("gdiplus\GdipCreateBitmapFromScan0", "int",this.ScreenWidth, "int",this.ScreenHeight, "int",Stride, "int",0x26200A, "ptr",Pix, "uptr*",pBitmap)
-         return pBitmap
+      Output(terms*) {
+         this.Draw(terms*)
+
+         if (this.allowDrag == true)
+            this.Reposition()
+
+         UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+         Tooltip % A_TickCount - this.TickCount
+
+         if (this.t) {
+            self_destruct := ObjBindMethod(this, "Destroy")
+            SetTimer, % self_destruct, % -1 * this.t
+         }
+         return this.Finalize()
+      }
+
+      Bitmap(x := "", y := "", w := "", h := "") {
+         x := (x != "") ? x : this.x
+         y := (y != "") ? y : this.y
+         w := (w != "") ? w : this.w
+         h := (h != "") ? h : this.h
+
+         pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
+         pGraphics := Gdip_GraphicsFromImage(pBitmap)
+         loop % this.layers.maxIndex()
+            this.DrawRaw(pGraphics, this.ScreenWidth, this.ScreenHeight, this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
+         Gdip_DeleteGraphics(pGraphics)
+         pBitmapCopy := Gdip_CloneBitmapArea(pBitmap, x, y, w, h)
+         Gdip_DisposeImage(pBitmap)
+         return pBitmapCopy ; Please dispose of this image responsibly.
+      }
+
+      Save(filename := "", quality := 90) {
+         filename := (filename ~= "i)\.(bmp|dib|rle|jpg|jpeg|jpe|jfif|gif|tif|tiff|png)$") ? filename
+                  : (filename != "") ? filename ".png" : this.title ".png"
+         pBitmap := this.Bitmap()
+         Gdip_SaveBitmapToFile(pBitmap, filename, quality)
+         Gdip_DisposeImage(pBitmap)
+         return this
+      }
+
+      ; 3) Just takes a picture of the screen!
+      Screenshot(filename := "", quality := 90) {
+         filename := (filename ~= "i)\.(bmp|dib|rle|jpg|jpeg|jpe|jfif|gif|tif|tiff|png)$") ? filename
+                  : (filename != "") ? filename ".png" : this.title ".png"
+         pBitmap := Gdip_BitmapFromScreen(this.x "|" this.y "|" this.w "|" this.h)
+         Gdip_SaveBitmapToFile(pBitmap, filename, quality)
+         Gdip_DisposeImage(pBitmap)
+         return this
       }
 
       isDrawable(win := "A") {
@@ -324,6 +353,30 @@ class Graphics {
          DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",0)
          DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",1)
          return this
+      }
+
+      x1() {
+         return this.x
+      }
+
+      y1() {
+         return this.y
+      }
+
+      x2() {
+         return this.x + this.w
+      }
+
+      y2() {
+         return this.y + this.h
+      }
+
+      width() {
+         return this.w
+      }
+
+      height() {
+         return this.h
       }
    }
 
@@ -508,7 +561,7 @@ class Graphics {
       dropShadow(d, vw, vh, x_simulated, y_simulated, font_size) {
          static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
          static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
-         static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
          vmin := (vw < vh) ? vw : vh
 
          if IsObject(d) {
@@ -656,7 +709,7 @@ class Graphics {
       margin_and_padding(m, vw, vh, default := 0) {
          static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
          static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
-         static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
          vmin := (vw < vh) ? vw : vh
 
          if IsObject(m) {
@@ -701,7 +754,7 @@ class Graphics {
       outline(o, vw, vh, font_size, font_color) {
          static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
          static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
-         static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid_positive := "(?i)^\s*((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
          vmin := (vw < vh) ? vw : vh
 
          if IsObject(o) {
@@ -1125,9 +1178,9 @@ class Graphics {
 
          UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
 
-         if (this.time) {
+         if (this.t) {
             self_destruct := ObjBindMethod(this, "Destroy")
-            SetTimer, % self_destruct, % -1 * this.time
+            SetTimer, % self_destruct, % -1 * this.t
          }
 
          ; Shift the layers.
@@ -1231,10 +1284,9 @@ class Graphics {
          t  := ((___ := RegExReplace( t, "i)(\d+)m(in(ute)?)?s?$"          , "$1")) !=  t) ? ___ *    60000 : t
          t  := ((___ := RegExReplace( t, "i)(\d+)h(our)?s?$"               , "$1")) !=  t) ? ___ *  3600000 : t
          t  := ((___ := RegExReplace( t, "i)(\d+)d(ay)?s?$"                , "$1")) !=  t) ? ___ * 86400000 : t
-         this.time := t
 
-         static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-         static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid_positive := "(?i)^\s*((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
 
          vw := 0.01 * this.ScreenWidth    ; 1% of viewport width.
          vh := 0.01 * this.ScreenHeight   ; 1% of viewport height.
@@ -1607,11 +1659,14 @@ class Graphics {
          }
       }
 
+      Render(terms*) {
+         return (this.hwnd) ? this.Output(terms*) : (new this).Output(terms*)
+      }
+
       ; Types of input accepted
       ; Objects: Rectangle Array (Screenshot)
       ; Strings: File, URL, Window Title (ahk_class...), base64
       ; Numbers: hwnd, GDI Bitmap, GDI HBitmap
-
       DrawRaw(pGraphics, ScreenWidth, ScreenHeight, image := "", style := "", polygons := "") {
          ; Preprocess image to a native GDI bitmap.
          if (image != "") {
@@ -1636,7 +1691,7 @@ class Graphics {
             w  := (style.width != "")       ? style.width       : style.w
             h  := (style.height != "")      ? style.height      : style.h
             m  := (style.margin != "")      ? style.margin      : style.m
-            s  := (style.size != "")        ? style.size        : style.s
+            s  := (style.scale != "")       ? style.scale       : style.s
             c  := (style.color != "")       ? style.color       : style.c
             q  := (style.quality != "")     ? style.quality     : (style.q) ? style.q : style.InterpolationMode
          } else {
@@ -1647,7 +1702,7 @@ class Graphics {
             w  := ((___ := RegExReplace(style, q1    "(w(idth)?)"         q2, "${value}")) != style) ? ___ : ""
             h  := ((___ := RegExReplace(style, q1    "(h(eight)?)"        q2, "${value}")) != style) ? ___ : ""
             m  := ((___ := RegExReplace(style, q1    "(m(argin)?)"        q2, "${value}")) != style) ? ___ : ""
-            s  := ((___ := RegExReplace(style, q1    "(s(ize)?)"          q2, "${value}")) != style) ? ___ : ""
+            s  := ((___ := RegExReplace(style, q1    "(s(cale)?)"         q2, "${value}")) != style) ? ___ : ""
             c  := ((___ := RegExReplace(style, q1    "(c(olor)?)"         q2, "${value}")) != style) ? ___ : ""
             q  := ((___ := RegExReplace(style, q1    "(q(uality)?)"       q2, "${value}")) != style) ? ___ : ""
          }
@@ -1662,51 +1717,56 @@ class Graphics {
          t  := ((___ := RegExReplace( t, "i)(\d+)d(ay)?s?$"                , "$1")) !=  t) ? ___ * 86400000 : t
 
          ; These are the type checkers.
-         static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-         static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid_positive := "(?i)^\s*((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
 
          ; Define viewport width and height. This is the visible screen area.
-         vw := 0.01 * ScreenWidth    ; 1% of viewport width.
-         vh := 0.01 * ScreenHeight   ; 1% of viewport height.
-         vmin := (vw < vh) ? vw : vh ; 1vw or 1vh, whichever is smaller.
+         vw := 0.01 * ScreenWidth         ; 1% of viewport width.
+         vh := 0.01 * ScreenHeight        ; 1% of viewport height.
+         vmin := (vw < vh) ? vw : vh      ; 1vw or 1vh, whichever is smaller.
+         vr := ScreenWidth / ScreenHeight ; Aspect ratio of the viewport.
 
          ; Get original image width and height.
          width := Gdip_GetImageWidth(pBitmap)
          height := Gdip_GetImageHeight(pBitmap)
          minimum := (width < height) ? width : height
+         aspect := width / height
 
-         ; Get background width and height. Default width and height are image width and height.
-         w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : width ; Default
+         ; Get width and height.
+         w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : ""
          w  := ( w ~= "i)(pt|px)$") ? SubStr( w, 1, -2) :  w
          w  := ( w ~= "i)vw$") ? RegExReplace( w, "i)vw$", "") * vw :  w
          w  := ( w ~= "i)vh$") ? RegExReplace( w, "i)vh$", "") * vh :  w
          w  := ( w ~= "i)vmin$") ? RegExReplace( w, "i)vmin$", "") * vmin :  w
          w  := ( w ~= "%$") ? RegExReplace( w, "%$", "") * 0.01 * width :  w
-         ; Output is a decimal with pixel units.
 
-         h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : height ; Default
+         h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : ""
          h  := ( h ~= "i)(pt|px)$") ? SubStr( h, 1, -2) :  h
          h  := ( h ~= "i)vw$") ? RegExReplace( h, "i)vw$", "") * vw :  h
          h  := ( h ~= "i)vh$") ? RegExReplace( h, "i)vh$", "") * vh :  h
          h  := ( h ~= "i)vmin$") ? RegExReplace( h, "i)vmin$", "") * vmin :  h
          h  := ( h ~= "%$") ? RegExReplace( h, "%$", "") * 0.01 * height :  h
-         ; Output is a decimal with pixel units.
 
-         ; If size is "auto" automatically downscale by the harmonic series. Ex: 50%, 33%, 25%, 20%...
-         if (s = "auto") {
-            ; Determine what is smaller: declared width and height or screen width and height.
-            ; Since the declared w and h are overwritten by the size, they now determine the bounds.
-            ; Default bounds are the ScreenWidth and ScreenHeight, and can be decreased, never increased.
-            visible_w := (w > ScreenWidth) ? ScreenWidth : w
-            visible_h := (h > ScreenHeight) ? ScreenHeight : h
-            auto_w := (width > visible_w) ? width // visible_w + 1 : 1
-            auto_h := (height > visible_h) ? height // visible_h + 1 : 1
-            s := (auto_w > auto_h) ? (1 / auto_w) : (1 / auto_h)
-            w := width ; Since the width was overwritten, restore it to the default.
-            h := height ; w and h determine the bounds of the size.
+         ; Default width and height.
+         if (!w && !h)
+            w := width, h := height
+         if (!w)
+            w := h * aspect
+         if (!h)
+            h := w / aspect
+
+         ; If scale is "auto" assume w and h are maximum bounds and scale the image to the greatest edge.
+         ; If scale is "half" automatically downscale by a geometric series. Ex: 50%, 25%, 12.5%, 6.25%...
+         ; If scale is "harmonic" automatically downscale by the harmonic series. Ex: 50%, 33%, 25%, 20%...
+         if (s = "auto" || s = "half" || s = "harmonic") {
+            s := (s = "auto") ? ((aspect > w / h) ? w / width : h / height) : s
+            s := (s = "half") ? ((aspect > w / h) ? 1 / (width // w * 2) : 1 / (height // h * 2)) : s
+            s := (s = "harmonic") ? ((aspect > w / h) ? 1 / (width // w + 1) : 1 / (height // h + 1)) : s
+            w := width  ; width and height given were maximum values, not actual values.
+            h := height ; Therefore restore the width and height to the image width and height.
          }
 
-         s  := ( s ~= valid_positive) ? RegExReplace( s, "\s", "") : 1 ; Default size is 1.00.
+         s  := ( s ~= valid_positive) ? RegExReplace( s, "\s", "") : 1 ; Default scale is 1.00.
          s  := ( s ~= "i)(pt|px)$") ? SubStr( s, 1, -2) :  s
          s  := ( s ~= "i)vw$") ? RegExReplace( s, "i)vw$", "") * vw / width :  s
          s  := ( s ~= "i)vh$") ? RegExReplace( s, "i)vh$", "") * vh / height:  s
@@ -1716,6 +1776,7 @@ class Graphics {
          ; Scale width and height.
          w := Floor(w * s)
          h := Floor(h * s)
+
 
          a  := RegExReplace( a, "\s", "")
          a  := (a ~= "i)top" && a ~= "i)left") ? 1 : (a ~= "i)top" && a ~= "i)cent(er|re)") ? 2
@@ -1844,13 +1905,14 @@ class Graphics {
          if (type != "pBitmap")
             Gdip_DisposeImage(pBitmap)
 
-         this.time := t
-         this.x := _x
-         this.y := _y
-         this.w := _w
-         this.h := _h
+         ; Define bounds.
+         t_bound :=  t
+         x_bound := _x
+         y_bound := _y
+         w_bound := _w
+         h_bound := _h
 
-         return [_x,_y,_w,_h]
+         return {0:t_bound, 1:x_bound, 2:y_bound, 3:w_bound, 4:h_bound}
       }
 
       Preprocess(cotype, image, crop := "", scale := "", terms*) {
@@ -2218,7 +2280,7 @@ class Graphics {
 
             if Extension in .JPG,.JPEG,.JPE,.JFIF
             {
-               Quality := (Quality < 0) ? 0 : (Quality > 100) ? 100 : Quality
+               Quality := (Quality < 0) ? 0 : (Quality > 100) ? 90 : Quality ; Default JPEG is 90.
                DllCall("gdiplus\GdipGetEncoderParameterListSize", "ptr",pBitmap, "ptr",pCodec, "uint*",nSize)
                VarSetCapacity(EncoderParameters, nSize, 0)
                DllCall("gdiplus\GdipGetEncoderParameterList", "ptr",pBitmap, "ptr",pCodec, "uint",nSize, "ptr",&EncoderParameters)
@@ -2370,30 +2432,6 @@ class Graphics {
 
          return (url ~= "i)" regex) ? true : false
       }
-
-      x1() {
-         return this.x
-      }
-
-      y1() {
-         return this.y
-      }
-
-      x2() {
-         return this.x + this.w
-      }
-
-      y2() {
-         return this.y + this.h
-      }
-
-      width() {
-         return this.w
-      }
-
-      height() {
-         return this.h
-      }
    } ; End of Image class.
 
    class Subtitle {
@@ -2415,14 +2453,9 @@ class Graphics {
          }
       }
 
-      layers := {}
-
-      /*
-      Render(terms*){
-         if !(this.hwnd)
-            return (new this).Render(terms*)
+      Render(terms*) {
+         return (this.hwnd) ? this.Output(terms*) : (new this).Output(terms*)
       }
-      */
 
       DrawRaw(pGraphics, ScreenWidth, ScreenHeight, text := "", style1 := "", style2 := "") {
          ; Remove excess whitespace for proper RegEx detection.
@@ -2513,13 +2546,14 @@ class Graphics {
          t  := ((___ := RegExReplace( t, "i)(\d+)d(ay)?s?$"                , "$1")) !=  t) ? ___ * 86400000 : t
 
          ; These are the type checkers.
-         static valid := "(?i)^\s*(\-?\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
-         static valid_positive := "(?i)^\s*(\d+(?:\.\d*)?)\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid_positive := "(?i)^\s*((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
 
          ; Define viewport width and height. This is the visible screen area.
-         vw := 0.01 * ScreenWidth    ; 1% of viewport width.
-         vh := 0.01 * ScreenHeight   ; 1% of viewport height.
-         vmin := (vw < vh) ? vw : vh ; 1vw or 1vh, whichever is smaller.
+         vw := 0.01 * ScreenWidth         ; 1% of viewport width.
+         vh := 0.01 * ScreenHeight        ; 1% of viewport height.
+         vmin := (vw < vh) ? vw : vh      ; 1vw or 1vh, whichever is smaller.
+         vr := ScreenWidth / ScreenHeight ; Aspect ratio of the viewport.
 
          ; Get Rendering Quality.
          _q := (_q >= 0 && _q <= 4) ? _q : 4          ; Default SmoothingMode is 4 if radius is set. See Draw 1.
@@ -2612,7 +2646,7 @@ class Graphics {
          _y := (_y ~= "i)vmin$") ? RegExReplace(_y, "i)vmin$", "") * vmin : _y
 
          ; Now let's modify the _x and _y values with the _anchor, so that the image has a new point of origin.
-         ; We need our calculated _width and _height for this.
+         ; We need our calculated _width and _height for this!
          _x  -= (mod(_a-1,3) == 0) ? 0 : (mod(_a-1,3) == 1) ? _w/2 : (mod(_a-1,3) == 2) ? _w : 0
          _y  -= (((_a-1)//3) == 0) ? 0 : (((_a-1)//3) == 1) ? _h/2 : (((_a-1)//3) == 2) ? _h : 0
          ; Fractional y values might cause gdi+ slowdown.
@@ -2746,32 +2780,6 @@ class Graphics {
          _w  := Round(_w)
          _h  := Round(_h)
 
-         ; Define image boundaries using the background boundaries.
-         this.x  := (this.x  = "" || _x < this.x) ? _x : this.x
-         this.y  := (this.y  = "" || _y < this.y) ? _y : this.y
-         this.xx := (this.xx = "" || _x + _w > this.xx) ? _x + _w : this.xx
-         this.yy := (this.yy = "" || _y + _h > this.yy) ? _y + _h : this.yy
-
-         ; Define image boundaries using the text boundaries + outline boundaries.
-         artifacts := Ceil(o.3 + 0.5*o.1)
-         this.x  := (x - artifacts < this.x) ? x - artifacts : this.x
-         this.y  := (y - artifacts < this.y) ? y - artifacts : this.y
-         this.xx := (x + w + artifacts > this.xx) ? x + w + artifacts : this.xx
-         this.yy := (y + h + artifacts > this.yy) ? y + h + artifacts : this.yy
-
-         ; Define image boundaries using the dropShadow boundaries.
-         artifacts := Ceil(d.3 + d.6 + 0.5*o.1)
-         this.x  := (x + d.1 - artifacts < this.x) ? x + d.1 - artifacts : this.x
-         this.y  := (y + d.2 - artifacts < this.y) ? y + d.2 - artifacts : this.y
-         this.xx := (x + d.1 + w + artifacts > this.xx) ? x + d.1 + w + artifacts : this.xx
-         this.yy := (y + d.2 + h + artifacts > this.yy) ? y + d.2 + h + artifacts : this.yy
-
-         ; Round to the nearest integer.
-         this.x := Floor(this.x)
-         this.y := Floor(this.y)
-         this.xx := Ceil(this.xx)
-         this.yy := Ceil(this.yy)
-
          ; Draw 1 - Background
          if (_w && _h && _c && (_c & 0xFF000000)) {
             if (_r == 0)
@@ -2893,410 +2901,26 @@ class Graphics {
          Gdip_DeleteFont(hFont)
          Gdip_DeleteFontFamily(hFamily)
 
-         this.time := t
+         ; Define bounds.
+         t_bound :=  t
+         x_bound := _x
+         y_bound := _y
+         w_bound := _w
+         h_bound := _h
 
-         return
-      }
+         o_bound := Ceil(0.5 * o.1 + o.3) ; outline boundary.
+         x_bound := (x - o_bound < x_bound)        ? x - o_bound        : x_bound
+         y_bound := (y - o_bound < y_bound)        ? y - o_bound        : y_bound
+         w_bound := (w + 2 * o_bound > w_bound)    ? w + 2 * o_bound    : w_bound
+         h_bound := (h + 2 * o_bound > h_bound)    ? h + 2 * o_bound    : h_bound
 
-      Recover() {
-         loop % this.layers.maxIndex()
-            this.Draw(this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
-         return this
-      }
+         d_bound := Ceil(0.5 * o.1 + d.3 + d.6) ; dropShadow boundaty.
+         x_bound := (x + d.1 - d_bound < x_bound)  ? x + d.1 - d_bound  : x_bound
+         y_bound := (y + d.2 - d_bound < y_bound)  ? y + d.2 - d_bound  : y_bound
+         w_bound := (w + 2 * d_bound > w_bound)    ? w + 2 * d_bound    : w_bound
+         h_bound := (h + 2 * d_bound > h_bound)    ? h + 2 * d_bound    : h_bound
 
-      /*
-      Bitmap(x := "", y := "", w := "", h := "") {
-         x := (x != "") ? x : this.x
-         y := (y != "") ? y : this.y
-         w := (w != "") ? w : this.xx - this.x
-         h := (h != "") ? h : this.yy - this.y
-
-         pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
-         pGraphics := Gdip_GraphicsFromImage(pBitmap)
-         loop % this.layers.maxIndex()
-            this.DrawRaw(pGraphics, this.ScreenWidth, this.ScreenHeight, this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
-         Gdip_DeleteGraphics(pGraphics)
-         pBitmapCopy := Gdip_CloneBitmapArea(pBitmap, x, y, w, h)
-         Gdip_DisposeImage(pBitmap)
-         return pBitmapCopy ; Please dispose of this image responsibly.
-      }
-      */
-
-      CreateDIBSection(w, h, hdc:="", bpp:=32, ByRef ppvBits:=0)
-      {
-         Ptr := A_PtrSize ? "UPtr" : "UInt"
-
-         hdc2 := hdc ? hdc : GetDC()
-         VarSetCapacity(bi, 40, 0)
-
-         NumPut(w, bi, 4, "uint")
-         , NumPut(-h, bi, 8, "int")
-         , NumPut(40, bi, 0, "uint")
-         , NumPut(1, bi, 12, "ushort")
-         , NumPut(0, bi, 16, "uInt")
-         , NumPut(bpp, bi, 14, "ushort")
-
-         hbm := DllCall("CreateDIBSection"
-                              , Ptr, hdc2
-                              , Ptr, &bi
-                              , "uint", 0
-                              , A_PtrSize ? "UPtr*" : "uint*", ppvBits
-                              , Ptr, 0
-                              , "uint", 0, Ptr)
-
-         if !hdc
-               ReleaseDC(hdc2)
-         return hbm
-      }
-
-      hBitmap() {
-         if !(this.hbm3) {
-            this.hbm3 := this.CreateDIBSection(this.ScreenWidth, this.ScreenHeight)
-            this.hdc3 := CreateCompatibleDC()
-            this.obm3 := SelectObject(this.hdc3, this.hbm3)
-            this.pGraphics3 := Gdip_GraphicsFromHDC(this.hdc3)
-            this.Recover(this.pGraphics3) ;BROKEN!!!
-
-            Gdip_DeleteGraphics(this.pGraphics3)
-            SelectObject(this.hdc3, this.obm3)
-            DeleteDC(this.hdc3)
-         }
-         return this.hbm3
-      }
-
-      Bitmap1() {
-         x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
-         pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
-         pGraphics := Gdip_GraphicsFromImage(pBitmap)
-         loop % this.layers.maxIndex()
-            this.DrawRaw(pGraphics, this.ScreenWidth, this.ScreenHeight, this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
-         Gdip_DeleteGraphics(pGraphics)
-         return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
-      }
-
-      Bitmap2() {
-         x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
-         pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
-         pGraphics := Gdip_GraphicsFromImage(pBitmap)
-         loop % this.layers.maxIndex()
-            this.DrawRaw(pGraphics, this.ScreenWidth, this.ScreenHeight, this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
-         Gdip_DeleteGraphics(pGraphics)
-         return pBitmap
-      }
-
-      Bitmap11() {
-         x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
-         pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
-         pGraphics := Gdip_GraphicsFromImage(pBitmap)
-         loop % this.layers.maxIndex()
-            this.DrawRaw(pGraphics, this.ScreenWidth, this.ScreenHeight, this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
-         Gdip_DeleteGraphics(pGraphics)
-         return pBitmap
-      }
-
-      /*
-      #include <GdiPlus.h>
-      #include <memory>
-
-      Gdiplus::Status HBitmapToBitmap( HBITMAP source, Gdiplus::PixelFormat pixel_format, Gdiplus::Bitmap** result_out )
-      {
-        BITMAP source_info = { 0 };
-        if( !::GetObject( source, sizeof( source_info ), &source_info ) )
-          return Gdiplus::GenericError;
-
-        Gdiplus::Status s;
-
-        std::auto_ptr< Gdiplus::Bitmap > target( new Gdiplus::Bitmap( source_info.bmWidth, source_info.bmHeight, pixel_format ) );
-        if( !target.get() )
-          return Gdiplus::OutOfMemory;
-        if( ( s = target->GetLastStatus() ) != Gdiplus::Ok )
-          return s;
-
-        Gdiplus::BitmapData target_info;
-        Gdiplus::Rect rect( 0, 0, source_info.bmWidth, source_info.bmHeight );
-
-        s = target->LockBits( &rect, Gdiplus::ImageLockModeWrite, pixel_format, &target_info );
-        if( s != Gdiplus::Ok )
-          return s;
-
-        if( target_info.Stride != source_info.bmWidthBytes )
-          return Gdiplus::InvalidParameter; // pixel_format is wrong!
-
-        CopyMemory( target_info.Scan0, source_info.bmBits, source_info.bmWidthBytes * source_info.bmHeight );
-
-        s = target->UnlockBits( &target_info );
-        if( s != Gdiplus::Ok )
-          return s;
-
-        *result_out = target.release();
-
-        return Gdiplus::Ok;
-      }
-      */
-
-      Bitmap10() {
-         pBitmap2 := this.Bitmap11()
-         pBitmap1 := Gdip_CloneBitmapArea(pBitmap2, 0, 0, this.ScreenWidth, this.ScreenHeight)
-         E1 := Gdip_LockBits(pBitmap1, 0, 0, this.ScreenWidth, this.ScreenHeight, Stride1, Scan01, BitmapData1)
-         E2 := Gdip_LockBits(pBitmap2, 0, 0, this.ScreenWidth, this.ScreenHeight, Stride2, Scan02, BitmapData2)
-         size := this.ScreenWidth * this.ScreenHeight * 4
-         DllCall("RtlCopyMemory", "ptr", Scan01+0, "ptr", Scan02+0, "uint", size)
-         Gdip_UnlockBits(pBitmap1, BitmapData1)
-         Gdip_UnlockBits(pBitmap2, BitmapData2)
-         return pBitmap2
-         return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
-      }
-
-      Bitmap9() {
-         pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
-         E1 := Gdip_LockBits(pBitmap, 0, 0, this.ScreenWidth, this.ScreenHeight, Stride, Scan0, BitmapData)
-         size := this.ScreenWidth * this.ScreenHeight * 4
-         DllCall("RtlCopyMemory", "ptr", Scan0+0, "ptr", this.dib.pBits+0, "uint", size)
-         Gdip_UnlockBits(pBitmap, BitmapData)
-         return pBitmap
-         return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
-      }
-
-      Bitmap8() {
-         static x64 := "
-         (LTrim
-            VUiJ5UiD7BBIiU0QSIlVGESJRSBEiU0ox0X8AAAAAOthx0X4AAAAAOtMi0X4D69F
-            IInCi0X8AdCJRfSLRfRImEiNFIUAAAAASItFEEgB0IsAwegYhcB1GotF9EiYSI0U
-            hQAAAABIi0UQSAHQxwAAAAAAg0X4AYtF+DtFKHKsg0X8AYtF/DtFIHKXSIPEEF3D
-         )"
-
-         static dibSize := (A_PtrSize == 4) ? 84 : 104      ; sizeof(DIBSECTION) = 76+2*(A_PtrSize=8?4:0)+2*A_PtrSize
-         VarSetCapacity(dib, dibSize)
-         DllCall("GetObject", "ptr",this.hbm, "int",dibSize, "ptr",&dib)
-         width := NumGet(dib, 4, "uint"), height := NumGet(dib, 8, "uint"), Stride2 := NumGet(dib, 12, "int")
-         Scan02 := NumGet(dib, 20 + (A_PtrSize = 8 ? 4 : 0))      ; padding
-
-         MsgBox % Format("0x{:08x}", NumGet(Scan02, 0, "int"))
-         MsgBox % Format("0x{:08x}", NumGet(Scan02, 1, "int"))
-         MsgBox % Format("0x{:08x}", NumGet(Scan02, 2, "int"))
-         MsgBox % Format("0x{:08x}", NumGet(Scan02, 3, "int"))
-         MsgBox % Format("0x{:08x}", NumGet(Scan02, 4, "int"))
-         MsgBox % Format("0x{:08x}", NumGet(Scan02, 5, "int"))
-         MsgBox % Format("0x{:08x}", NumGet(Scan02, 6, "int"))
-         MsgBox % Format("0x{:08x}", NumGet(Scan02, 7, "int"))
-
-         pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
-         E1 := Gdip_LockBits(pBitmap, 0, 0, this.ScreenWidth, this.ScreenHeight, Stride1, Scan01, BitmapData1)
-         size := Stride2 * height
-         DllCall("RtlCopyMemory", "ptr", Scan01+0, "ptr", Scan02+0, "uint", size)
-         /*
-         DllCall("crypt32\CryptStringToBinary", "str",(A_PtrSize == 8) ? x64 : x86, "uint",0, "uint",0x1, "ptr",0, "uint*",s, "ptr",0, "ptr",0)
-         p := DllCall("GlobalAlloc", "uint",0, "ptr",s, "ptr")
-         if (A_PtrSize == 8)
-            DllCall("VirtualProtect", "ptr",p, "ptr",s, "uint",0x40, "uint*",op)
-         DllCall("crypt32\CryptStringToBinary", "str",(A_PtrSize == 8) ? x64 : x86, "uint",0, "uint",0x1, "ptr",p, "uint*",s, "ptr",0, "ptr",0)
-         MsgBox % "value: " value := DllCall(p, "ptr",Scan02, "ptr",Scan01 ,"uint",this.ScreenWidth, "uint",this.ScreenHeight, "uint",Stride2)
-         DllCall("GlobalFree", "ptr", p)
-         */
-         Gdip_UnlockBits(pBitmap, BitmapData1)
-         return pBitmap
-         return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
-      }
-
-      Bitmap7() {
-         static x86 := "
-         (LTrim
-         )"
-         static x64 := "
-         (LTrim
-            VUiJ5UiD7BBIiU0QSIlVGESJRSBEiU0ox0X8AAAAAOthx0X4AAAAAOtMi0X4D69F
-            IInCi0X8AdCJRfSLRfRImEiNFIUAAAAASItFEEgB0IsAwegYhcB1GotF9EiYSI0U
-            hQAAAABIi0UQSAHQxwAAAAAAg0X4AYtF+DtFKHKsg0X8AYtF/DtFIHKXSIPEEF3D
-         )"
-
-         ; struct bitmap     https://docs.microsoft.com/en-us/windows/desktop/api/wingdi/ns-wingdi-tagbitmap
-         static dibSize := (A_PtrSize == 4) ? 84 : 104      ; sizeof(DIBSECTION) = 76+2*(A_PtrSize=8?4:0)+2*A_PtrSize
-         VarSetCapacity(dib, dibSize)
-         DllCall("GetObject", "ptr",this.hbm, "int",dibSize, "ptr",&dib)
-         Stride := NumGet(dib, 12, "int")
-         Pix := NumGet(dib, 20 + (A_PtrSize = 8 ? 4 : 0))   ; padding
-
-         size := Stride * this.ScreenHeight
-         VarSetCapacity(Scan0, size, 0xFF)
-         MsgBox % NumGet(Pix, 0, "uchar")
-         MsgBox % NumGet(Scan0, 0, "uchar")
-
-         DllCall("crypt32\CryptStringToBinary", "str",(A_PtrSize == 8) ? x64 : x86, "uint",0, "uint",0x1, "ptr",0, "uint*",s, "ptr",0, "ptr",0)
-         p := DllCall("GlobalAlloc", "uint",0, "ptr",s, "ptr")
-         if (A_PtrSize == 8)
-            DllCall("VirtualProtect", "ptr",p, "ptr",s, "uint",0x40, "uint*",op)
-         DllCall("crypt32\CryptStringToBinary", "str",(A_PtrSize == 8) ? x64 : x86, "uint",0, "uint",0x1, "ptr",p, "uint*",s, "ptr",0, "ptr",0)
-         MsgBox % "value: " value := DllCall(p, "ptr",Pix, "ptr",&Scan0 ,"uint",this.ScreenWidth, "uint",this.ScreenHeight, "uint",Stride)
-         DllCall("GlobalFree", "ptr", p)
-
-         MsgBox % NumGet(Pix, 0, "uchar")
-         MsgBox % NumGet(Scan0, 0, "uchar")
-
-         DllCall("gdiplus\GdipCreateBitmapFromScan0"
-            , "int",   this.ScreenWidth
-            , "int",   this.ScreenHeight
-            , "int",   Stride
-            , "int",   0x26200A
-            , "ptr",   Scan0
-            , "uptr*", pBitmap)
-
-         return pBitmap
-      }
-
-      Bitmap6() {
-         pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
-         pGraphics := Gdip_GraphicsFromImage(pBitmap)
-         mdc := Gdip_GetDC(pGraphics)
-         VarSetCapacity(blend, 4, 0)
-         NumPut(blend, 0, 0x00, "uchar") ; AC_SRC_OVER
-         NumPut(blend, 1, 0x00, "uchar") ; Must be zero.
-         NumPut(blend, 2, 0xFF, "uchar") ; SourceConstantAlpha value to 255 (opaque)
-         NumPut(blend, 3, 0x00, "uchar") ; AC_SRC_ALPHA = 1
-         ;MsgBox % DllCall("msimg32\AlphaBlend", "ptr",mdc, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight
-         ;   , "ptr",this.hdc, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight, "ptr",blend)
-         BitBlt(mdc, 0, 0, this.ScreenWidth, this.ScreenHeight, this.hdc, 0, 0)
-         ;DllCall("TransparentBlt", "ptr",mdc, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight
-         ;   , "ptr",this.hdc, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight, "uint",0x00CC0020)
-         ;Gdip_ReleaseDC(pGraphics, mdc)
-         ;Gdip_DeleteGraphics(pGraphics)
-         return pBitmap
-      }
-
-      ; struct bitmap     https://docs.microsoft.com/en-us/windows/desktop/api/wingdi/ns-wingdi-tagbitmap
-      ; struct bitmapinfo https://docs.microsoft.com/en-us/windows/desktop/api/wingdi/ns-wingdi-tagbitmapinfo
-      Bitmap5() {
-         static dibSize := 76+2*(A_PtrSize=8?4:0)+2*A_PtrSize ; sizeof(DIBSECTION) = x86:84, x64:104
-         VarSetCapacity(dib, dibSize)
-         DllCall("GetObject", "ptr",this.hbm, "int",dibSize, "ptr",&dib)
-         MsgBox % "Type: " Type := NumGet(dib, 0, "uint")
-         MsgBox % "Width: " Width := NumGet(dib, 4, "uint")
-         MsgBox % "Height: " Height := NumGet(dib, 8, "int")
-         MsgBox % "Stride: " Stride := NumGet(dib, 12, "int")
-         MsgBox % "Planes: " Planes := NumGet(dib, 16, "ushort")
-         MsgBox % "Bits: " Bits := NumGet(dib, 18, "ushort")
-         MsgBox % "Pix: " Pix := NumGet(dib, 20 + (A_PtrSize = 8 ? 4 : 0)) ; padding
-
-         VarSetCapacity(bi, 40, 0)
-         NumPut(this.ScreenWidth, bi, 4, "uint")
-         , NumPut(this.ScreenHeight, bi, 8, "uint")
-         , NumPut(40, bi, 0, "uint")
-         , NumPut(1, bi, 12, "ushort")
-         , NumPut(0, bi, 16, "uint")
-         , NumPut(32, bi, 14, "ushort")
-         DllCall("gdiplus\GdipCreateBitmapFromGdiDib", "ptr",&bi, "ptr",Pix, "uptr*",pBitmap)
-         ;Scan0 := Pix + (Stride * (Height-1))
-         ;DllCall("gdiplus\GdipCreateBitmapFromScan0", "int",this.ScreenWidth, "int",this.ScreenHeight, "int",Stride, "int",0x26200A, "ptr",Pix, "uptr*",pBitmap)
-         return pBitmap
-         x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
-         return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
-      }
-
-      Bitmap4() {
-         ; GdipCreateBitmapFromGraphics ?
-         /*
-         pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
-         pGraphics := Gdip_GraphicsFromImage(pBitmap)
-         mdc := Gdip_GetDC(pGraphics)
-         ;BitBlt(mdc, 0, 0, this.ScreenWidth, this.ScreenHeight, this.hdc, 0, 0)
-         DllCall("TransparentBlt", "ptr",mdc, "int",0, "int",0, "int",this.ScreenWidth, "int",this.SCreenHeight, "ptr",this.hdc, "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight, "uint",0x00CC0020)
-         Gdip_ReleaseDC(pGraphics, mdc)
-         Gdip_DeleteGraphics(pGraphics)
-         return pBitmap
-         ;msimg32.dll\
-            return
-         */
-         /*
-         static dibSize := 76+2*(A_PtrSize=8?4:0)+2*A_PtrSize     ; sizeof(DIBSECTION) = x86:84, x64:104
-         VarSetCapacity(dib, dibSize)
-         DllCall("GetObject", "ptr",this.hbm, "int",dibSize, "ptr",&dib)
-         width := NumGet(dib, 4, "uint"), height := NumGet(dib, 8, "uint"), Stride2 := NumGet(dib, 12, "int")
-         Scan02 := NumGet(dib, 20 + (A_PtrSize = 8 ? 4 : 0))      ; padding
-
-         pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
-         E1 := Gdip_LockBits(pBitmap, 0, 0, this.ScreenWidth, this.ScreenHeight, Stride1, Scan01, BitmapData1)
-         MsgBox % size := Stride2 * height
-         DllCall("RtlCopyMemory", "ptr", Scan01+0, "ptr", Scan02+0, "uint", size)
-         Gdip_UnlockBits(pBitmap, BitmapData1)
-         return pBitmap
-         return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
-         */
-
-         static dibSize := 76+2*(A_PtrSize=8?4:0)+2*A_PtrSize ; sizeof(DIBSECTION) = x86:84, x64:104
-         VarSetCapacity(dib, dibSize)
-         DllCall("GetObject", "ptr",this.hbm, "int",dibSize, "ptr",&dib)
-         ;MsgBox % Type := NumGet(dib, 0, "uint")
-         ;MsgBox % Width := NumGet(dib, 4, "uint")
-         ;MsgBox % Height := NumGet(dib, 8, "uint")
-         MsgBox % Stride := NumGet(dib, 12, "int")
-         ;MsgBox % Planes := NumGet(dib, 16, "ushort")
-         ;MsgBox % Bits := NumGet(dib, 18, "ushort")
-         MsgBox % Scan0 := NumGet(dib, 20 + (A_PtrSize = 8 ? 4 : 0)) ; padding
-         ;MsgBox % DllCall("gdiplus\GdipCreateBitmapFromGdiDib", "ptr",&dib, "ptr",Scan0, "uptr*",pBitmapOld)
-         DllCall("gdiplus\GdipCreateBitmapFromScan0", "int",this.ScreenWidth, "int",this.ScreenHeight, "int",-Stride, "int",0x26200A, "ptr",Scan0, "uptr*",pBitmapOld)
-         return pBitmapOld
-         x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
-         return Gdip_CloneBitmapArea(pBitmapOld, x, y, w, h), Gdip_DisposeImage(pBitmapOld)
-
-
-         pBitmap := Gdip_CreateBitmap(Width, Height)
-         _G := Gdip_GraphicsFromImage(pBitmap)
-         , Gdip_DrawImage(_G, pBitmapOld, 0, 0, Width, Height, 0, 0, Width, Height)
-         SelectObject(hdc, obm), DeleteObject(hbm), DeleteDC(hdc)
-         Gdip_DeleteGraphics(_G), Gdip_DisposeImage(pBitmapOld)
-         DestroyIcon(hIcon)
-         */
-
-
-         return Gdip_CloneBitmapArea(pBitmap, x, y, w, h), Gdip_DisposeImage(pBitmap)
-      }
-
-      Bitmap3() {
-         x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
-         chdc := CreateCompatibleDC()
-         hbm := CreateDIBSection(w, h, chdc)
-         obm := SelectObject(chdc, hbm)
-         hhdc := GetDC()
-         BitBlt(chdc, 0, 0, w, h, hhdc, x, y)
-         ReleaseDC(hhdc)
-         pBitmap := Gdip_CreateBitmapFromHBITMAP(hbm)
-         SelectObject(chdc, obm), DeleteObject(hbm), DeleteDC(hhdc), DeleteDC(chdc)
-         return pBitmap
-      }
-
-
-      Bitmap(x := "", y := "", w := "", h := "") {
-         x := (x != "") ? x : this.x
-         y := (y != "") ? y : this.y
-         w := (w != "") ? w : this.xx - this.x
-         h := (h != "") ? h : this.yy - this.y
-
-         pBitmap := Gdip_CreateBitmap(this.ScreenWidth, this.ScreenHeight)
-         pGraphics := Gdip_GraphicsFromImage(pBitmap)
-         loop % this.layers.maxIndex()
-            this.DrawRaw(pGraphics, this.ScreenWidth, this.ScreenHeight, this.layers[A_Index].1, this.layers[A_Index].2, this.layers[A_Index].3)
-         Gdip_DeleteGraphics(pGraphics)
-         pBitmapCopy := Gdip_CloneBitmapArea(pBitmap, x, y, w, h)
-         Gdip_DisposeImage(pBitmap)
-         return pBitmapCopy ; Please dispose of this image responsibly.
-      }
-
-      Save(filename := "", quality := 92) {
-         filename := (filename ~= "i)\.(bmp|dib|rle|jpg|jpeg|jpe|jfif|gif|tif|tiff|png)$") ? filename
-                  : (filename != "") ? filename ".png" : this.title ".png"
-         pBitmap := this.Bitmap()
-         Gdip_SaveBitmapToFile(pBitmap, filename, quality)
-         Gdip_DisposeImage(pBitmap)
-         return this
-      }
-
-      ; 3) Just takes a picture of the screen!
-      Screenshot(filename := "", quality := 92) {
-         filename := (filename ~= "i)\.(bmp|dib|rle|jpg|jpeg|jpe|jfif|gif|tif|tiff|png)$") ? filename
-                  : (filename != "") ? filename ".png" : this.title ".png"
-         pBitmap := Gdip_BitmapFromScreen(this.x "|" this.y "|" this.xx - this.x "|" this.yy - this.y)
-         Gdip_SaveBitmapToFile(pBitmap, filename, quality)
-         Gdip_DisposeImage(pBitmap)
-         return this
+         return {0:t_bound, 1:x_bound, 2:y_bound, 3:w_bound, 4:h_bound}
       }
 
       ; This is really stupid because it calls .Draw() twice for every action.
@@ -3351,30 +2975,6 @@ class Graphics {
 
          Reposition := ObjBindMethod(this, "Reposition")
          SetTimer, % Reposition, -10
-      }
-
-      x1() {
-         return this.x
-      }
-
-      y1() {
-         return this.y
-      }
-
-      x2() {
-         return this.xx
-      }
-
-      y2() {
-         return this.yy
-      }
-
-      width() {
-         return this.xx - this.x
-      }
-
-      height() {
-         return this.yy - this.y
       }
    } ; End of Subtitle class.
 }
