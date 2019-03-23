@@ -7,24 +7,29 @@
 #include <Gdip_All>    ; https://goo.gl/rUuEF5
 
 
-; ImageEquality() - Checks if images are equal.
+; PolygonRender() - Displays polygons in customizable styles on the screen.
+PolygonRender(polygon:="", style:=""){
+   return Graphics.Area.Render(polygon, style)
+}
+
+; ImageEquality() - Ensures that the pixel vaules of multiple images across mutiple formats are identical.
 ImageEquality(images*){
    return Graphics.Picture.Equality(images*)
 }
 
-; ImagePreprocess() - Modifies an input image and returns it in a new form.
+; ImagePreprocess() - Converts an image of any type into any new type with cropping and scaling.
 ImagePreprocess(cotype, image, crop:="", scale:="", terms*){
    return Graphics.Picture.Preprocess(cotype, image, crop, scale, terms*)
 }
 
-; ImageRender() - Shows an image on the screen.
+; ImageRender() - Displays an image in customizable styles on the screen.
 ImageRender(image:="", style:="", polygons:=""){
    return Graphics.Picture.Render(image, style, polygons)
 }
 
-; TextRender() - Shows text with styles on the screen.
-TextRender(text:="", style1:="", style2:=""){
-   return Graphics.Subtitle.Render(text, style1, style2)
+; TextRender() - Displays text in customizable styles on the screen.
+TextRender(text:="", background_style:="", text_style:=""){
+   return Graphics.Subtitle.Render(text, background_style, text_style)
 }
 
 
@@ -118,24 +123,80 @@ class Graphics {
 
       ; Duality #3 - Allocates the memory buffer.
       LoadMemory() {
+         ; Creates a memory DC compatible with the application's current screen.
          this.hdc := CreateCompatibleDC()
 
          ; struct BITMAPINFOHEADER - https://docs.microsoft.com/en-us/windows/desktop/api/wingdi/ns-wingdi-tagbitmapinfoheader
          VarSetCapacity(bi, 40, 0)
-            , NumPut(size := 40                , bi,  0, "uint")
-            , NumPut(this.ScreenWidth          , bi,  4, "uint")
-            , NumPut((this.ScreenHeight)      , bi,  8, "int")
-            , NumPut(planes := 1               , bi, 12, "ushort")
-            , NumPut(bpp := 32                 , bi, 14, "ushort")
-            , NumPut(0                         , bi, 16, "uint")
-         this.hbm := DllCall("CreateDIBSection", "ptr",this.hdc, "ptr",&bi, "uint",0, "ptr*",bits, "ptr",0, "uint",0, "ptr")
-         this.bits := bits
+            , NumPut(                     40 , bi,  0, "uint")    ; Size
+            , NumPut(       this.ScreenWidth , bi,  4, "uint")    ; Width
+            , NumPut(     -this.ScreenHeight , bi,  8, "int")     ; Height - Negative so (0, 0) is top-left.
+            , NumPut(                      1 , bi, 12, "ushort")  ; Planes
+            , NumPut(                     32 , bi, 14, "ushort")  ; BitCount / BitsPerPixel
+
+         ; Creates a Device Independent Bitmap giving us a pointer to the pixels.
+         this.hbm := DllCall("CreateDIBSection", "ptr",this.hdc, "ptr",&bi, "uint",0, "ptr*",pBits, "ptr",0, "uint",0, "ptr")
          this.obm := SelectObject(this.hdc, this.hbm)
          this.G := Gdip_GraphicsFromHDC(this.hdc)
+
+         ; IMPORTANT: DIB pixels are pre-multiplied ARGB because that's how they're displayed on the screen.
+         ; enum PixelFormat - https://svn.eiffel.com/eiffelstudio/trunk/Src/library/wel/gdi/gdiplus/wel_gdip_pixel_format.e
+         this.pBits := pBits
+         this.pixelFormat := 0xE200B ; Format32bppPArgb
+         this.stride := 4 * this.ScreenWidth
+         this.size := this.stride * this.ScreenHeight
          this.state := new this.outer.queue()
          this.layers := {}
 
          return this
+      }
+
+      DumpMemory() {
+         VarSetCapacity(pixels, this.size)
+         DllCall("RtlMoveMemory", "ptr",&pixels, "ptr",this.pBits, "ptr",this.size)
+         return pixels
+      }
+
+      DebugMemory() {
+         loop
+            MsgBox % Format("0x{:08x}", NumGet(this.pBits, 4*(A_Index-1), "uint"))
+      }
+
+      BitmapFromBits() {
+         DllCall("gdiplus\GdipCreateBitmapFromScan0", "int",this.ScreenWidth, "int",this.ScreenHeight
+            , "int",this.stride, "uint",this.pixelFormat, "ptr",this.pBits, "ptr*",pBitmap)
+         return pBitmap
+      }
+
+      NewBitmap() {
+         DllCall("gdiplus\GdipCreateBitmapFromScan0", "int",this.ScreenWidth, "int",this.ScreenHeight
+            , "int",this.stride, "uint",this.pixelFormat, "ptr",this.pBits, "ptr*",pBitmap)
+         DllCall("gdiplus\GdipCloneBitmapAreaI", "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight
+            , "uint",0x26200a, "ptr",pBitmap, "ptr*", pBitmapDest)
+         Gdip_DisposeImage(pBitmap)
+         DllCall("gdiplus\GdipGetImagePixelFormat", "ptr",pBitmapDest, "int*",PixelFormat)
+         MsgBox % PixelFormat
+         return pBitmapDest
+      }
+
+      BitmapFromScan0() {
+         this.SetCapacity("pixels", this.size)
+         this.Scan0 := this.GetAddress("pixels")
+         DllCall("RtlMoveMemory", "ptr",this.Scan0, "ptr",this.pBits, "ptr",this.size)
+         DllCall("gdiplus\GdipCreateBitmapFromScan0", "int",this.ScreenWidth, "int",this.ScreenHeight
+            , "int",this.stride, "uint",this.pixelFormat, "ptr",this.Scan0, "ptr*",pBitmap)
+         return pBitmap
+      }
+
+      BitmapFromScan01() {
+         global Scan0
+         VarSetCapacity(Scan0, this.size)
+         DllCall("RtlMoveMemory", "ptr",&Scan0, "ptr",this.pBits, "ptr",this.size)
+         DllCall("gdiplus\GdipCreateBitmapFromScan0", "uint",this.ScreenWidth, "uint",this.ScreenHeight
+            , "uint",this.stride, "uint",this.pixelFormat, "ptr",&Scan0, "ptr*",pBitmap)
+         ;MsgBox % byte := DllCall("RtlCompareMemory", "ptr", &Scan0, "ptr", this.pBits, "uint", this.size)
+         ;MsgBox % this.size
+         return pBitmap
       }
 
       ; Duality #3 - Frees the memory buffer.
@@ -144,7 +205,7 @@ class Graphics {
          SelectObject(this.hdc, this.obm)
          DeleteObject(this.hbm)
          DeleteDC(this.hdc)
-         this.G := this.obm := this.bits := this.hbm := this.hdc := ""
+         this.G := this.obm := this.pBits := this.hbm := this.hdc := ""
          return this
       }
 
@@ -561,7 +622,7 @@ class Graphics {
       dropShadow(d, vw, vh, x_simulated, y_simulated, font_size) {
          static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
          static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
-         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))\s*(%|pt|px|vh|vmin|vw)?\s*$"
          vmin := (vw < vh) ? vw : vh
 
          if IsObject(d) {
@@ -709,7 +770,7 @@ class Graphics {
       margin_and_padding(m, vw, vh, default := 0) {
          static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
          static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
-         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))\s*(%|pt|px|vh|vmin|vw)?\s*$"
          vmin := (vw < vh) ? vw : vh
 
          if IsObject(m) {
@@ -754,7 +815,7 @@ class Graphics {
       outline(o, vw, vh, font_size, font_color) {
          static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
          static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
-         static valid_positive := "(?i)^\s*((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid_positive := "(?i)^\s*((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))\s*(%|pt|px|vh|vmin|vw)?\s*$"
          vmin := (vw < vh) ? vw : vh
 
          if IsObject(o) {
@@ -1285,8 +1346,8 @@ class Graphics {
          t  := ((___ := RegExReplace( t, "i)(\d+)h(our)?s?$"               , "$1")) !=  t) ? ___ *  3600000 : t
          t  := ((___ := RegExReplace( t, "i)(\d+)d(ay)?s?$"                , "$1")) !=  t) ? ___ * 86400000 : t
 
-         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
-         static valid_positive := "(?i)^\s*((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid_positive := "(?i)^\s*((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))\s*(%|pt|px|vh|vmin|vw)?\s*$"
 
          vw := 0.01 * this.ScreenWidth    ; 1% of viewport width.
          vh := 0.01 * this.ScreenHeight   ; 1% of viewport height.
@@ -1717,8 +1778,8 @@ class Graphics {
          t  := ((___ := RegExReplace( t, "i)(\d+)d(ay)?s?$"                , "$1")) !=  t) ? ___ * 86400000 : t
 
          ; These are the type checkers.
-         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
-         static valid_positive := "(?i)^\s*((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid_positive := "(?i)^\s*((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))\s*(%|pt|px|vh|vmin|vw)?\s*$"
 
          ; Define viewport width and height. This is the visible screen area.
          vw := 0.01 * ScreenWidth         ; 1% of viewport width.
@@ -1756,22 +1817,37 @@ class Graphics {
             h := w / aspect
 
          ; If scale is "auto" assume w and h are maximum bounds and scale the image to the greatest edge.
-         ; If scale is "half" automatically downscale by a geometric series. Ex: 50%, 25%, 12.5%, 6.25%...
          ; If scale is "harmonic" automatically downscale by the harmonic series. Ex: 50%, 33%, 25%, 20%...
-         if (s = "auto" || s = "half" || s = "harmonic") {
+         if (s = "auto" || s = "harmonic") {
             s := (s = "auto") ? ((aspect > w / h) ? w / width : h / height) : s
-            s := (s = "half") ? ((aspect > w / h) ? 1 / (width // w * 2) : 1 / (height // h * 2)) : s
             s := (s = "harmonic") ? ((aspect > w / h) ? 1 / (width // w + 1) : 1 / (height // h + 1)) : s
             w := width  ; width and height given were maximum values, not actual values.
             h := height ; Therefore restore the width and height to the image width and height.
          }
 
-         s  := ( s ~= valid_positive) ? RegExReplace( s, "\s", "") : 1 ; Default scale is 1.00.
+         s  := ( s ~= valid) ? RegExReplace( s, "\s", "") : 1 ; Default scale is 1.00.
          s  := ( s ~= "i)(pt|px)$") ? SubStr( s, 1, -2) :  s
          s  := ( s ~= "i)vw$") ? RegExReplace( s, "i)vw$", "") * vw / width :  s
          s  := ( s ~= "i)vh$") ? RegExReplace( s, "i)vh$", "") * vh / height:  s
          s  := ( s ~= "i)vmin$") ? RegExReplace( s, "i)vmin$", "") * vmin / minimum :  s
          s  := ( s ~= "%$") ? RegExReplace( s, "%$", "") * 0.01 :  s
+
+         ; If scale is negative automatically scale by a geometric series constant.
+         ; Example: If scale is -0.5, then downscale by 50%, 25%, 12.5%, 6.25%...
+         ; What the equation is asking is how many powers of -1/s can we fit in width/w?
+         ; Then we use floor division and add 1 to ensure that we never exceed the bounds.
+         ; While this is only designed to handle negative scales from 0 to -1.0,
+         ; it works for negative numbers higher than -1.0. In this case, the 0 to -1 bounded
+         ; are the left adjoint, meaning they never surpass the w and h. Higher negative Numbers
+         ; are the right adjoint, meaning they never surpass w*-s and h*-s. Weird, huh.
+         ; To clarify: Left adjoint: w*-s to w, h*-s to h. Right adjoint: w to w*-s, h to h*-s
+         ; LaTex: \frac{1}{\frac{-1}{s}^{Floor(\frac{log(x)}{log(\frac{-1}{s})}) + 1}}
+         if (s < 0) {
+            s := (s < 0) ? ((aspect > w / h)
+               ? (-s) ** ((log(width/w) // log(-1/s)) + 1) : (-s) ** ((log(height/h) // log(-1/s)) + 1)) : s
+            w := width  ; width and height given were maximum values, not actual values.
+            h := height ; Therefore restore the width and height to the image width and height.
+         }
 
          ; Scale width and height.
          w := Floor(w * s)
@@ -2546,8 +2622,8 @@ class Graphics {
          t  := ((___ := RegExReplace( t, "i)(\d+)d(ay)?s?$"                , "$1")) !=  t) ? ___ * 86400000 : t
 
          ; These are the type checkers.
-         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
-         static valid_positive := "(?i)^\s*((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))\s*(%|pt|px|vh|vmin|vw)?\s*$"
+         static valid_positive := "(?i)^\s*((?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))\s*(%|pt|px|vh|vmin|vw)?\s*$"
 
          ; Define viewport width and height. This is the visible screen area.
          vw := 0.01 * ScreenWidth         ; 1% of viewport width.
@@ -2818,7 +2894,8 @@ class Graphics {
                ; Draw the outer edge of the text string.
                DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
                DllCall("gdiplus\GdipAddPathString", "ptr",pPath, "ptr", A_IsUnicode ? &text : &wtext, "int",-1
-                                                  , "ptr",hFamily, "int",style, "float",s, "ptr",&RC, "ptr",hFormat)
+                                                , "ptr",hFamily, "int",style, "float",s, "ptr",&RC, "ptr",hFormat)
+               ;DllCall("gdiplus\GdipWindingModeOutline", "ptr",pPath) ;BROKEN
                pPen := Gdip_CreatePen(d.4, 2*d.6 + o.1)
                DllCall("gdiplus\GdipSetPenLineJoin", "ptr",pPen, "uint",2)
                DllCall("gdiplus\GdipDrawPath", "ptr",DropShadowG, "ptr",pPen, "ptr",pPath)
@@ -2914,23 +2991,13 @@ class Graphics {
          w_bound := (w + 2 * o_bound > w_bound)    ? w + 2 * o_bound    : w_bound
          h_bound := (h + 2 * o_bound > h_bound)    ? h + 2 * o_bound    : h_bound
 
-         d_bound := Ceil(0.5 * o.1 + d.3 + d.6) ; dropShadow boundaty.
+         d_bound := Ceil(0.5 * o.1 + d.3 + d.6) ; dropShadow boundary.
          x_bound := (x + d.1 - d_bound < x_bound)  ? x + d.1 - d_bound  : x_bound
          y_bound := (y + d.2 - d_bound < y_bound)  ? y + d.2 - d_bound  : y_bound
          w_bound := (w + 2 * d_bound > w_bound)    ? w + 2 * d_bound    : w_bound
          h_bound := (h + 2 * d_bound > h_bound)    ? h + 2 * d_bound    : h_bound
 
          return {0:t_bound, 1:x_bound, 2:y_bound, 3:w_bound, 4:h_bound}
-      }
-
-      ; This is really stupid because it calls .Draw() twice for every action.
-      ; To be fair, .Draw() ALWAYS draws on the screen by default.
-      RenderToBitmap(text := "", style1 := "", style2 := "") {
-         if (!this.hwnd)
-            return (new this).RenderToBitmap(text, style1, style2)
-
-         this.Render(text, style1, style2, false) ; BROKEN
-         return this.Bitmap()
       }
 
       Reposition() {
