@@ -54,7 +54,12 @@ class Graphics {
 
       ; IO - Capture input and internalize environmental data.
       IO(terms*) {
+         static A_Frequency, f := DllCall("QueryPerformanceFrequency", "int64*",A_Frequency)
+         DllCall("QueryPerformanceCounter", "int64*",A_PreciseTime)
+
+         this.PreciseTime := A_PreciseTime
          this.TickCount := A_TickCount
+         this.Frequency := A_Frequency
          this.ScreenWidth := A_ScreenWidth
          this.ScreenHeight := A_ScreenHeight
          this.IsAdmin := A_IsAdmin
@@ -172,10 +177,8 @@ class Graphics {
          DllCall("gdiplus\GdipCreateBitmapFromScan0", "int",this.ScreenWidth, "int",this.ScreenHeight
             , "int",this.stride, "uint",this.pixelFormat, "ptr",this.pBits, "ptr*",pBitmap)
          DllCall("gdiplus\GdipCloneBitmapAreaI", "int",0, "int",0, "int",this.ScreenWidth, "int",this.ScreenHeight
-            , "uint",0x26200a, "ptr",pBitmap, "ptr*", pBitmapDest)
+            , "uint",0x26200a, "ptr",pBitmap, "ptr*",pBitmapDest)
          Gdip_DisposeImage(pBitmap)
-         DllCall("gdiplus\GdipGetImagePixelFormat", "ptr",pBitmapDest, "int*",PixelFormat)
-         MsgBox % PixelFormat
          return pBitmapDest
       }
 
@@ -185,17 +188,6 @@ class Graphics {
          DllCall("RtlMoveMemory", "ptr",this.Scan0, "ptr",this.pBits, "ptr",this.size)
          DllCall("gdiplus\GdipCreateBitmapFromScan0", "int",this.ScreenWidth, "int",this.ScreenHeight
             , "int",this.stride, "uint",this.pixelFormat, "ptr",this.Scan0, "ptr*",pBitmap)
-         return pBitmap
-      }
-
-      BitmapFromScan01() {
-         global Scan0
-         VarSetCapacity(Scan0, this.size)
-         DllCall("RtlMoveMemory", "ptr",&Scan0, "ptr",this.pBits, "ptr",this.size)
-         DllCall("gdiplus\GdipCreateBitmapFromScan0", "uint",this.ScreenWidth, "uint",this.ScreenHeight
-            , "uint",this.stride, "uint",this.pixelFormat, "ptr",&Scan0, "ptr*",pBitmap)
-         ;MsgBox % byte := DllCall("RtlCompareMemory", "ptr", &Scan0, "ptr", this.pBits, "uint", this.size)
-         ;MsgBox % this.size
          return pBitmap
       }
 
@@ -270,7 +262,6 @@ class Graphics {
             this.Reposition()
 
          UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
-         Tooltip % A_TickCount - this.TickCount
 
          if (this.t) {
             self_destruct := ObjBindMethod(this, "Destroy")
@@ -858,8 +849,8 @@ class Graphics {
 
       outer[p:=""] {
          get {
-            if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
-               Loop, Parse, _class, .
+            if ((__outer := RegExReplace(A_ThisFunc, "(?i)^(.*)\..*\..*\.get$", "$1")) != A_ThisFunc)
+               Loop, Parse, __outer, .
                   outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
             return IsObject(outer) ? ((p) ? outer[p] : outer) : ((p) ? %p% : "")
          }
@@ -1194,8 +1185,8 @@ class Graphics {
 
       outer[p:=""] {
          get {
-            if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
-               Loop, Parse, _class, .
+            if ((__outer := RegExReplace(A_ThisFunc, "(?i)^(.*)\..*\..*\.get$", "$1")) != A_ThisFunc)
+               Loop, Parse, __outer, .
                   outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
             return IsObject(outer) ? ((p) ? outer[p] : outer) : ((p) ? %p% : "")
          }
@@ -1713,8 +1704,8 @@ class Graphics {
 
       outer[p:=""] {
          get {
-            if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
-               Loop, Parse, _class, .
+            if ((__outer := RegExReplace(A_ThisFunc, "(?i)^(.*)\..*\..*\.get$", "$1")) != A_ThisFunc)
+               Loop, Parse, __outer, .
                   outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
             return IsObject(outer) ? ((p) ? outer[p] : outer) : ((p) ? %p% : "")
          }
@@ -1906,22 +1897,28 @@ class Graphics {
 
          ; Begin drawing the image onto the canvas.
          if (image != "") {
-            DllCall("gdiplus\GdipSetPixelOffsetMode",   "ptr",pGraphics, "int",0) ; No pixel offset.
-            DllCall("gdiplus\GdipSetCompositingMode",   "ptr",pGraphics, "int",1) ; Overwrite/SourceCopy.
-            DllCall("gdiplus\GdipSetSmoothingMode",     "ptr",pGraphics, "int",0) ; No anti-alias.
 
             ; Draw border.
-            c := this.outer.parse.color(c, 0xFF000000) ; Default color is black.
-            pBrush := Gdip_BrushCreateSolid(c)
-            Gdip_FillRectangle(pGraphics, pBrush, _x, _y, _w, _h)
-            Gdip_DeleteBrush(pBrush)
+            if (_x != x || _y != y || _w != w || _h != h) {
+               DllCall("gdiplus\GdipSetPixelOffsetMode",   "ptr",pGraphics, "int",0) ; No pixel offset.
+               DllCall("gdiplus\GdipSetCompositingMode",   "ptr",pGraphics, "int",0) ; Blend/SourceOver.
+               DllCall("gdiplus\GdipSetSmoothingMode",     "ptr",pGraphics, "int",0) ; No anti-alias.
 
-            q := (q >= 0 && q <= 7) ? q : 7       ; Default InterpolationMode is HighQualityBicubic.
+               c := this.outer.parse.color(c, 0xFF000000) ; Default color is black.
+               pBrush := Gdip_BrushCreateSolid(c)
+               Gdip_FillRectangle(pGraphics, pBrush, _x, _y, _w, _h)
+               Gdip_DeleteBrush(pBrush)
+            }
+
+            ; Set InterpolationMode HighQualityBicubic unless the source and destination are the same.
+            q := (w != width || h != height)
+               ? (q >= 0 && q <= 7) ? q : 7    ; HighQualityBicubic
+               : 5                             ; NearestNeighbor
 
             DllCall("gdiplus\GdipSetPixelOffsetMode",   "ptr",pGraphics, "int",2) ; Half pixel offset.
             DllCall("gdiplus\GdipSetCompositingMode",   "ptr",pGraphics, "int",1) ; Overwrite/SourceCopy.
             DllCall("gdiplus\GdipSetSmoothingMode",     "ptr",pGraphics, "int",0) ; No anti-alias.
-            DllCall("gdiplus\GdipSetInterpolationMode", "ptr",pGraphics, "int",q) ; Default bicubic.
+            DllCall("gdiplus\GdipSetInterpolationMode", "ptr",pGraphics, "int",q)
 
             ; WrapModeTile         = 0
             ; WrapModeTileFlipX    = 1
@@ -1933,20 +1930,20 @@ class Graphics {
             DllCall("gdiplus\GdipCreateImageAttributes", "ptr*",ImageAttr)
             DllCall("gdiplus\GdipSetImageAttributesWrapMode", "ptr",ImageAttr, "int",3)
             DllCall("gdiplus\GdipDrawImageRectRectI"
-                     , "ptr", pGraphics
-                     , "ptr", pBitmap
-                     , "int", x           ; destination
-                     , "int", y
-                     , "int", w
-                     , "int", h
-                     , "int", 0           ; source
-                     , "int", 0
-                     , "int", width
-                     , "int", height
-                     , "int", 2
-                     , "ptr", ImageAttr
-                     , "ptr", 0
-                     , "ptr", 0)
+                     ,   "ptr", pGraphics
+                     ,   "ptr", pBitmap
+                     ,   "int", x            ; destination rectangle
+                     ,   "int", y
+                     ,   "int", w
+                     ,   "int", h
+                     ,   "int", 0            ; source rectangle
+                     ,   "int", 0
+                     ,   "int", width
+                     ,   "int", height
+                     ,   "int", 2
+                     ,   "ptr", ImageAttr
+                     ,   "ptr", 0
+                     ,   "ptr", 0)
             DllCall("gdiplus\GdipDisposeImageAttributes", "ptr",ImageAttr)
          }
 
@@ -2522,8 +2519,8 @@ class Graphics {
 
       outer[p:=""] {
          get {
-            if ((_class := RegExReplace(this.__class, "^(.*)\..*$", "$1")) != this.__class)
-               Loop, Parse, _class, .
+            if ((__outer := RegExReplace(A_ThisFunc, "(?i)^(.*)\..*\..*\.get$", "$1")) != A_ThisFunc)
+               Loop, Parse, __outer, .
                   outer := (A_Index=1) ? %A_LoopField% : outer[A_LoopField]
             return IsObject(outer) ? ((p) ? outer[p] : outer) : ((p) ? %p% : "")
          }
@@ -2843,12 +2840,9 @@ class Graphics {
          o := this.outer.parse.outline(o, vw, vh, s, c)
          d := this.outer.parse.dropShadow(d, vw, vh, ReturnRC[3], ReturnRC[4], s)
 
-         ; Round 9 - Define Text
-         if (!A_IsUnicode){
-            nSize := DllCall("MultiByteToWideChar", "uint",0, "uint",0, "ptr",&text, "int",-1, "ptr",0, "int",0)
-            VarSetCapacity(wtext, nSize*2)
-            DllCall("MultiByteToWideChar", "uint",0, "uint",0, "ptr",&text, "int",-1, "ptr",&wtext, "int",nSize)
-         }
+         global PreciseTime
+         DllCall("QueryPerformanceCounter", "int64*",A_PreciseTime)
+         Tooltip % PreciseTime := (A_PreciseTime - this.PreciseTime) / this.Frequency
 
          ; Round 10 - Finalize _x, _y, _w, _h
          _x  := Round(_x)
@@ -2893,7 +2887,7 @@ class Graphics {
             {
                ; Draw the outer edge of the text string.
                DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
-               DllCall("gdiplus\GdipAddPathString", "ptr",pPath, "ptr", A_IsUnicode ? &text : &wtext, "int",-1
+               DllCall("gdiplus\GdipAddPathString", "ptr",pPath, "wstr",text, "int",-1
                                                 , "ptr",hFamily, "int",style, "float",s, "ptr",&RC, "ptr",hFormat)
                ;DllCall("gdiplus\GdipWindingModeOutline", "ptr",pPath) ;BROKEN
                pPen := Gdip_CreatePen(d.4, 2*d.6 + o.1)
@@ -2928,8 +2922,8 @@ class Graphics {
             ; Convert our text to a path.
             CreateRectF(RC, x, y, w, h)
             DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
-            DllCall("gdiplus\GdipAddPathString", "ptr",pPath, "ptr", A_IsUnicode ? &text : &wtext, "int",-1
-                                               , "ptr",hFamily, "int",style, "float",s, "ptr",&RC, "ptr",hFormat)
+            DllCall("gdiplus\GdipAddPathString", "ptr",pPath, "wstr",text, "int",-1
+                                             , "ptr",hFamily, "int",style, "float",s, "ptr",&RC, "ptr",hFormat)
 
             ; Create a glow effect around the edges.
             if (o.3) {
@@ -2968,7 +2962,14 @@ class Graphics {
             CreateRectF(RC, x, y, w, h)
             pBrushText := Gdip_BrushCreateSolid(c)
             Gdip_SetCompositingMode(pGraphics, SourceCopy)
-            Gdip_DrawString(pGraphics, A_IsUnicode ? text : wtext, hFont, hFormat, pBrushText, RC) ; DRAWING!
+            DllCall("gdiplus\GdipDrawString"
+                        ,   "ptr", pGraphics
+                        ,  "wstr", text
+                        ,   "int", -1
+                        ,   "ptr", hFont
+                        ,   "ptr", &RC
+                        ,   "ptr", hFormat
+                        ,   "ptr", pBrush)
             Gdip_SetCompositingMode(pGraphics, 0)
             Gdip_DeleteBrush(pBrushText)
          }
@@ -2985,13 +2986,13 @@ class Graphics {
          w_bound := _w
          h_bound := _h
 
-         o_bound := Ceil(0.5 * o.1 + o.3) ; outline boundary.
+         o_bound := Ceil(0.5 * o.1 + o.3)                     ; outline boundary.
          x_bound := (x - o_bound < x_bound)        ? x - o_bound        : x_bound
          y_bound := (y - o_bound < y_bound)        ? y - o_bound        : y_bound
          w_bound := (w + 2 * o_bound > w_bound)    ? w + 2 * o_bound    : w_bound
          h_bound := (h + 2 * o_bound > h_bound)    ? h + 2 * o_bound    : h_bound
 
-         d_bound := Ceil(0.5 * o.1 + d.3 + d.6) ; dropShadow boundary.
+         d_bound := Ceil(0.5 * o.1 + d.3 + d.6)            ; dropShadow boundary.
          x_bound := (x + d.1 - d_bound < x_bound)  ? x + d.1 - d_bound  : x_bound
          y_bound := (y + d.2 - d_bound < y_bound)  ? y + d.2 - d_bound  : y_bound
          w_bound := (w + 2 * d_bound > w_bound)    ? w + 2 * d_bound    : w_bound
