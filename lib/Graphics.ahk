@@ -1800,11 +1800,11 @@ class Graphics {
          h  := ( h ~= "%$") ? RegExReplace( h, "%$", "") * 0.01 * height :  h
 
          ; Default width and height.
-         if (!w && !h)
-            w := width, h := height
-         if (!w)
+         if (w == "" && h == "")
+            w := width, h := height, wh_unset := true
+         if (w == "")
             w := h * aspect
-         if (!h)
+         if (h == "")
             h := w / aspect
 
          ; If scale is "auto" assume w and h are maximum bounds and scale the image to the greatest edge.
@@ -1816,7 +1816,7 @@ class Graphics {
             h := height ; Therefore restore the width and height to the image width and height.
          }
 
-         s  := ( s ~= valid) ? RegExReplace( s, "\s", "") : 1 ; Default scale is 1.00.
+         s  := ( s ~= valid) ? RegExReplace( s, "\s", "") : ""
          s  := ( s ~= "i)(pt|px)$") ? SubStr( s, 1, -2) :  s
          s  := ( s ~= "i)vw$") ? RegExReplace( s, "i)vw$", "") * vw / width :  s
          s  := ( s ~= "i)vh$") ? RegExReplace( s, "i)vh$", "") * vh / height:  s
@@ -1833,18 +1833,28 @@ class Graphics {
          ; are the right adjoint, meaning they never surpass w*-s and h*-s. Weird, huh.
          ; To clarify: Left adjoint: w*-s to w, h*-s to h. Right adjoint: w to w*-s, h to h*-s
          ; LaTex: \frac{1}{\frac{-1}{s}^{Floor(\frac{log(x)}{log(\frac{-1}{s})}) + 1}}
-         if (s < 0) {
+         ; Vertical asymptote at s := -1, which resolves to the empty string "".
+         if (s < 0 && s != "") {
             s := (s < 0) ? ((aspect > w / h)
                ? (-s) ** ((log(width/w) // log(-1/s)) + 1) : (-s) ** ((log(height/h) // log(-1/s)) + 1)) : s
             w := width  ; width and height given were maximum values, not actual values.
             h := height ; Therefore restore the width and height to the image width and height.
          }
 
+         ; Default scale.
+         if (s == "") {
+            s := (x == "" && y == "" && wh_unset == true)         ; shrink image if x,y,w,h,s are all unset.
+               ? ((aspect > vr)                                   ; determine whether width or height exceeds screen.
+                  ? ((w > ScreenWidth) ? ScreenWidth / w : 1)     ; scale will downscale image by its width.
+                  : ((h > ScreenHeight) ? ScreenHeight / h : 1))  ; scale will downscale image by its height.
+               : 1                                                ; Default scale is 1.00.
+         }
+
          ; Scale width and height.
-         w := Floor(w * s)
-         h := Floor(h * s)
+         w  := w * s
+         h  := h * s
 
-
+         ; Get anchor. This is where the origin of the image is located.
          a  := RegExReplace( a, "\s", "")
          a  := (a ~= "i)top" && a ~= "i)left") ? 1 : (a ~= "i)top" && a ~= "i)cent(er|re)") ? 2
             : (a ~= "i)top" && a ~= "i)right") ? 3 : (a ~= "i)cent(er|re)" && a ~= "i)left") ? 4
@@ -1853,6 +1863,7 @@ class Graphics {
             : (a ~= "i)top") ? 2 : (a ~= "i)left") ? 4 : (a ~= "i)right") ? 6 : (a ~= "i)bottom") ? 8
             : (a ~= "i)cent(er|re)") ? 5 : (a ~= "^[1-9]$") ? a : 1 ; Default anchor is top-left.
 
+         ; The anchor can be implied and overwritten by x and y (left, center, right, top, bottom).
          a  := ( x ~= "i)left") ? 1+((( a-1)//3)*3) : ( x ~= "i)cent(er|re)") ? 2+((( a-1)//3)*3) : ( x ~= "i)right") ? 3+((( a-1)//3)*3) :  a
          a  := ( y ~= "i)top") ? 1+(mod( a-1,3)) : ( y ~= "i)cent(er|re)") ? 4+(mod( a-1,3)) : ( y ~= "i)bottom") ? 7+(mod( a-1,3)) :  a
 
@@ -1860,40 +1871,57 @@ class Graphics {
          x  := ( x ~= "i)left") ? 0 : (x ~= "i)cent(er|re)") ? 0.5*ScreenWidth : (x ~= "i)right") ? ScreenWidth : x
          y  := ( y ~= "i)top") ? 0 : (y ~= "i)cent(er|re)") ? 0.5*ScreenHeight : (y ~= "i)bottom") ? ScreenHeight : y
 
-         ; Validate x and y, convert to pixels.
-         x  := ( x ~= valid) ? RegExReplace( x, "\s", "") : 0 ; Default x is 0.
+         ; Get x and y.
+         x  := ( x ~= valid) ? RegExReplace( x, "\s", "") : ""
          x  := ( x ~= "i)(pt|px)$") ? SubStr( x, 1, -2) :  x
          x  := ( x ~= "i)(%|vw)$") ? RegExReplace( x, "i)(%|vw)$", "") * vw :  x
          x  := ( x ~= "i)vh$") ? RegExReplace( x, "i)vh$", "") * vh :  x
          x  := ( x ~= "i)vmin$") ? RegExReplace( x, "i)vmin$", "") * vmin :  x
 
-         y  := ( y ~= valid) ? RegExReplace( y, "\s", "") : 0 ; Default y is 0.
+         y  := ( y ~= valid) ? RegExReplace( y, "\s", "") : ""
          y  := ( y ~= "i)(pt|px)$") ? SubStr( y, 1, -2) :  y
          y  := ( y ~= "i)vw$") ? RegExReplace( y, "i)vw$", "") * vw :  y
          y  := ( y ~= "i)(%|vh)$") ? RegExReplace( y, "i)(%|vh)$", "") * vh :  y
          y  := ( y ~= "i)vmin$") ? RegExReplace( y, "i)vmin$", "") * vmin :  y
+
+         ; Default x and y.
+         if (x == "")
+            x := 0.5*ScreenWidth, a := 2+((( a-1)//3)*3)
+         if (y == "")
+            y := 0.5*ScreenHeight, a := 4+(mod( a-1,3))
 
          ; Modify x and y values with the anchor, so that the image has a new point of origin.
          x  -= (mod(a-1,3) == 0) ? 0 : (mod(a-1,3) == 1) ? w/2 : (mod(a-1,3) == 2) ? w : 0
          y  -= (((a-1)//3) == 0) ? 0 : (((a-1)//3) == 1) ? h/2 : (((a-1)//3) == 2) ? h : 0
 
          ; Prevent half-pixel rendering and keep image sharp.
-         x := Floor(x)
-         y := Floor(y)
+         w  := Round(x + w) - Round(x)   ; Use real x2 coordinate to determine width.
+         h  := Round(y + h) - Round(y)   ; Use real y2 coordinate to determine height.
+         x  := Round(x)                  ; NOTE: simple Floor(w) or Round(w) will NOT work.
+         y  := Round(y)                  ; The float values need to be added up and then rounded!
 
-         m := this.outer.parse.margin_and_padding(m, vw, vh)
+         ; Get margin.
+         m  := this.outer.parse.margin_and_padding(m, vw, vh)
 
          ; Calculate border using margin.
-         _x  := x - (m.4)
-         _y  := y - (m.1)
-         _w  := w + (m.2 + m.4)
-         _h  := h + (m.1 + m.3)
+         _x := x - Round(m.4)
+         _y := y - Round(m.1)
+         _w := w + Round(m.2) + Round(m.4)
+         _h := h + Round(m.1) + Round(m.3)
 
          ; Save original Graphics settings.
-         DllCall("gdiplus\GdipGetPixelOffsetMode",   "ptr",pGraphics, "int*",PixelOffsetMode)
-         DllCall("gdiplus\GdipGetCompositingMode",   "ptr",pGraphics, "int*",CompositingMode)
-         DllCall("gdiplus\GdipGetSmoothingMode",     "ptr",pGraphics, "int*",SmoothingMode)
-         DllCall("gdiplus\GdipGetInterpolationMode", "ptr",pGraphics, "int*",InterpolationMode)
+         DllCall("gdiplus\GdipGetPixelOffsetMode",    "ptr",pGraphics, "int*",PixelOffsetMode)
+         DllCall("gdiplus\GdipGetCompositingMode",    "ptr",pGraphics, "int*",CompositingMode)
+         DllCall("gdiplus\GdipGetCompositingQuality", "ptr",pGraphics, "int*",CompositingQuality)
+         DllCall("gdiplus\GdipGetSmoothingMode",      "ptr",pGraphics, "int*",SmoothingMode)
+         DllCall("gdiplus\GdipGetInterpolationMode",  "ptr",pGraphics, "int*",InterpolationMode)
+
+         ; Set some general Graphics settings.
+         DllCall("gdiplus\GdipSetPixelOffsetMode",    "ptr",pGraphics, "int",2) ; Half pixel offset.
+         DllCall("gdiplus\GdipSetCompositingMode",    "ptr",pGraphics, "int",1) ; Overwrite/SourceCopy.
+         DllCall("gdiplus\GdipSetCompositingQuality", "ptr",pGraphics, "int",0) ; AssumeLinear
+         DllCall("gdiplus\GdipSetSmoothingMode",      "ptr",pGraphics, "int",0) ; No anti-alias.
+         DllCall("gdiplus\GdipSetInterpolationMode",  "ptr",pGraphics, "int",7) ; HighQualityBicubic
 
          ; Begin drawing the image onto the canvas.
          if (image != "") {
@@ -1906,19 +1934,42 @@ class Graphics {
 
                c := this.outer.parse.color(c, 0xFF000000) ; Default color is black.
                pBrush := Gdip_BrushCreateSolid(c)
-               Gdip_FillRectangle(pGraphics, pBrush, _x, _y, _w, _h)
+               DllCall("gdiplus\GdipFillRectangleI"
+                        ,   "ptr", pGraphics
+                        ,   "ptr", pBrush
+                        ,   "int", _x
+                        ,   "int", _y
+                        ,   "int", _w
+                        ,   "int", _h)
                Gdip_DeleteBrush(pBrush)
             }
 
+            ; Doesn't really do anything!
             ; Set InterpolationMode HighQualityBicubic unless the source and destination are the same.
             q := (w != width || h != height)
                ? (q >= 0 && q <= 7) ? q : 7    ; HighQualityBicubic
                : 5                             ; NearestNeighbor
 
-            DllCall("gdiplus\GdipSetPixelOffsetMode",   "ptr",pGraphics, "int",2) ; Half pixel offset.
-            DllCall("gdiplus\GdipSetCompositingMode",   "ptr",pGraphics, "int",1) ; Overwrite/SourceCopy.
-            DllCall("gdiplus\GdipSetSmoothingMode",     "ptr",pGraphics, "int",0) ; No anti-alias.
-            DllCall("gdiplus\GdipSetInterpolationMode", "ptr",pGraphics, "int",q)
+            DllCall("gdiplus\GdipSetPixelOffsetMode",    "ptr",pGraphics, "int",2) ; Half pixel offset.
+            DllCall("gdiplus\GdipSetCompositingMode",    "ptr",pGraphics, "int",1) ; Overwrite/SourceCopy.
+            DllCall("gdiplus\GdipSetSmoothingMode",      "ptr",pGraphics, "int",0) ; No anti-alias.
+            DllCall("gdiplus\GdipSetInterpolationMode",  "ptr",pGraphics, "int",q)
+            DllCall("gdiplus\GdipSetCompositingQuality", "ptr",pGraphics, "int",0) ; AssumeLinear
+
+            /*
+            typedef enum  {
+              PaletteFlagsHasAlpha    = 0x0001,
+              PaletteFlagsGrayScale   = 0x0002,
+              PaletteFlagsHalftone    = 0x0004
+            } PaletteFlags;
+
+            VarSetCapacity(ColorPalette, 12)
+               , NumPut(    1 , ColorPalette, 0,   "int") ; PaletteFlags
+               , NumPut(     , ColorPalette, 4,   "int")
+               , NumPut(     , ColorPalette, 8,  "uint")
+            */
+            DllCall("gdiplus\GdipBitmapConvertFormat", "ptr",pBitmap, "int",this.pixelFormat, "int",0, "int",0, "ptr",0
+            , "float",0)
 
             ; WrapModeTile         = 0
             ; WrapModeTileFlipX    = 1
@@ -1944,6 +1995,10 @@ class Graphics {
                      ,   "ptr", ImageAttr
                      ,   "ptr", 0
                      ,   "ptr", 0)
+                     global PreciseTime
+                     DllCall("QueryPerformanceCounter", "int64*",A_PreciseTime)
+                     Tooltip % PreciseTime := (A_PreciseTime - this.PreciseTime) / this.Frequency
+
             DllCall("gdiplus\GdipDisposeImageAttributes", "ptr",ImageAttr)
          }
 
@@ -1970,10 +2025,11 @@ class Graphics {
          }
 
          ; Restore original Graphics settings.
-         DllCall("gdiplus\GdipSetPixelOffsetMode",   "ptr",pGraphics, "int",PixelOffsetMode)
-         DllCall("gdiplus\GdipSetCompositingMode",   "ptr",pGraphics, "int",CompositingMode)
-         DllCall("gdiplus\GdipSetSmoothingMode",     "ptr",pGraphics, "int",SmoothingMode)
-         DllCall("gdiplus\GdipSetInterpolationMode", "ptr",pGraphics, "int",InterpolationMode)
+         DllCall("gdiplus\GdipSetPixelOffsetMode",    "ptr",pGraphics, "int",PixelOffsetMode)
+         DllCall("gdiplus\GdipSetCompositingMode",    "ptr",pGraphics, "int",CompositingMode)
+         DllCall("gdiplus\GdipSetCompositingQuality", "ptr",pGraphics, "int",CompositingQuality)
+         DllCall("gdiplus\GdipSetSmoothingMode",      "ptr",pGraphics, "int",SmoothingMode)
+         DllCall("gdiplus\GdipSetInterpolationMode",  "ptr",pGraphics, "int",InterpolationMode)
 
          if (type != "pBitmap")
             Gdip_DisposeImage(pBitmap)
@@ -2686,7 +2742,6 @@ class Graphics {
          ; Output is a decimal with pixel units.
 
          ; Get background anchor. This is where the origin of the image is located.
-         ; The default origin is the top left corner. Default anchor is 1.
          _a := RegExReplace(_a, "\s", "")
          _a := (_a ~= "i)top" && _a ~= "i)left") ? 1 : (_a ~= "i)top" && _a ~= "i)cent(er|re)") ? 2
             : (_a ~= "i)top" && _a ~= "i)right") ? 3 : (_a ~= "i)cent(er|re)" && _a ~= "i)left") ? 4
@@ -2695,8 +2750,7 @@ class Graphics {
             : (_a ~= "i)top") ? 2 : (_a ~= "i)left") ? 4 : (_a ~= "i)right") ? 6 : (_a ~= "i)bottom") ? 8
             : (_a ~= "i)cent(er|re)") ? 5 : (_a ~= "^[1-9]$") ? _a : 1 ; Default anchor is top-left.
 
-         ; _x and _y can be specified as locations (left, center, right, top, bottom).
-         ; These location words in _x and _y take precedence over the values in _a.
+         ; The anchor can be implied from _x and _y (left, center, right, top, bottom).
          _a  := (_x ~= "i)left") ? 1+(((_a-1)//3)*3) : (_x ~= "i)cent(er|re)") ? 2+(((_a-1)//3)*3) : (_x ~= "i)right") ? 3+(((_a-1)//3)*3) : _a
          _a  := (_y ~= "i)top") ? 1+(mod(_a-1,3)) : (_y ~= "i)cent(er|re)") ? 4+(mod(_a-1,3)) : (_y ~= "i)bottom") ? 7+(mod(_a-1,3)) : _a
 
@@ -2704,14 +2758,13 @@ class Graphics {
          _x  := (_x ~= "i)left") ? 0 : (_x ~= "i)cent(er|re)") ? 0.5*ScreenWidth : (_x ~= "i)right") ? ScreenWidth : _x
          _y  := (_y ~= "i)top") ? 0 : (_y ~= "i)cent(er|re)") ? 0.5*ScreenHeight : (_y ~= "i)bottom") ? ScreenHeight : _y
 
-         ; Get _x value.
+         ; Get _x and _y.
          _x := (_x ~= valid) ? RegExReplace(_x, "\s", "") : 0  ; Default _x is 0.
          _x := (_x ~= "i)(pt|px)$") ? SubStr(_x, 1, -2) : _x
          _x := (_x ~= "i)(%|vw)$") ? RegExReplace(_x, "i)(%|vw)$", "") * vw : _x
          _x := (_x ~= "i)vh$") ? RegExReplace(_x, "i)vh$", "") * vh : _x
          _x := (_x ~= "i)vmin$") ? RegExReplace(_x, "i)vmin$", "") * vmin : _x
 
-         ; Get _y value.
          _y := (_y ~= valid) ? RegExReplace(_y, "\s", "") : 0  ; Default _y is 0.
          _y := (_y ~= "i)(pt|px)$") ? SubStr(_y, 1, -2) : _y
          _y := (_y ~= "i)vw$") ? RegExReplace(_y, "i)vw$", "") * vw : _y
@@ -2840,10 +2893,6 @@ class Graphics {
          o := this.outer.parse.outline(o, vw, vh, s, c)
          d := this.outer.parse.dropShadow(d, vw, vh, ReturnRC[3], ReturnRC[4], s)
 
-         global PreciseTime
-         DllCall("QueryPerformanceCounter", "int64*",A_PreciseTime)
-         Tooltip % PreciseTime := (A_PreciseTime - this.PreciseTime) / this.Frequency
-
          ; Round 10 - Finalize _x, _y, _w, _h
          _x  := Round(_x)
          _y  := Round(_y)
@@ -2969,7 +3018,7 @@ class Graphics {
                         ,   "ptr", hFont
                         ,   "ptr", &RC
                         ,   "ptr", hFormat
-                        ,   "ptr", pBrush)
+                        ,   "ptr", pBrushText)
             Gdip_SetCompositingMode(pGraphics, 0)
             Gdip_DeleteBrush(pBrushText)
          }
