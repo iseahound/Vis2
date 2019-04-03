@@ -610,19 +610,19 @@ class Graphics {
          return map[c]
       }
 
-      dropShadow(d, vw, vh, x_simulated, y_simulated, font_size) {
+      dropShadow(d, vw, vh, width, height, font_size) {
          static q1 := "(?i)^.*?\b(?<!:|:\s)\b"
          static q2 := "(?!(?>\([^()]*\)|[^()]*)*\))(:\s*)?\(?(?<value>(?<=\()([\s:#%_a-z\-\.\d]+|\([\s:#%_a-z\-\.\d]*\))*(?=\))|[#%_a-z\-\.\d]+).*$"
          static valid := "(?i)^\s*(\-?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+)))\s*(%|pt|px|vh|vmin|vw)?\s*$"
          vmin := (vw < vh) ? vw : vh
 
          if IsObject(d) {
-            d.1 := (d.1) ? d.1 : (d.horizontal != "") ? d.horizontal : d.h
-            d.2 := (d.2) ? d.2 : (d.vertical   != "") ? d.vertical   : d.v
-            d.3 := (d.3) ? d.3 : (d.blur       != "") ? d.blur       : d.b
-            d.4 := (d.4) ? d.4 : (d.color      != "") ? d.color      : d.c
-            d.5 := (d.5) ? d.5 : (d.opacity    != "") ? d.opacity    : d.o
-            d.6 := (d.6) ? d.6 : (d.size       != "") ? d.size       : d.s
+            d.1 := (d.horizontal != "") ? d.horizontal : (d.h != "") ? d.h : d.1
+            d.2 := (d.vertical   != "") ? d.vertical   : (d.v != "") ? d.h : d.2
+            d.3 := (d.blur       != "") ? d.blur       : (d.b != "") ? d.h : d.3
+            d.4 := (d.color      != "") ? d.color      : (d.c != "") ? d.h : d.4
+            d.5 := (d.opacity    != "") ? d.opacity    : (d.o != "") ? d.h : d.5
+            d.6 := (d.size       != "") ? d.size       : (d.s != "") ? d.h : d.6
          } else if (d != "") {
             _ := RegExReplace(d, ":\s+", ":")
             _ := RegExReplace(_, "\s+", " ")
@@ -647,8 +647,8 @@ class Graphics {
             d[key] := (d[key] ~= "i)vmin$") ? RegExReplace(d[key], "i)vmin$", "") * vmin : d[key]
          }
 
-         d.1 := (d.1 ~= "%$") ? SubStr(d.1, 1, -1) * 0.01 * x_simulated : d.1
-         d.2 := (d.2 ~= "%$") ? SubStr(d.2, 1, -1) * 0.01 * y_simulated : d.2
+         d.1 := (d.1 ~= "%$") ? SubStr(d.1, 1, -1) * 0.01 * width : d.1
+         d.2 := (d.2 ~= "%$") ? SubStr(d.2, 1, -1) * 0.01 * height : d.2
          d.3 := (d.3 ~= "%$") ? SubStr(d.3, 1, -1) * 0.01 * font_size : d.3
          d.4 := this.color(d.4, 0xFFFF0000) ; Default color is red.
          d.5 := (d.5 ~= "%$") ? SubStr(d.5, 1, -1) / 100 : d.5
@@ -765,10 +765,10 @@ class Graphics {
          vmin := (vw < vh) ? vw : vh
 
          if IsObject(m) {
-            m.1 := (m.top    != "") ? m.top    : m.t
-            m.2 := (m.right  != "") ? m.right  : m.r
-            m.3 := (m.bottom != "") ? m.bottom : m.b
-            m.4 := (m.left   != "") ? m.left   : m.l
+            m.1 := (m.top    != "") ? m.top    : (m.t != "") ? m.t : m.1
+            m.2 := (m.right  != "") ? m.right  : (m.r != "") ? m.r : m.2
+            m.3 := (m.bottom != "") ? m.bottom : (m.b != "") ? m.b : m.3
+            m.4 := (m.left   != "") ? m.left   : (m.l != "") ? m.l : m.4
          } else if (m != "") {
             _ := RegExReplace(m, ":\s+", ":")
             _ := RegExReplace(_, "\s+", " ")
@@ -779,7 +779,7 @@ class Graphics {
             _.4 := ((___ := RegExReplace(m, q1    "(l(eft)?)"          q2, "${value}")) != m) ? ___ : _.4
             m := _
          }
-         else return {1:default, 2:default, 3:default, 4:default}
+         else return {"void":true, 1:default, 2:default, 3:default, 4:default}
 
          ; Follow CSS guidelines for margin!
          if (m.2 == "" && m.3 == "" && m.4 == "")
@@ -810,10 +810,10 @@ class Graphics {
          vmin := (vw < vh) ? vw : vh
 
          if IsObject(o) {
-            o.1 := (o.1) ? o.1 : (o.stroke != "") ? o.stroke : o.s
-            o.2 := (o.2) ? o.2 : (o.color  != "") ? o.color  : o.c
-            o.3 := (o.3) ? o.3 : (o.glow   != "") ? o.glow   : o.g
-            o.4 := (o.4) ? o.4 : (o.tint   != "") ? o.tint   : o.t
+            o.1 := (o.stroke != "") ? o.stroke : (o.s != "") ? o.s : o.1
+            o.2 := (o.color  != "") ? o.color  : (o.c != "") ? o.c : o.2
+            o.3 := (o.glow   != "") ? o.glow   : (o.g != "") ? o.g : o.3
+            o.4 := (o.tint   != "") ? o.tint   : (o.t != "") ? o.t : o.4
          } else if (o != "") {
             _ := RegExReplace(o, ":\s+", ":")
             _ := RegExReplace(_, "\s+", " ")
@@ -1307,22 +1307,22 @@ class Graphics {
 
          if IsObject(style) {
             t  := (style.time != "")        ? style.time        : style.t
-            a  := (style.anchor != "")      ? style.anchor      : style.a
             x  := (style.left != "")        ? style.left        : style.x
             y  := (style.top != "")         ? style.top         : style.y
             w  := (style.width != "")       ? style.width       : style.w
             h  := (style.height != "")      ? style.height      : style.h
+            a  := (style.anchor != "")      ? style.anchor      : style.a
             m  := (style.margin != "")      ? style.margin      : style.m
             s  := (style.size != "")        ? style.size        : style.s
             c  := (style.color != "")       ? style.color       : style.c
             q  := (style.quality != "")     ? style.quality     : (style.q) ? style.q : style.InterpolationMode
          } else {
             t  := ((___ := RegExReplace(style, q1    "(t(ime)?)"          q2, "${value}")) != style) ? ___ : ""
-            a  := ((___ := RegExReplace(style, q1    "(a(nchor)?)"        q2, "${value}")) != style) ? ___ : ""
             x  := ((___ := RegExReplace(style, q1    "(x|left)"           q2, "${value}")) != style) ? ___ : ""
             y  := ((___ := RegExReplace(style, q1    "(y|top)"            q2, "${value}")) != style) ? ___ : ""
             w  := ((___ := RegExReplace(style, q1    "(w(idth)?)"         q2, "${value}")) != style) ? ___ : ""
             h  := ((___ := RegExReplace(style, q1    "(h(eight)?)"        q2, "${value}")) != style) ? ___ : ""
+            a  := ((___ := RegExReplace(style, q1    "(a(nchor)?)"        q2, "${value}")) != style) ? ___ : ""
             m  := ((___ := RegExReplace(style, q1    "(m(argin)?)"        q2, "${value}")) != style) ? ___ : ""
             s  := ((___ := RegExReplace(style, q1    "(s(ize)?)"          q2, "${value}")) != style) ? ___ : ""
             c  := ((___ := RegExReplace(style, q1    "(c(olor)?)"         q2, "${value}")) != style) ? ___ : ""
@@ -1453,7 +1453,7 @@ class Graphics {
          pPen := Gdip_CreatePen(0xFFFF0000, 1)
 
          for i, polygon in polygons {
-            DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
+            DllCall("gdiplus\GdipCreatePath", "int",1, "ptr*",pPath)
             VarSetCapacity(pointf, 8*polygons[i].polygon.maxIndex(), 0)
             for j, point in polygons[i].polygon {
                NumPut(point.x*s + x, pointf, 8*(A_Index-1) + 0, "float")
@@ -1807,10 +1807,16 @@ class Graphics {
          if (h == "")
             h := w / aspect
 
-         ; If scale is "auto" assume w and h are maximum bounds and scale the image to the greatest edge.
+         ; If scale is "fill" scale the image until there are no empty spaces but two sides of the image are cut off.
+         ; If scale is "fit" scale the image so that the greatest edge will fit with empty borders along one edge.
          ; If scale is "harmonic" automatically downscale by the harmonic series. Ex: 50%, 33%, 25%, 20%...
-         if (s = "auto" || s = "harmonic") {
-            s := (s = "auto") ? ((aspect > w / h) ? w / width : h / height) : s
+         if (s = "auto" || s = "fill" || s = "fit" || s = "harmonic" || s = "limit") {
+            if (wh_unset == true)
+               w := ScreenWidth, h := ScreenHeight
+            s := (s = "auto" || s = "limit")
+               ? ((aspect > w / h) ? ((width > w) ? w / width : 1) : ((height > h) ? h / height : 1)) : s
+            s := (s = "fill") ? ((aspect < w / h) ? w / width : h / height) : s
+            s := (s = "fit") ? ((aspect > w / h) ? w / width : h / height) : s
             s := (s = "harmonic") ? ((aspect > w / h) ? 1 / (width // w + 1) : 1 / (height // h + 1)) : s
             w := width  ; width and height given were maximum values, not actual values.
             h := height ; Therefore restore the width and height to the image width and height.
@@ -1835,6 +1841,8 @@ class Graphics {
          ; LaTex: \frac{1}{\frac{-1}{s}^{Floor(\frac{log(x)}{log(\frac{-1}{s})}) + 1}}
          ; Vertical asymptote at s := -1, which resolves to the empty string "".
          if (s < 0 && s != "") {
+            if (wh_unset == true)
+               w := ScreenWidth, h := ScreenHeight
             s := (s < 0) ? ((aspect > w / h)
                ? (-s) ** ((log(width/w) // log(-1/s)) + 1) : (-s) ** ((log(height/h) // log(-1/s)) + 1)) : s
             w := width  ; width and height given were maximum values, not actual values.
@@ -1845,8 +1853,8 @@ class Graphics {
          if (s == "") {
             s := (x == "" && y == "" && wh_unset == true)         ; shrink image if x,y,w,h,s are all unset.
                ? ((aspect > vr)                                   ; determine whether width or height exceeds screen.
-                  ? ((w > ScreenWidth) ? ScreenWidth / w : 1)     ; scale will downscale image by its width.
-                  : ((h > ScreenHeight) ? ScreenHeight / h : 1))  ; scale will downscale image by its height.
+                  ? ((width > ScreenWidth) ? ScreenWidth / width : 1)       ; scale will downscale image by its width.
+                  : ((height > ScreenHeight) ? ScreenHeight / height : 1))  ; scale will downscale image by its height.
                : 1                                                ; Default scale is 1.00.
          }
 
@@ -1927,7 +1935,7 @@ class Graphics {
          if (image != "") {
 
             ; Draw border.
-            if (_x != x || _y != y || _w != w || _h != h) {
+            if (!m.void) {
                DllCall("gdiplus\GdipSetPixelOffsetMode",   "ptr",pGraphics, "int",0) ; No pixel offset.
                DllCall("gdiplus\GdipSetCompositingMode",   "ptr",pGraphics, "int",0) ; Blend/SourceOver.
                DllCall("gdiplus\GdipSetSmoothingMode",     "ptr",pGraphics, "int",0) ; No anti-alias.
@@ -1944,63 +1952,104 @@ class Graphics {
                Gdip_DeleteBrush(pBrush)
             }
 
-            ; Doesn't really do anything!
-            ; Set InterpolationMode HighQualityBicubic unless the source and destination are the same.
-            q := (w != width || h != height)
-               ? (q >= 0 && q <= 7) ? q : 7    ; HighQualityBicubic
-               : 5                             ; NearestNeighbor
+            ; Draw image.
+            if (w == width && h == height) {
+               ; ARCHIVE: Doesn't work!
+               /*
+               hdc := Gdip_GetDC(pGraphics)
+               gfx := Gdip_GraphicsFromImage(pBitmap)
+               cdc := Gdip_GetDC(gfx)
+               BitBlt(hdc, x, y, w, h, cdc, 0, 0, Raster := "")
+               Gdip_ReleaseDC(gfx, cdc)
+               Gdip_DeleteGraphics(gfx)
+               Gdip_ReleaseDC(pGraphics, hdc)
+               */
 
-            DllCall("gdiplus\GdipSetPixelOffsetMode",    "ptr",pGraphics, "int",2) ; Half pixel offset.
-            DllCall("gdiplus\GdipSetCompositingMode",    "ptr",pGraphics, "int",1) ; Overwrite/SourceCopy.
-            DllCall("gdiplus\GdipSetSmoothingMode",      "ptr",pGraphics, "int",0) ; No anti-alias.
-            DllCall("gdiplus\GdipSetInterpolationMode",  "ptr",pGraphics, "int",q)
-            DllCall("gdiplus\GdipSetCompositingQuality", "ptr",pGraphics, "int",0) ; AssumeLinear
 
-            /*
-            typedef enum  {
-              PaletteFlagsHasAlpha    = 0x0001,
-              PaletteFlagsGrayScale   = 0x0002,
-              PaletteFlagsHalftone    = 0x0004
-            } PaletteFlags;
+               ; Get the device context (hdc) associated with the Graphics object.
+               ; Allocate a top-down device independent bitmap (hbm) by inputting a negative height.
+               ; Pass the existing device context so that CreateDIBSection can determine the pixel format.
+               ; Outputs a pointer to the pixel data. Select the new handle to a bitmap onto the cloned
+               ; compatible device context. The old bitmap (obm) is a monochrome 1x1 default bitmap that
+               ; will be reselected onto the device context (cdc) before deletion.
+               hdc := Gdip_GetDC(pGraphics)
+               hbm := CreateDIBSection(width, -height, hdc, 32, pBits)
+               cdc := CreateCompatibleDC(hdc)
+               obm := SelectObject(cdc, hbm)
 
-            VarSetCapacity(ColorPalette, 12)
-               , NumPut(    1 , ColorPalette, 0,   "int") ; PaletteFlags
-               , NumPut(     , ColorPalette, 4,   "int")
-               , NumPut(     , ColorPalette, 8,  "uint")
-            */
-            DllCall("gdiplus\GdipBitmapConvertFormat", "ptr",pBitmap, "int",this.pixelFormat, "int",0, "int",0, "ptr",0
-            , "float",0)
+               ; In the below code we do something really interesting to save a call of memcpy().
+               ; When calling LockBits the third argument is set to 0x4 (ImageLockModeUserInputBuf).
+               ; This means that we can use the pointer to the bits from our memory bitmap (DIB)
+               ; as the Scan0 of the LockBits output. While this is not a speed up, this saves memory
+               ; because we are (1) allocating a DIB, (2) getting a pBitmap, (3) using a LockBits buffer.
+               ; Instead of (3), we can use the allocated buffer from (1) which makes the most sense.
+               ; The bottleneck in the code is LockBits(), which takes over 20 ms for a 1920 x 1080 image.
+               ; https://stackoverflow.com/questions/6782489/create-bitmap-from-a-byte-array-of-pixel-data
+               ; https://stackoverflow.com/questions/17030264/read-and-write-directly-to-unlocked-bitmap-unmanaged-memory-scan0
+               VarSetCapacity(Rect, 16, 0)
+                  , NumPut( width, Rect,  8,  "uint")
+                  , NumPut(height, Rect, 12,  "uint")
+               VarSetCapacity(BitmapData, 16+2*(A_PtrSize ? A_PtrSize : 4), 0)
+                  , NumPut(       width, BitmapData,  0,  "uint") ; Width
+                  , NumPut(      height, BitmapData,  4,  "uint") ; Height
+                  , NumPut(   4 * width, BitmapData,  8,   "int") ; Stride
+                  , NumPut(     0xE200B, BitmapData, 12,   "int") ; PixelFormat
+                  , NumPut(       pBits, BitmapData, 16,   "ptr") ; Scan0
+               DllCall("gdiplus\GdipBitmapLockBits"
+                  ,   "ptr", pBitmap
+                  ,   "ptr", &Rect
+                  ,  "uint", 5            ; ImageLockMode.UserInputBuffer | ImageLockMode.ReadOnly
+                  ,   "int", 0xE200B      ; Format32bppPArgb
+                  ,   "ptr", &BitmapData)
+               DllCall("gdiplus\GdipBitmapUnlockBits", "ptr",pBitmap, "ptr",&BitmapData)
 
-            ; WrapModeTile         = 0
-            ; WrapModeTileFlipX    = 1
-            ; WrapModeTileFlipY    = 2
-            ; WrapModeTileFlipXY   = 3
-            ; WrapModeClamp        = 4
-            ; Values outside this range downgrades from HighQualityBicubic to something horrible.
-            ; Downgrading removes the pre-filtering on the algorithm, and the need for edge cases.
-            DllCall("gdiplus\GdipCreateImageAttributes", "ptr*",ImageAttr)
-            DllCall("gdiplus\GdipSetImageAttributesWrapMode", "ptr",ImageAttr, "int",3)
-            DllCall("gdiplus\GdipDrawImageRectRectI"
-                     ,   "ptr", pGraphics
-                     ,   "ptr", pBitmap
-                     ,   "int", x            ; destination rectangle
-                     ,   "int", y
-                     ,   "int", w
-                     ,   "int", h
-                     ,   "int", 0            ; source rectangle
-                     ,   "int", 0
-                     ,   "int", width
-                     ,   "int", height
-                     ,   "int", 2
-                     ,   "ptr", ImageAttr
-                     ,   "ptr", 0
-                     ,   "ptr", 0)
-                     global PreciseTime
-                     DllCall("QueryPerformanceCounter", "int64*",A_PreciseTime)
-                     Tooltip % PreciseTime := (A_PreciseTime - this.PreciseTime) / this.Frequency
+               ; BitBlt() is the fastest operation for copying pixels.
+               BitBlt(hdc, x, y, w, h, cdc, 0, 0)
+               SelectObject(cdc, obm)
+               DeleteObject(hbm)
+               DeleteDC(cdc)
+               Gdip_ReleaseDC(pGraphics, hdc)
 
-            DllCall("gdiplus\GdipDisposeImageAttributes", "ptr",ImageAttr)
+            } else {
+               ; Set InterpolationMode.
+               q := (q >= 0 && q <= 7) ? q : 7    ; HighQualityBicubic
+
+               DllCall("gdiplus\GdipSetPixelOffsetMode",    "ptr",pGraphics, "int",2) ; Half pixel offset.
+               DllCall("gdiplus\GdipSetCompositingMode",    "ptr",pGraphics, "int",1) ; Overwrite/SourceCopy.
+               DllCall("gdiplus\GdipSetSmoothingMode",      "ptr",pGraphics, "int",0) ; No anti-alias.
+               DllCall("gdiplus\GdipSetInterpolationMode",  "ptr",pGraphics, "int",q)
+               DllCall("gdiplus\GdipSetCompositingQuality", "ptr",pGraphics, "int",0) ; AssumeLinear
+
+               ; WrapModeTile         = 0
+               ; WrapModeTileFlipX    = 1
+               ; WrapModeTileFlipY    = 2
+               ; WrapModeTileFlipXY   = 3
+               ; WrapModeClamp        = 4
+               ; Values outside this range downgrades from HighQualityBicubic to something horrible.
+               ; Downgrading removes the pre-filtering on the algorithm, and the need for edge cases.
+               DllCall("gdiplus\GdipCreateImageAttributes", "ptr*",ImageAttr)
+               DllCall("gdiplus\GdipSetImageAttributesWrapMode", "ptr",ImageAttr, "int",3)
+               DllCall("gdiplus\GdipDrawImageRectRectI"
+                        ,   "ptr", pGraphics
+                        ,   "ptr", pBitmap
+                        ,   "int", x            ; destination rectangle
+                        ,   "int", y
+                        ,   "int", w
+                        ,   "int", h
+                        ,   "int", 0            ; source rectangle
+                        ,   "int", 0
+                        ,   "int", width
+                        ,   "int", height
+                        ,   "int", 2
+                        ,   "ptr", ImageAttr
+                        ,   "ptr", 0
+                        ,   "ptr", 0)
+               DllCall("gdiplus\GdipDisposeImageAttributes", "ptr",ImageAttr)
+            }
          }
+         global PreciseTime
+         DllCall("QueryPerformanceCounter", "int64*",A_PreciseTime)
+         Tooltip % PreciseTime := (A_PreciseTime - this.PreciseTime) / this.Frequency
 
          ; Begin drawing the polygons onto the canvas.
          if (polygons != "") {
@@ -2011,7 +2060,7 @@ class Graphics {
             pPen := Gdip_CreatePen(0xFFFF0000, 1)
 
             for i, polygon in polygons {
-               DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
+               DllCall("gdiplus\GdipCreatePath", "int",1, "ptr*",pPath)
                VarSetCapacity(pointf, 8*polygons[i].polygon.maxIndex(), 0)
                for j, point in polygons[i].polygon {
                   NumPut(point.x*s + x, pointf, 8*(A_Index-1) + 0, "float")
@@ -2278,7 +2327,7 @@ class Graphics {
             req.Open("GET", image)
             req.Send()
             pStream := ComObjQuery(req.ResponseStream, "{0000000C-0000-0000-C000-000000000046}")
-            DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+            DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "ptr*",pBitmap)
             ObjRelease(pStream)
             return pBitmap
          }
@@ -2314,8 +2363,8 @@ class Graphics {
             hData := DllCall("GlobalAlloc", "uint",0x2, "ptr",nSize)
             pData := DllCall("GlobalLock", "ptr",hData)
             DllCall("RtlMoveMemory", "ptr",pData, "ptr",&bin, "ptr",nSize)
-            DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",false, "uptr*",pStream)
-            DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "uptr*",pBitmap)
+            DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",false, "ptr*",pStream)
+            DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "ptr*",pBitmap)
             pBitmap2 := Gdip_CloneBitmapArea(pBitmap, 0, 0, Gdip_GetImageWidth(pBitmap), Gdip_GetImageHeight(pBitmap))
             Gdip_DisposeImage(pBitmap)
             ObjRelease(pStream)
@@ -2428,7 +2477,7 @@ class Graphics {
             DllCall("ole32\CreateStreamOnHGlobal", "ptr",0, "int",true, "ptr*",pStream)
             DllCall("gdiplus\GdipSaveImageToStream", "ptr",pBitmap, "ptr",pStream, "ptr",pCodec, "uint",p ? p : 0)
             DllCall("ole32\GetHGlobalFromStream", "ptr",pStream, "uint*",hData)
-            pData := DllCall("GlobalLock", "ptr",hData, "uptr")
+            pData := DllCall("GlobalLock", "ptr",hData, "ptr")
             nSize := DllCall("GlobalSize", "uint",pData)
 
             VarSetCapacity(bin, nSize, 0)
@@ -2512,7 +2561,7 @@ class Graphics {
             return false
 
          ; Find smaller width and height to match bytes.
-         ; Sort of unnessessary due to the above statement, but nice to have.
+         ; Sort of unnecessary due to the above statement, but nice to have.
          width := (pBitmap1_width < pBitmap2_width) ? pBitmap1_width : pBitmap2_width
          height := (pBitmap1_height < pBitmap2_height) ? pBitmap1_height : pBitmap2_height
          E1 := Gdip_LockBits(pBitmap1, 0, 0, width, height, Stride1, Scan01, BitmapData1)
@@ -2520,7 +2569,7 @@ class Graphics {
 
          ; RtlCompareMemory preforms an unsafe comparison stopping at the first different byte.
          size := width * height * 4  ; ARGB = 4 bytes
-         byte := DllCall("RtlCompareMemory", "ptr", Scan01+0, "ptr", Scan02+0, "uint", size)
+         byte := DllCall("ntdll\RtlCompareMemory", "ptr", Scan01+0, "ptr", Scan02+0, "uint", size)
 
          Gdip_UnlockBits(pBitmap1, BitmapData1)
          Gdip_UnlockBits(pBitmap2, BitmapData2)
@@ -2606,7 +2655,6 @@ class Graphics {
             _r  := (style1.radius != "")   ? style1.radius   : style1.r
             _c  := (style1.color != "")    ? style1.color    : style1.c
             _m  := (style1.margin != "")   ? style1.margin   : style1.m
-            _p  := (style1.padding != "")  ? style1.padding  : style1.p
             _q  := (style1.quality != "")  ? style1.quality  : (style1.q) ? style1.q : style1.SmoothingMode
          } else {
             _t  := ((___ := RegExReplace(style1, q1    "(t(ime)?)"          q2, "${value}")) != style1) ? ___ : ""
@@ -2618,7 +2666,6 @@ class Graphics {
             _r  := ((___ := RegExReplace(style1, q1    "(r(adius)?)"        q2, "${value}")) != style1) ? ___ : ""
             _c  := ((___ := RegExReplace(style1, q1    "(c(olor)?)"         q2, "${value}")) != style1) ? ___ : ""
             _m  := ((___ := RegExReplace(style1, q1    "(m(argin)?)"        q2, "${value}")) != style1) ? ___ : ""
-            _p  := ((___ := RegExReplace(style1, q1    "(p(adding)?)"       q2, "${value}")) != style1) ? ___ : ""
             _q  := ((___ := RegExReplace(style1, q1    "(q(uality)?)"       q2, "${value}")) != style1) ? ___ : ""
          }
 
@@ -2684,13 +2731,43 @@ class Graphics {
          vmin := (vw < vh) ? vw : vh      ; 1vw or 1vh, whichever is smaller.
          vr := ScreenWidth / ScreenHeight ; Aspect ratio of the viewport.
 
+         ; Get background width and height.
+         _w := (_w ~= valid_positive) ? RegExReplace(_w, "\s", "") : ""
+         _w := (_w ~= "i)(pt|px)$") ? SubStr(_w, 1, -2) : _w
+         _w := (_w ~= "i)(%|vw)$") ? RegExReplace(_w, "i)(%|vw)$", "") * vw : _w
+         _w := (_w ~= "i)vh$") ? RegExReplace(_w, "i)vh$", "") * vh : _w
+         _w := (_w ~= "i)vmin$") ? RegExReplace(_w, "i)vmin$", "") * vmin : _w
+
+         _h := (_h ~= valid_positive) ? RegExReplace(_h, "\s", "") : ""
+         _h := (_h ~= "i)(pt|px)$") ? SubStr(_h, 1, -2) : _h
+         _h := (_h ~= "i)vw$") ? RegExReplace(_h, "i)vw$", "") * vw : _h
+         _h := (_h ~= "i)(%|vh)$") ? RegExReplace(_h, "i)(%|vh)$", "") * vh : _h
+         _h := (_h ~= "i)vmin$") ? RegExReplace(_h, "i)vmin$", "") * vmin : _h
+
+         ; Save original Graphics settings.
+         DllCall("gdiplus\GdipGetPixelOffsetMode",    "ptr",pGraphics, "int*",PixelOffsetMode)
+         DllCall("gdiplus\GdipGetCompositingMode",    "ptr",pGraphics, "int*",CompositingMode)
+         DllCall("gdiplus\GdipGetCompositingQuality", "ptr",pGraphics, "int*",CompositingQuality)
+         DllCall("gdiplus\GdipGetSmoothingMode",      "ptr",pGraphics, "int*",SmoothingMode)
+         DllCall("gdiplus\GdipGetInterpolationMode",  "ptr",pGraphics, "int*",InterpolationMode)
+         DllCall("gdiplus\GdipGetTextRenderingHint",  "ptr",pGraphics, "int*",TextRenderingHint)
+
          ; Get Rendering Quality.
          _q := (_q >= 0 && _q <= 4) ? _q : 4          ; Default SmoothingMode is 4 if radius is set. See Draw 1.
          q  := (q >= 0 && q <= 5) ? q : 4             ; Default TextRenderingHint is 4 (antialias).
+                                                      ; Anti-Alias = 4, Cleartype = 5 (and gives weird effects.)
+
+         ; Set Graphics settings.
+         DllCall("gdiplus\GdipSetPixelOffsetMode",    "ptr",pGraphics, "int",2) ; Half pixel offset.
+         ;DllCall("gdiplus\GdipSetCompositingMode",    "ptr",pGraphics, "int",1) ; Overwrite/SourceCopy.
+         DllCall("gdiplus\GdipSetCompositingQuality", "ptr",pGraphics, "int",0) ; AssumeLinear
+         DllCall("gdiplus\GdipSetSmoothingMode",      "ptr",pGraphics, "int",_q)
+         DllCall("gdiplus\GdipSetInterpolationMode",  "ptr",pGraphics, "int",7) ; HighQualityBicubic
+         DllCall("gdiplus\GdipSetTextRenderingHint",  "ptr",pGraphics, "int",q)
 
          ; Get Font size.
-         s  := (s ~= valid_positive) ? RegExReplace(s, "\s", "") : "2.23vh"           ; Default font size is 2.23vh.
-         s  := (s ~= "i)(pt|px)$") ? SubStr(s, 1, -2) : s                               ; Strip spaces, px, and pt.
+         s  := (s ~= valid_positive) ? RegExReplace(s, "\s", "") : "2.23vh"          ; Default font size is 2.23vh.
+         s  := (s ~= "i)(pt|px)$") ? SubStr(s, 1, -2) : s                            ; Strip spaces, px, and pt.
          s  := (s ~= "i)vh$") ? RegExReplace(s, "i)vh$", "") * vh : s                ; Relative to viewport height.
          s  := (s ~= "i)vw$") ? RegExReplace(s, "i)vw$", "") * vw : s                ; Relative to viewport width.
          s  := (s ~= "i)(%|vmin)$") ? RegExReplace(s, "i)(%|vmin)$", "") * vmin : s  ; Relative to viewport minimum.
@@ -2703,7 +2780,7 @@ class Graphics {
          n  := (n) ? 0x4000 | 0x1000 : 0x4000
          j  := (j ~= "i)cent(er|re)") ? 1 : (j ~= "i)(far|right)") ? 2 : 0   ; Left/near, center/centre, far/right.
 
-         ; Later when text x and w are finalized and it is found that x + ReturnRC[3] exceeds the screen,
+         ; Later when text x and w are finalized and it is found that x + width exceeds the screen,
          ; then the _redrawBecauseOfCondensedFont flag is set to true.
          static _redrawBecauseOfCondensedFont
          if (_redrawBecauseOfCondensedFont == true)
@@ -2714,32 +2791,38 @@ class Graphics {
          hFamily := (___ := Gdip_FontFamilyCreate(f)) ? ___ : Gdip_FontFamilyCreate("Arial") ; Default font is Arial.
          hFont := Gdip_FontCreate(hFamily, s, style)
          ;GdipStringFormatGetGenericTypographic
-         ;MsgBox % DllCall("gdiplus\GdipStringFormatGetGenericDefault", A_PtrSize ? "UPtr*" : "UInt*", hFormat)
-         ;MsgBox % DllCall("gdiplus\GdipCreateStringFormat", "int", n, "int", 0, A_PtrSize ? "UPtr*" : "UInt*", hFormat)
+         ;MsgBox % DllCall("gdiplus\GdipStringFormatGetGenericDefault", A_PtrSize ? "Ptr*" : "UInt*", hFormat)
+         ;MsgBox % DllCall("gdiplus\GdipCreateStringFormat", "int", n, "int", 0, A_PtrSize ? "Ptr*" : "UInt*", hFormat)
          hFormat := Gdip_StringFormatCreate(n)
          Gdip_SetStringFormatAlign(hFormat, j)  ; Left = 0, Center = 1, Right = 2
 
          ; Simulate string width and height. This will get the exact width and height of the text.
-         CreateRectF(RC, 0, 0, 0, 0)
-         Gdip_SetSmoothingMode(pGraphics, _q)     ; None = 3, AntiAlias = 4
-         Gdip_SetTextRenderingHint(pGraphics, q)  ; Anti-Alias = 4, Cleartype = 5 (and gives weird effects.)
-         ReturnRC := Gdip_MeasureString(pGraphics, Text, hFont, hFormat, RC)
-         ReturnRC := StrSplit(ReturnRC, "|")      ; Contains the values for measured x, y, w, h text.
+         VarSetCapacity(RectF, 16, 0)
+         VarSetCapacity(RC, 16, 0)
+         DllCall("gdiplus\GdipMeasureString"
+                  ,   "ptr", pGraphics
+                  ,  "wstr", text
+                  ,   "int", -1                 ; string length.
+                  ,   "ptr", hFont
+                  ,   "ptr", &RectF             ; (in) layout RectF that bounds the string.
+                  ,   "ptr", hFormat
+                  ,   "ptr", &RC                ; (out) simulated RectF that bounds the string.
+                  , "uint*", Chars
+                  , "uint*", Lines)
 
-         ; Get background width and height. Default width and height are simulated width and height.
-         _w := (_w ~= valid_positive) ? RegExReplace(_w, "\s", "") : ReturnRC[3]
-         _w := (_w ~= "i)(pt|px)$") ? SubStr(_w, 1, -2) : _w
-         _w := (_w ~= "i)(%|vw)$") ? RegExReplace(_w, "i)(%|vw)$", "") * vw : _w
-         _w := (_w ~= "i)vh$") ? RegExReplace(_w, "i)vh$", "") * vh : _w
-         _w := (_w ~= "i)vmin$") ? RegExReplace(_w, "i)vmin$", "") * vmin : _w
-         ; Output is a decimal with pixel units.
+         ; Get simulated text width and height.
+         width := NumGet(RC, 8, "float")
+         height := NumGet(RC, 12, "float")
+         minimum := (width < height) ? width : height
+         aspect := width / height
 
-         _h := (_h ~= valid_positive) ? RegExReplace(_h, "\s", "") : ReturnRC[4]
-         _h := (_h ~= "i)(pt|px)$") ? SubStr(_h, 1, -2) : _h
-         _h := (_h ~= "i)vw$") ? RegExReplace(_h, "i)vw$", "") * vw : _h
-         _h := (_h ~= "i)(%|vh)$") ? RegExReplace(_h, "i)(%|vh)$", "") * vh : _h
-         _h := (_h ~= "i)vmin$") ? RegExReplace(_h, "i)vmin$", "") * vmin : _h
-         ; Output is a decimal with pixel units.
+         ; Default background width and height.
+         if (_w == "")
+            _w := width
+         if (_h == "")
+            _h := height
+
+
 
          ; Get background anchor. This is where the origin of the image is located.
          _a := RegExReplace(_a, "\s", "")
@@ -2782,14 +2865,14 @@ class Graphics {
          ; Note that there are two new lines. Matching a percent symbol (%) will give text width/height
          ; that is relative to the background width/height. This is undesirable behavior, and so
          ; the user should use "vh" and "vw" whenever possible.
-         w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : ReturnRC[3] ; Default is simulated text width.
+         w  := ( w ~= valid_positive) ? RegExReplace( w, "\s", "") : width ; Default is simulated text width.
          w  := ( w ~= "i)(pt|px)$") ? SubStr( w, 1, -2) :  w
          w  := ( w ~= "i)vw$") ? RegExReplace( w, "i)vw$", "") * vw :  w
          w  := ( w ~= "i)vh$") ? RegExReplace( w, "i)vh$", "") * vh :  w
          w  := ( w ~= "i)vmin$") ? RegExReplace( w, "i)vmin$", "") * vmin :  w
          w  := ( w ~= "%$") ? RegExReplace( w, "%$", "") * 0.01 * _w :  w
 
-         h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : ReturnRC[4] ; Default is simulated text height.
+         h  := ( h ~= valid_positive) ? RegExReplace( h, "\s", "") : height ; Default is simulated text height.
          h  := ( h ~= "i)(pt|px)$") ? SubStr( h, 1, -2) :  h
          h  := ( h ~= "i)vw$") ? RegExReplace( h, "i)vw$", "") * vw :  h
          h  := ( h ~= "i)vh$") ? RegExReplace( h, "i)vh$", "") * vh :  h
@@ -2820,7 +2903,7 @@ class Graphics {
          x  := ( x ~= "i)left") ? _x : (x ~= "i)cent(er|re)") ? _x + 0.5*_w : (x ~= "i)right") ? _x + _w : x
          y  := ( y ~= "i)top") ? _y : (y ~= "i)cent(er|re)") ? _y + 0.5*_h : (y ~= "i)bottom") ? _y + _h : y
 
-         ; Validate text x and y, convert to pixels.
+         ; Get text x and y.
          x  := ( x ~= valid) ? RegExReplace( x, "\s", "") : _x ; Default text x is background x.
          x  := ( x ~= "i)(pt|px)$") ? SubStr( x, 1, -2) :  x
          x  := ( x ~= "i)vw$") ? RegExReplace( x, "i)vw$", "") * vw :  x
@@ -2846,18 +2929,14 @@ class Graphics {
          ; What does matter is if the margin/padding is a background style, the position of the text will not change.
          ; If the margin/padding is a text style, the text position will change.
          ; THERE REALLY IS NO DIFFERENCE BETWEEN MARGIN AND PADDING.
-         _p := this.outer.parse.margin_and_padding(_p, vw, vh)
          _m := this.outer.parse.margin_and_padding(_m, vw, vh)
-         p  := this.outer.parse.margin_and_padding( p, vw, vh)
          m  := this.outer.parse.margin_and_padding( m, vw, vh)
 
          ; Modify _x, _y, _w, _h with margin and padding, increasing the size of the background.
-         if (_w || _h) {
-            _w  += (_m.2 + _m.4 + _p.2 + _p.4) + (m.2 + m.4 + p.2 + p.4)
-            _h  += (_m.1 + _m.3 + _p.1 + _p.3) + (m.1 + m.3 + p.1 + p.3)
-            _x  -= (_m.4 + _p.4)
-            _y  -= (_m.1 + _p.1)
-         }
+         _w  += (_m.2 + _m.4) + (m.2 + m.4)
+         _h  += (_m.1 + _m.3) + (m.1 + m.3)
+         _x  -= (_m.4)
+         _y  -= (_m.1)
 
          ; If margin/padding are defined in the text parameter, shift the position of the text.
          x  += (m.4 + p.4)
@@ -2865,7 +2944,7 @@ class Graphics {
 
          ; Re-run: Condense Text using a Condensed Font if simulated text width exceeds screen width.
          if (z) {
-            if (ReturnRC[3] + x > ScreenWidth) {
+            if (width + x > ScreenWidth) {
                _redrawBecauseOfCondensedFont := true
                return this.DrawRaw(pGraphics, ScreenWidth, ScreenHeight, text, style1, style2)
             }
@@ -2891,13 +2970,16 @@ class Graphics {
 
          ; Define outline and dropShadow.
          o := this.outer.parse.outline(o, vw, vh, s, c)
-         d := this.outer.parse.dropShadow(d, vw, vh, ReturnRC[3], ReturnRC[4], s)
+         d := this.outer.parse.dropShadow(d, vw, vh, width, height, s)
 
          ; Round 10 - Finalize _x, _y, _w, _h
          _x  := Round(_x)
          _y  := Round(_y)
          _w  := Round(_w)
          _h  := Round(_h)
+
+
+
 
          ; Draw 1 - Background
          if (_w && _h && _c && (_c & 0xFF000000)) {
@@ -2935,9 +3017,16 @@ class Graphics {
             else ; Otherwise, use the below code if blur, size, and opacity are set.
             {
                ; Draw the outer edge of the text string.
-               DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
-               DllCall("gdiplus\GdipAddPathString", "ptr",pPath, "wstr",text, "int",-1
-                                                , "ptr",hFamily, "int",style, "float",s, "ptr",&RC, "ptr",hFormat)
+               DllCall("gdiplus\GdipCreatePath", "int",1, "ptr*",pPath)
+               DllCall("gdiplus\GdipAddPathString"
+                        ,   "ptr", pPath
+                        ,  "wstr", text
+                        ,   "int", -1
+                        ,   "ptr", hFamily
+                        ,   "int", style
+                        , "float", s
+                        ,   "ptr", &RC
+                        ,   "ptr", hFormat)
                ;DllCall("gdiplus\GdipWindingModeOutline", "ptr",pPath) ;BROKEN
                pPen := Gdip_CreatePen(d.4, 2*d.6 + o.1)
                DllCall("gdiplus\GdipSetPenLineJoin", "ptr",pPen, "uint",2)
@@ -2970,9 +3059,16 @@ class Graphics {
          if (!o.void) {
             ; Convert our text to a path.
             CreateRectF(RC, x, y, w, h)
-            DllCall("gdiplus\GdipCreatePath", "int",1, "uptr*",pPath)
-            DllCall("gdiplus\GdipAddPathString", "ptr",pPath, "wstr",text, "int",-1
-                                             , "ptr",hFamily, "int",style, "float",s, "ptr",&RC, "ptr",hFormat)
+            DllCall("gdiplus\GdipCreatePath", "int",1, "ptr*",pPath)
+            DllCall("gdiplus\GdipAddPathString"
+                     ,   "ptr", pPath
+                     ,  "wstr", text
+                     ,   "int", -1
+                     ,   "ptr", hFamily
+                     ,   "int", style
+                     , "float", s
+                     ,   "ptr", &RC
+                     ,   "ptr", hFormat)
 
             ; Create a glow effect around the edges.
             if (o.3) {
@@ -3012,13 +3108,13 @@ class Graphics {
             pBrushText := Gdip_BrushCreateSolid(c)
             Gdip_SetCompositingMode(pGraphics, SourceCopy)
             DllCall("gdiplus\GdipDrawString"
-                        ,   "ptr", pGraphics
-                        ,  "wstr", text
-                        ,   "int", -1
-                        ,   "ptr", hFont
-                        ,   "ptr", &RC
-                        ,   "ptr", hFormat
-                        ,   "ptr", pBrushText)
+                     ,   "ptr", pGraphics
+                     ,  "wstr", text
+                     ,   "int", -1
+                     ,   "ptr", hFont
+                     ,   "ptr", &RC
+                     ,   "ptr", hFormat
+                     ,   "ptr", pBrushText)
             Gdip_SetCompositingMode(pGraphics, 0)
             Gdip_DeleteBrush(pBrushText)
          }
@@ -3027,6 +3123,13 @@ class Graphics {
          Gdip_DeleteStringFormat(hFormat)
          Gdip_DeleteFont(hFont)
          Gdip_DeleteFontFamily(hFamily)
+
+         ; Restore original Graphics settings.
+         DllCall("gdiplus\GdipSetPixelOffsetMode",    "ptr",pGraphics, "int",PixelOffsetMode)
+         DllCall("gdiplus\GdipSetCompositingMode",    "ptr",pGraphics, "int",CompositingMode)
+         DllCall("gdiplus\GdipSetCompositingQuality", "ptr",pGraphics, "int",CompositingQuality)
+         DllCall("gdiplus\GdipSetSmoothingMode",      "ptr",pGraphics, "int",SmoothingMode)
+         DllCall("gdiplus\GdipSetInterpolationMode",  "ptr",pGraphics, "int",InterpolationMode)
 
          ; Define bounds.
          t_bound :=  t
