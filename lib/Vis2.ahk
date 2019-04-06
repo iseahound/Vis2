@@ -76,11 +76,11 @@ class Vis2 {
       ;        abusing the free quota on various cloud demo websites. Change at your own risk!!!
 
       ; Predefined styles for the user experience.
-      class area {
+      class vector {
          static set := ObjBindMethod(Vis2.settings, "set")
          static c := 0x7FDDDDDD
       }
-      class picture {
+      class photo {
          static set := ObjBindMethod(Vis2.settings, "set")
       }
       class polygon {
@@ -1058,13 +1058,13 @@ class Vis2 {
          state.subtitle := new Graphics.Subtitle("Vis2_Hermes")
             .render(settings.tooltip, settings.subtitle.background, settings.subtitle.text)
          ;Tooltip % A_TickCount - state.subtitle.TickCount
-         state.area := new Graphics.Area("Vis2_Aries")
+         state.vector := new Graphics.Vector("Vis2_Aries")
          state.information := new Graphics.Subtitle("Vis2_Information")
-         state.picture := new Graphics.Picture("Vis2_Kitsune")
-         state.polygon := new Graphics.Picture("Vis2_Polygon")
+         state.photo := new Graphics.Photo("Vis2_Kitsune")
+         state.polygon := new Graphics.Photo("Vis2_Polygon")
 
-         state.area.cache := 0
-         state.area.color := settings.area.c
+         state.vector.cache := 0
+         state.vector.color := settings.vector.c
          state.style1_back := settings.subtitle.background
          state.style1_text := settings.subtitle.text
 
@@ -1094,10 +1094,10 @@ class Vis2 {
                return
             }
 
-            if (A_Cursor == "Unknown" && WinExist("A") != state.area.hwnd) ; BUGFIX: Flickering on custom cursor
-               state.area.clickThrough(1)
+            if (A_Cursor == "Unknown" && WinExist("A") != state.vector.hwnd) ; BUGFIX: Flickering on custom cursor
+               state.vector.clickThrough(1)
 
-            state.area.origin()
+            state.vector.origin()
             waitForUserInput := ObjBindMethod(Vis2.ux.process, "waitForUserInput", state, service, settings)
             SetTimer, % waitForUserInput, -10
             return
@@ -1124,20 +1124,20 @@ class Vis2 {
          }
 
          selectImageQuick(state, settings){
-            if (A_Cursor == "Unknown" && WinExist("A") != state.area.hwnd) ; BUGFIX: Flickering on custom cursor
-               state.area.clickThrough(1)
+            if (A_Cursor == "Unknown" && WinExist("A") != state.vector.hwnd) ; BUGFIX: Flickering on custom cursor
+               state.vector.clickThrough(1)
 
             if (GetKeyState("LButton", "P")) {
                if (GetKeyState("Control", "P") || GetKeyState("Alt", "P") || GetKeyState("Shift", "P"))
                   Vis2.ux.process.selectImageTransition(state, settings) ; Must be last thing to happen.
                else if (GetKeyState("RButton", "P")) {
-                  state.area.move()
-                  if (!state.area.isMouseOnCorner() && state.area.isMouseStopped()) {
-                     state.area.drag() ; Error Correction of Offset
+                  state.vector.move()
+                  if (!state.vector.isMouseOnCorner() && state.vector.isMouseStopped()) {
+                     state.vector.drag() ; Error Correction of Offset
                   }
                }
                else
-                  state.area.drag()
+                  state.vector.drag()
             }
             else
                return Vis2.ux.process.treasureChest(state, settings, A_ThisFunc)
@@ -1152,7 +1152,7 @@ class Vis2 {
             Hotkey, ^Space, % void, On
             Hotkey, !Space, % void, On
             Hotkey, +Space, % void, On
-            state.area.clickThrough(0) ; Allow the cursor to change again.
+            state.vector.clickThrough(0) ; Allow the cursor to change again.
             state.tokenMousePressed := 1
             state.key := {}
             state.action := {}
@@ -1168,7 +1168,7 @@ class Vis2 {
          selectImageAdvanced(state, settings){
          static void := ObjBindMethod({}, {})
 
-            if ((state.area.width() < -25 || state.area.height() < -25) && !state.note_02)
+            if ((state.vector.width() < -25 || state.vector.height() < -25) && !state.note_02)
                state.note_02 := TextRender("Press Alt + LButton to create a new selection anywhere on screen."
                   , state.style1_back.clone().set("time", "6250").set("y", "66.67vh").set("color", "FCF9AF")
                   , state.style1_text.clone())
@@ -1181,13 +1181,13 @@ class Vis2 {
             state.key.Shift   := GetKeyState("Shift", "P")   ? 1 : 0
 
             ; Check if mouse is inside on activation.
-            state.action.Control_LButton := (state.area.isMouseInside() && state.key.Control && state.key.LButton)
+            state.action.Control_LButton := (state.vector.isMouseInside() && state.key.Control && state.key.LButton)
                ? 1 : (state.key.Control && state.key.LButton) ? state.action.Control_LButton : 0
-            state.action.Shift_LButton   := (state.area.isMouseInside() && state.key.Shift && state.key.LButton)
+            state.action.Shift_LButton   := (state.vector.isMouseInside() && state.key.Shift && state.key.LButton)
                ? 1 : (state.key.Shift && state.key.LButton) ? state.action.Shift_LButton : 0
-            state.action.LButton         := (state.area.isMouseInside() && state.key.LButton)
+            state.action.LButton         := (state.vector.isMouseInside() && state.key.LButton)
                ? 1 : (state.key.LButton) ? state.action.LButton : 0
-            state.action.RButton         := (state.area.isMouseInside() && state.key.RButton)
+            state.action.RButton         := (state.vector.isMouseInside() && state.key.RButton)
                ? 1 : (state.key.RButton) ? state.action.RButton : 0
 
             ;___|���|___ 00011111000 Keypress
@@ -1207,18 +1207,18 @@ class Vis2 {
 
             ; Mouse Hotkeys
             if (state.action.Control_LButton)
-               state.area.resizeCorners()
+               state.vector.resizeCorners()
             else if (state.action.Alt_LButton = 1)
-               state.area.origin()
+               state.vector.origin()
             else if (state.action.Alt_LButton = -1)
-               state.area.drag()
+               state.vector.drag()
             else if (state.action.Shift_LButton)
-               state.area.resizeEdges()
+               state.vector.resizeEdges()
             else if (state.action.LButton || state.action.RButton)
-               state.area.move()
+               state.vector.move()
             else {
-               state.area.hover() ; Collapse Stack
-               if state.area.isMouseInside() {
+               state.vector.hover() ; Collapse Stack
+               if state.vector.isMouseInside() {
                   Hotkey, LButton, % void, On
                   Hotkey, RButton, % void, On
                } else {
@@ -1230,12 +1230,12 @@ class Vis2 {
             ; Space Hotkeys
             if (state.action.Control_Space = 1) {
                if (settings.previewImage := !settings.previewImage) ; Toggle our new previewImage flag!
-                  state.picture.render(Vis2.ux.io.data.coimage, "scale:harmonic width:100vw height:33vh", Vis2.ux.io.data.FullData).show()
+                  state.photo.render(Vis2.ux.io.data.coimage, "x:0 y:0 scale:harmonic width:100vw height:33vh", Vis2.ux.io.data.FullData).show()
                else
-                  state.picture.hide()
+                  state.photo.hide()
             } else if (state.action.Alt_Space = 1) {
                if (settings.showCoordinates := !settings.showCoordinates) {
-                  c2 := RegExReplace((state.coordinates) ? state.coordinates : state.area.screenshotCoordinates(), "^(\d+)\|(\d+)\|(\d+)\|(\d+)$", "x`n$1`n`ny`n$2`n`nw`n$3`n`nh`n$4")
+                  c2 := RegExReplace((state.coordinates) ? state.coordinates : state.vector.screenshotCoordinates(), "^(\d+)\|(\d+)\|(\d+)\|(\d+)$", "x`n$1`n`ny`n$2`n`nw`n$3`n`nh`n$4")
                   state.information.render(c2, "a:centerright x:98.14vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000"
                      , state.style1_text.clone().set("y", "center").set("justify", "center")).show()
                } else
@@ -1251,23 +1251,23 @@ class Vis2 {
          convertImage(state, service, settings, bypass:=""){
             ; The bypass parameter is normally used when convertImage is off, producing no text on screen.
             ; Check for valid coordinates, returns "" if invalid.
-            if (coordinates := state.area.screenshotCoordinates()) {
+            if (coordinates := state.vector.screenshotCoordinates()) {
                ; Sometimes a user will make the subtitle blink from top to bottom. If so, hide subtitle temporarily.
-               (overlap1 := Vis2.ux.process.overlap(state.area.rect(), state.subtitle.rect())) ? state.subtitle.hide() : ""
-               (overlap2 := Vis2.ux.process.overlap(state.area.rect(), state.picture.rect())) ? state.picture.hide() : ""
-               (overlap3 := Vis2.ux.process.overlap(state.area.rect(), state.information.rect())) ? state.information.hide() : ""
-               (overlap4 := Vis2.ux.process.overlap(state.area.rect(), state.polygon.rect())) ? state.polygon.hide() : ""
-               ;state.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
-               pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
-               ;state.area.changeColor(0x7FDDDDDD) ; Lighten Area object, but do not hide or delete it until key up.
+               (overlap1 := Vis2.ux.process.overlap(state.vector.rect(), state.subtitle.rect())) ? state.subtitle.hide() : ""
+               (overlap2 := Vis2.ux.process.overlap(state.vector.rect(), state.photo.rect())) ? state.photo.hide() : ""
+               (overlap3 := Vis2.ux.process.overlap(state.vector.rect(), state.information.rect())) ? state.information.hide() : ""
+               (overlap4 := Vis2.ux.process.overlap(state.vector.rect(), state.polygon.rect())) ? state.polygon.hide() : ""
+               ;state.vector.changeColor(0x01FFFFFF) ; Lighten Vector object, but do not hide or delete it until key up.
+               pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Vector.Hide() but this will cause flickering.
+               ;state.vector.changeColor(0x7FDDDDDD) ; Lighten Vector object, but do not hide or delete it until key up.
                (overlap3 && settings.showCoordinates) ? state.information.show() : ""
-               (overlap2 && settings.previewImage) ? state.picture.show() : ""
+               (overlap2 && settings.previewImage) ? state.photo.show() : ""
                (overlap1) ? state.subtitle.show() : ""
-               (overlap1 || overlap2 || overlap3) ? state.area.show() : ""
+               (overlap1 || overlap2 || overlap3) ? state.vector.show() : ""
                (overlap4) ? state.polygon.show() : "" ; Assert Topmost position in z-order.
 
                ; If any x,y,w,h coordinates are different, or the image has changed (like video), proceed.
-               if (bypass || coordinates != state.coordinates || !state.picture.isBitmapEqual(pBitmap, state.pBitmap)) {
+               if (bypass || coordinates != state.coordinates || !state.photo.isBitmapEqual(pBitmap, state.pBitmap)) {
 
                   ; Declare type as pBitmap
                   try data := service.convert({"pBitmap":pBitmap})
@@ -1295,7 +1295,7 @@ class Vis2 {
                         state.information.render(c2, "a:centerright x:98.14vw y:center w:8.33vmin h:33.33vmin r:8px c:DD000000", "f:(Arial) j:center y:center s:2.23% c:White")
                      }
                      if (settings.previewImage)
-                        state.picture.render(Vis2.ux.io.data.coimage, "scale:harmonic width:100vw height:33vh", Vis2.ux.io.data.FullData)
+                        state.photo.render(Vis2.ux.io.data.coimage, "x:0 y:0 scale:harmonic width:100vw height:33vh", Vis2.ux.io.data.FullData)
                      if (settings.previewBounds) {
                         xywh := StrSplit(state.coordinates, "|") ; use saved coordinates!
                         state.polygon.render(, {"scale":1/settings.upscale, "x":xywh.1, "y":xywh.2, "w":xywh.3, "h":xywh.4}, Vis2.ux.io.data.FullData)
@@ -1333,23 +1333,23 @@ class Vis2 {
 
             ; SelectImage returns. If ConvertImage was not started, start it now.
             if (key ~= "^Vis2\.ux\.process\.selectImage") {
-               state.area.changeColor(0x01FFFFFF) ; Lighten Area object, but do not hide or delete it until key up.
+               state.vector.changeColor(0x01FFFFFF) ; Lighten Vector object, but do not hide or delete it until key up.
                if (!settings.previewText) {
                   Vis2.ux.process.display(state, "Processing using " RegExReplace(settings.base.__class, ".*\.(.*)\.(.*)$", "$1's $2()..."), state.style2_back, state.style2_text)
                   return Vis2.ux.process.convertImage(state, service, settings, "bypass")
                } else {
                   ; If user's final coordinates and last processed coordinates are the same:
                   ; Do an early exit. Don't wait for the in progress convertImage to return. Skip that.
-                  if (state.area.screenshotCoordinates() == state.coordinates)
+                  if (state.vector.screenshotCoordinates() == state.coordinates)
                      return Vis2.ux.process.finale(state, settings)
                }
             }
 
             ; ConvertImage returns.
             if (state.unlock.maxIndex() == 2) {
-               ; Even though ConvertImage has returned, make sure that the area coordinates when the mouse was released
+               ; Even though ConvertImage has returned, make sure that the vector coordinates when the mouse was released
                ; are equal to the coordinates that were sent to the last iteration of ConvertImage.
-               if (state.area.screenshotCoordinates() != state.coordinates)
+               if (state.vector.screenshotCoordinates() != state.coordinates)
                   Vis2.ux.process.convertImage(state, service, settings, "bypass")
                return Vis2.ux.process.finale(state, settings)
             }
@@ -1374,7 +1374,7 @@ class Vis2 {
                clipboard := Vis2.ux.io.data
 
             (settings.splashBounds) ? ImageRender(
-               , {"time":t, "scale":1/settings.upscale, "x":state.area.x1(), "y":state.area.y1(), "w":state.area.width(), "h":state.area.height()}
+               , {"time":t, "scale":1/settings.upscale, "x":state.vector.x1(), "y":state.vector.y1(), "w":state.vector.width(), "h":state.vector.height()}
                , Vis2.ux.io.data.FullData).FreeMemory() : ""
             (settings.splashImage) ? ImageRender(Vis2.ux.io.data.coimage
                , "time:" t " a:center x:center y:40.99vh margin:0.926vmin scale:harmonic width:100vw height:80.13vh"
@@ -1392,7 +1392,7 @@ class Vis2 {
          }
 
          display(state, text := "", backgroundStyle := "", textStyle := "", overlapText := ""){
-            if (overlap := Vis2.ux.process.overlap(state.area.rect(), state.subtitle.rect())) {
+            if (overlap := Vis2.ux.process.overlap(state.vector.rect(), state.subtitle.rect())) {
                 state.style1_back.y := (state.style1_back.y == "83.33vh") ? "2.07vh" : "83.33vh"
                 state.style2_back.y := (state.style2_back.y == "83.33vh") ? "2.07vh" : "83.33vh"
             }
@@ -1425,8 +1425,8 @@ class Vis2 {
       static void := ObjBindMethod({}, {})
 
          ; Fixes a bug where AHK does not detect key releases if there is an admin-level window beneath.
-         ; This code must be positioned before state.area.destroy().
-         if WinActive("ahk_id" state.area.hwnd) {
+         ; This code must be positioned before state.vector.destroy().
+         if WinActive("ahk_id" state.vector.hwnd) {
             KeyWait Control
             KeyWait Alt
             KeyWait Shift
@@ -1436,8 +1436,8 @@ class Vis2 {
             KeyWait Escape
          }
 
-         state.area.destroy()
-         state.picture.destroy()
+         state.vector.destroy()
+         state.photo.destroy()
          state.polygon.destroy()
          state.information.destroy()
          state.subtitle.destroy()
@@ -1476,7 +1476,7 @@ class Vis2 {
          Hotkey, !Space, % void, Off
          Hotkey, +Space, % void, Off
          DllCall("SystemParametersInfo", "uint", SPI_SETCURSORS := 0x57, "uint",0, "uint",0, "uint",0) ; RestoreCursor
-         state.area.hide()
+         state.vector.hide()
          return
       }
 
@@ -1497,7 +1497,7 @@ class Vis2 {
             Hotkey, !Space, % void, On
             Hotkey, +Space, % void, On
          }
-         state.area.show()
+         state.vector.show()
          return
       }
 

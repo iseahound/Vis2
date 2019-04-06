@@ -7,29 +7,44 @@
 #include <Gdip_All>    ; https://goo.gl/rUuEF5
 
 
-; PolygonRender() - Displays polygons in customizable styles on the screen.
-PolygonRender(polygon:="", style:=""){
-   return Graphics.Area.Render(polygon, style)
-}
-
 ; ImageEquality() - Ensures that the pixel vaules of multiple images across mutiple formats are identical.
 ImageEquality(images*){
-   return Graphics.Picture.Equality(images*)
+   return Graphics.Photo.Equality(images*)
 }
 
 ; ImagePreprocess() - Converts an image of any type into any new type with cropping and scaling.
 ImagePreprocess(cotype, image, crop:="", scale:="", terms*){
-   return Graphics.Picture.Preprocess(cotype, image, crop, scale, terms*)
+   return Graphics.Photo.Preprocess(cotype, image, crop, scale, terms*)
 }
 
 ; ImageRender() - Displays an image in customizable styles on the screen.
 ImageRender(image:="", style:="", polygons:=""){
-   return Graphics.Picture.Render(image, style, polygons)
+   return Graphics.Photo.Render(image, style, polygons)
+}
+
+; ImageRenderI() - Allows the user to interact with the displayed image.
+ImageRenderI(image:="", style:="", polygons:="", keybinds:=""){
+   return new Graphics.Interactive(Graphics.Photo.Render(image, style, polygons), keybinds, 2)
+}
+
+; PolygonRender() - Displays polygons in customizable styles on the screen.
+PolygonRender(polygon:="", style:=""){
+   return Graphics.Vector.Render(polygon, style)
+}
+
+; PolygonRenderI() - Allows the user to interact with the displayed polygon.
+PolygonRenderI(polygon:="", style:="", keybinds:=""){
+   return new Graphics.Interactive(Graphics.Vector.Render(polygon, style), keybinds, 0)
 }
 
 ; TextRender() - Displays text in customizable styles on the screen.
 TextRender(text:="", background_style:="", text_style:=""){
    return Graphics.Subtitle.Render(text, background_style, text_style)
+}
+
+; TextRenderI() - Allows the user to interact with the displayed text.
+TextRenderI(text:="", background_style:="", text_style:="", keybinds:=""){
+   return new Graphics.Interactive(Graphics.Subtitle.Render(text, background_style, text_style), keybinds, 2)
 }
 
 
@@ -142,7 +157,7 @@ class Graphics {
          ; Creates a Device Independent Bitmap giving us a pointer to the pixels.
          this.hbm := DllCall("CreateDIBSection", "ptr",this.hdc, "ptr",&bi, "uint",0, "ptr*",pBits, "ptr",0, "uint",0, "ptr")
          this.obm := SelectObject(this.hdc, this.hbm)
-         this.G := Gdip_GraphicsFromHDC(this.hdc)
+         this.gfx := Gdip_GraphicsFromHDC(this.hdc)
 
          ; IMPORTANT: DIB pixels are pre-multiplied ARGB because that's how they're displayed on the screen.
          ; enum PixelFormat - https://svn.eiffel.com/eiffelstudio/trunk/Src/library/wel/gdi/gdiplus/wel_gdip_pixel_format.e
@@ -150,15 +165,59 @@ class Graphics {
          this.pixelFormat := 0xE200B ; Format32bppPArgb
          this.stride := 4 * this.ScreenWidth
          this.size := this.stride * this.ScreenHeight
-         this.state := new this.outer.queue()
          this.layers := {}
 
          return this
       }
 
+      ; Duality #3 - Frees the memory buffer.
+      FreeMemory() {
+         Gdip_DeleteGraphics(this.gfx)
+         SelectObject(this.hdc, this.obm)
+         DeleteObject(this.hbm)
+         DeleteDC(this.hdc)
+         this.gfx := this.obm := this.pBits := this.hbm := this.hdc := ""
+         return this
+      }
+
+      UpdateMemory(ScreenWidth := 0, ScreenHeight := 0) {
+         ScreenWidth := (ScreenWidth) ? ScreenWidth : A_ScreenWidth
+         ScreenHeight := (ScreenHeight) ? ScreenHeight : A_ScreenHeight
+
+         if (ScreenWidth == this.ScreenWidth && ScreenHeight == this.ScreenHeight)
+            return this
+
+         this.ScreenWidth := ScreenWidth
+         this.ScreenHeight := ScreenHeight
+         return this.FreeMemory().LoadMemory().Recover()
+      }
+
+      CompressMemory() {
+         ; Create.
+         hdc := CreateCompatibleDC(this.hdc)
+         hbm := CreateDIBSection(this.w, -this.h, hdc, 32, pBits)
+         obm := SelectObject(hdc, hbm)
+
+         ; Copy.
+         BitBlt(hdc, 0, 0, this.w, this.h, this.hdc, this.x, this.y)
+
+         ; Delete.
+         Gdip_DeleteGraphics(this.gfx)
+         SelectObject(this.hdc, this.obm)
+         DeleteObject(this.hbm)
+         DeleteDC(this.hdc)
+
+         ; Replace.
+         this.hdc := hdc
+         this.hbm := hbm
+         this.obm := obm
+         this.gfx := Gdip_GraphicsFromHDC(hdc)
+         this.pBits := pBits
+      }
+
       DumpMemory() {
          VarSetCapacity(pixels, this.size)
-         DllCall("RtlMoveMemory", "ptr",&pixels, "ptr",this.pBits, "ptr",this.size)
+         DllCall("RtlMoveMemory", "ptr",&pixels, "ptr",this.pBits, "uptr",this.size)
          return pixels
       }
 
@@ -185,32 +244,10 @@ class Graphics {
       BitmapFromScan0() {
          this.SetCapacity("pixels", this.size)
          this.Scan0 := this.GetAddress("pixels")
-         DllCall("RtlMoveMemory", "ptr",this.Scan0, "ptr",this.pBits, "ptr",this.size)
+         DllCall("RtlMoveMemory", "ptr",this.Scan0, "ptr",this.pBits, "uptr",this.size)
          DllCall("gdiplus\GdipCreateBitmapFromScan0", "int",this.ScreenWidth, "int",this.ScreenHeight
             , "int",this.stride, "uint",this.pixelFormat, "ptr",this.Scan0, "ptr*",pBitmap)
          return pBitmap
-      }
-
-      ; Duality #3 - Frees the memory buffer.
-      FreeMemory() {
-         Gdip_DeleteGraphics(this.G)
-         SelectObject(this.hdc, this.obm)
-         DeleteObject(this.hbm)
-         DeleteDC(this.hdc)
-         this.G := this.obm := this.pBits := this.hbm := this.hdc := ""
-         return this
-      }
-
-      UpdateMemory(width := 0, height := 0) {
-         width := (width) ? width : A_ScreenWidth
-         height := (height) ? height : A_ScreenHeight
-
-         if (width == this.ScreenWidth && height == this.ScreenHeight)
-            return this
-
-         this.ScreenWidth := width
-         this.ScreenHeight := height
-         return this.FreeMemory().LoadMemory().Recover()
       }
 
       Recover() {
@@ -231,7 +268,7 @@ class Graphics {
          this.data := data
          this.styles := styles
          this.layers.push([data, styles*])
-         o := this.DrawRaw(this.G, this.ScreenWidth, this.ScreenHeight, data, styles*)
+         o := this.DrawRaw(this.gfx, this.ScreenWidth, this.ScreenHeight, data, styles*)
          this.t := o.0
          this.x := o.1
          this.y := o.2
@@ -244,14 +281,14 @@ class Graphics {
          if (this.final) {
             this.layers := {}
             this.x := this.y := this.w := this.h := "" ; not 0! BROKEN
-            Gdip_GraphicsClear(this.G)
+            Gdip_GraphicsClear(this.gfx)
          }
 
          return this.UpdateMemory()
       }
 
       Finalize() {
-         this.final := true
+         this.final := 1
          return this
       }
 
@@ -262,12 +299,24 @@ class Graphics {
             this.Reposition()
 
          UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+         global PreciseTime
+         DllCall("QueryPerformanceCounter", "int64*",A_PreciseTime)
+         Tooltip % PreciseTime := (A_PreciseTime - this.PreciseTime) / this.Frequency
+
+         this.Finalize()
 
          if (this.t) {
-            self_destruct := ObjBindMethod(this, "Destroy")
-            SetTimer, % self_destruct, % -1 * this.t
+            blank := ObjBindMethod(this, "blank")
+            SetTimer, % blank, % -1 * this.t
          }
-         return this.Finalize()
+
+         return this
+      }
+
+      Blank() {
+         Gdip_GraphicsClear(this.gfx)
+         UpdateLayeredWindow(this.hwnd, this.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
+         return this
       }
 
       Bitmap(x := "", y := "", w := "", h := "") {
@@ -318,11 +367,6 @@ class Graphics {
               return true
           }
           return false
-      }
-
-      Rect() {
-         x1 := this.x1(), y1 := this.y1(), x2 := this.x2(), y2 := this.y2()
-         return (x2 > x1 && y2 > y1) ? [x1, y1, x2, y2] : ""
       }
 
       Show(i := 8) {
@@ -389,14 +433,14 @@ class Graphics {
             this.base.FreeMemory := ObjBindMethod(this, "DesktopFreeMemory")
             this.base.Destroy := ObjBindMethod(this, "DesktopDestroy")
             this.hdc := DllCall("GetDCEx", "ptr",WorkerW, "ptr",0, "int",0x403)
-            this.G := Gdip_GraphicsFromHDC(this.hdc)
+            this.gfx := Gdip_GraphicsFromHDC(this.hdc)
          }
          return this
       }
 
       DesktopFreeMemory() {
          ReleaseDC(this.hdc)
-         Gdip_DeleteGraphics(this.G)
+         Gdip_DeleteGraphics(this.gfx)
          return this
       }
 
@@ -405,6 +449,11 @@ class Graphics {
          DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",0)
          DllCall("SendMessage", "ptr",WinExist("ahk_class Progman"), "uint",0x052C, "ptr",0x0000000D, "ptr",1)
          return this
+      }
+
+      Rect() {
+         x1 := this.x1(), y1 := this.y1(), x2 := this.x2(), y2 := this.y2()
+         return (x2 > x1 && y2 > y1) ? [x1, y1, x2, y2] : ""
       }
 
       x1() {
@@ -1015,12 +1064,12 @@ class Graphics {
          this.hbm := CreateDIBSection(this.width := width, this.height := height)
          this.hdc := CreateCompatibleDC()
          this.obm := SelectObject(this.hdc, this.hbm)
-         this.G := Gdip_GraphicsFromHDC(this.hdc)
+         this.gfx := Gdip_GraphicsFromHDC(this.hdc)
          return this
       }
 
       __Delete(){
-         Gdip_DeleteGraphics(this.G)
+         Gdip_DeleteGraphics(this.gfx)
          SelectObject(this.hdc, this.obm)
          DeleteObject(this.hbm)
          DeleteDC(this.hdc)
@@ -1173,7 +1222,7 @@ class Graphics {
       }
    }
 
-   class Area {
+   class Vector {
    static extends := "object"
 
       _extends := this.__extends()
@@ -1223,7 +1272,7 @@ class Graphics {
 
          this.state.new(A_ThisFunc)
 
-         Gdip_GraphicsClear(this.__screen.G)
+         Gdip_GraphicsClear(this.__screen.gfx)
 
          this.UpdateMemory()
          this.Draw(terms*)
@@ -1244,12 +1293,12 @@ class Graphics {
 
       Redraw(x, y, w, h) {
          ;this.UpdateMemory()
-         Gdip_SetSmoothingMode(this.__screen.G, 4) ;Adds one clickable pixel to the edge.
+         Gdip_SetSmoothingMode(this.__screen.gfx, 4) ;Adds one clickable pixel to the edge.
          pBrush := Gdip_BrushCreateSolid(this.color)
 
          if (this.cache = 0) {
-            Gdip_GraphicsClear(this.__screen.G)
-            Gdip_FillRectangle(this.__screen.G, pBrush, x, y, w, h)
+            Gdip_GraphicsClear(this.__screen.gfx)
+            Gdip_FillRectangle(this.__screen.gfx, pBrush, x, y, w, h)
          }
          if (this.cache = 1) {
             if (!this.state.identical)
@@ -1257,10 +1306,10 @@ class Graphics {
 
             if (!this.__cache) {
                this.__cache := new this.outer.memory(w + 1, h + 1)
-               Gdip_FillRectangle(this.__cache.G, pBrush, 0, 0, w, h)
+               Gdip_FillRectangle(this.__cache.gfx, pBrush, 0, 0, w, h)
             }
 
-            Gdip_GraphicsClear(this.__screen.G)
+            Gdip_GraphicsClear(this.__screen.gfx)
             BitBlt(this.__screen.hdc, x, y, w + 1, h + 1, this.__cache.hdc, 0, 0)
          }
          if (this.cache = 2) {
@@ -1269,10 +1318,10 @@ class Graphics {
 
             if (!this.__cache) {
                this.__cache := new this.outer.memory(w + 1, h + 1)
-               Gdip_FillRectangle(this.__cache.G, pBrush, 0, 0, w, h)
+               Gdip_FillRectangle(this.__cache.gfx, pBrush, 0, 0, w, h)
             }
 
-            Gdip_GraphicsClear(this.__screen.G)
+            Gdip_GraphicsClear(this.__screen.gfx)
             StretchBlt(this.__screen.hdc, x, y, w + 1, h + 1, this.__cache.hdc, 0, 0, this.__cache.width, this.__cache.height)
          }
          UpdateLayeredWindow(this.hwnd, this.__screen.hdc, 0, 0, this.ScreenWidth, this.ScreenHeight)
@@ -1291,7 +1340,7 @@ class Graphics {
          if (pGraphics == "") {
             if (!this.state.layers.2.MaxIndex())
                this.__buffer := new this.outer.memory(this.ScreenWidth, this.ScreenHeight)
-            pGraphics := this.__buffer.G
+            pGraphics := this.__buffer.gfx
          }
 
 
@@ -1542,7 +1591,7 @@ class Graphics {
       }
 
       Recover() {
-         Gdip_SetSmoothingMode(this.G, 4)
+         Gdip_SetSmoothingMode(this.gfx, 4)
          return this
       }
 
@@ -1690,9 +1739,9 @@ class Graphics {
       height() {
          return this.state.h.2
       }
-   } ; End of Area class.
+   } ; End of Vector class.
 
-   class Picture {
+   class Photo {
    static extends := "object"
 
       _extends := this.__extends()
@@ -1954,24 +2003,13 @@ class Graphics {
 
             ; Draw image.
             if (w == width && h == height) {
-               ; ARCHIVE: Doesn't work!
-               /*
-               hdc := Gdip_GetDC(pGraphics)
-               gfx := Gdip_GraphicsFromImage(pBitmap)
-               cdc := Gdip_GetDC(gfx)
-               BitBlt(hdc, x, y, w, h, cdc, 0, 0, Raster := "")
-               Gdip_ReleaseDC(gfx, cdc)
-               Gdip_DeleteGraphics(gfx)
-               Gdip_ReleaseDC(pGraphics, hdc)
-               */
-
-
                ; Get the device context (hdc) associated with the Graphics object.
                ; Allocate a top-down device independent bitmap (hbm) by inputting a negative height.
                ; Pass the existing device context so that CreateDIBSection can determine the pixel format.
                ; Outputs a pointer to the pixel data. Select the new handle to a bitmap onto the cloned
                ; compatible device context. The old bitmap (obm) is a monochrome 1x1 default bitmap that
                ; will be reselected onto the device context (cdc) before deletion.
+               ; The following routine is 4ms faster than hbm := Gdip_CreateHBITMAPFromBitmap(pBitmap).
                hdc := Gdip_GetDC(pGraphics)
                hbm := CreateDIBSection(width, -height, hdc, 32, pBits)
                cdc := CreateCompatibleDC(hdc)
@@ -1996,15 +2034,19 @@ class Graphics {
                   , NumPut(     0xE200B, BitmapData, 12,   "int") ; PixelFormat
                   , NumPut(       pBits, BitmapData, 16,   "ptr") ; Scan0
                DllCall("gdiplus\GdipBitmapLockBits"
-                  ,   "ptr", pBitmap
-                  ,   "ptr", &Rect
-                  ,  "uint", 5            ; ImageLockMode.UserInputBuffer | ImageLockMode.ReadOnly
-                  ,   "int", 0xE200B      ; Format32bppPArgb
-                  ,   "ptr", &BitmapData)
+                        ,   "ptr", pBitmap
+                        ,   "ptr", &Rect
+                        ,  "uint", 5            ; ImageLockMode.UserInputBuffer | ImageLockMode.ReadOnly
+                        ,   "int", 0xE200B      ; Format32bppPArgb
+                        ,   "ptr", &BitmapData)
                DllCall("gdiplus\GdipBitmapUnlockBits", "ptr",pBitmap, "ptr",&BitmapData)
 
-               ; BitBlt() is the fastest operation for copying pixels.
-               BitBlt(hdc, x, y, w, h, cdc, 0, 0)
+               ; A good question to ask is why don't we get the pointer to the bits of the hBitmap already
+               ; associated with the hdc? Well we need to set the x,y,w,h coordinates of the resulting transposition;
+               ; and if a Graphics object associated to a pBitmap via Gdip_GraphicsFromImage() is passed,
+               ; there would be no underlying handle to a device independent bitmap, and thus no pBits at all!
+               ; So a buffer is still needed, just not two buffers (read the notes above.)
+               BitBlt(hdc, x, y, w, h, cdc, 0, 0) ; BitBlt() is the fastest operation for copying pixels.
                SelectObject(cdc, obm)
                DeleteObject(hbm)
                DeleteDC(cdc)
@@ -2047,9 +2089,6 @@ class Graphics {
                DllCall("gdiplus\GdipDisposeImageAttributes", "ptr",ImageAttr)
             }
          }
-         global PreciseTime
-         DllCall("QueryPerformanceCounter", "int64*",A_PreciseTime)
-         Tooltip % PreciseTime := (A_PreciseTime - this.PreciseTime) / this.Frequency
 
          ; Begin drawing the polygons onto the canvas.
          if (polygons != "") {
@@ -2080,6 +2119,7 @@ class Graphics {
          DllCall("gdiplus\GdipSetSmoothingMode",      "ptr",pGraphics, "int",SmoothingMode)
          DllCall("gdiplus\GdipSetInterpolationMode",  "ptr",pGraphics, "int",InterpolationMode)
 
+         ; Dispose of the pre-processed bitmap.
          if (type != "pBitmap")
             Gdip_DisposeImage(pBitmap)
 
@@ -2095,12 +2135,12 @@ class Graphics {
 
       Preprocess(cotype, image, crop := "", scale := "", terms*) {
          if (!this.hwnd) {
-            _picture := new this("Picture.Preprocess")
-            _picture.title := _picture.title "_" _picture.hwnd
-            DllCall("SetWindowText", "ptr",_picture.hwnd, "str",_picture.title)
-            coimage := _picture.Preprocess(cotype, image, crop, scale, terms*)
-            _picture.FreeMemory()
-            _picture := ""
+            _photo := new this("Photo.Preprocess")
+            _photo.title := _photo.title "_" _photo.hwnd
+            DllCall("SetWindowText", "ptr",_photo.hwnd, "str",_photo.title)
+            coimage := _photo.Preprocess(cotype, image, crop, scale, terms*)
+            _photo.FreeMemory()
+            _photo := ""
             return coimage
          }
 
@@ -2145,12 +2185,12 @@ class Graphics {
 
          ; Activate gdip basically LOL.
          if (!this.hwnd) {
-            _picture := new this("Picture.Equality")
-            _picture.title := _picture.title "_" _picture.hwnd
-            DllCall("SetWindowText", "ptr",_picture.hwnd, "str",_picture.title)
-            answer := _picture.Equality(images*)
-            _picture.FreeMemory()
-            _picture := ""
+            _photo := new this("Photo.Equality")
+            _photo.title := _photo.title "_" _photo.hwnd
+            DllCall("SetWindowText", "ptr",_photo.hwnd, "str",_photo.title)
+            answer := _photo.Equality(images*)
+            _photo.FreeMemory()
+            _photo := ""
             return answer
          }
 
@@ -2351,8 +2391,65 @@ class Graphics {
          if (type = "pBitmap")
             return image
 
-         if (type = "hBitmap")
-            return Gdip_CreateBitmapFromHBITMAP(image)
+         if (type = "hBitmap") {
+            ; struct BITMAP - https://docs.microsoft.com/en-us/windows/desktop/api/wingdi/ns-wingdi-tagbitmap
+            DllCall("GetObject"
+                     , "ptr", image
+                     , "int", VarSetCapacity(dib, 76+2*(A_PtrSize=8?4:0)+2*A_PtrSize)
+                     , "ptr", &dib) ; sizeof(DIBSECTION) = x86:84, x64:104
+            width  := NumGet(dib, 4, "uint")
+            height := NumGet(dib, 8, "uint")
+            bpp    := NumGet(dib, 18, "ushort")
+
+            ; Fallback to built-in method if pixels are not ARGB.
+            if (bpp != 32)
+               return Gdip_CreateBitmapFromHBITMAP(image)
+
+            ; Create a handle to a device context and associate the image.
+            hdc := CreateCompatibleDC()
+            obm := SelectObject(hdc, image)
+
+            ; Buffer the image with a top-down device independent bitmap via negative height.
+            ; Note that a DIB is an hBitmap, pixels are formatted as pARGB, and has a pointer to the bits.
+            cdc := CreateCompatibleDC(hdc)
+            hbm := CreateDIBSection(width, -height, cdc, 32, pBits)
+            ob2 := SelectObject(cdc, hbm)
+
+            ; Create a new Bitmap (different from an hBitmap) which holds ARGB pixel values.
+            pBitmap := Gdip_CreateBitmap(width, height)
+
+            ; Create a Scan0 buffer pointing to pBits. The buffer has pixel format pARGB.
+            VarSetCapacity(Rect, 16, 0)
+               , NumPut( width, Rect,  8,  "uint")
+               , NumPut(height, Rect, 12,  "uint")
+            VarSetCapacity(BitmapData, 16+2*(A_PtrSize ? A_PtrSize : 4), 0)
+               , NumPut(       width, BitmapData,  0,  "uint") ; Width
+               , NumPut(      height, BitmapData,  4,  "uint") ; Height
+               , NumPut(   4 * width, BitmapData,  8,   "int") ; Stride
+               , NumPut(     0xE200B, BitmapData, 12,   "int") ; PixelFormat
+               , NumPut(       pBits, BitmapData, 16,   "ptr") ; Scan0
+            DllCall("gdiplus\GdipBitmapLockBits"
+                     ,   "ptr", pBitmap
+                     ,   "ptr", &Rect
+                     ,  "uint", 7            ; ImageLockMode.UserInputBuffer | ImageLockMode.ReadWrite
+                     ,   "int", 0xE200B      ; Format32bppPArgb
+                     ,   "ptr", &BitmapData)
+
+            ; Ensure that our hBitmap (image) is top-down by copying it to a top-down bitmap.
+            BitBlt(cdc, 0, 0, width, height, hdc, 0, 0)
+
+            ; Convert the pARGB pixels copied into the device independent bitmap (hbm) to ARGB.
+            DllCall("gdiplus\GdipBitmapUnlockBits", "ptr",pBitmap, "ptr",&BitmapData)
+
+            ; Cleanup the buffer and device contexts.
+            SelectObject(cdc, ob2)
+            DeleteObject(hbm)
+            DeleteDC(cdc)
+            SelectObject(hdc, obm)
+            DeleteDC(hdc)
+
+            return pBitmap
+         }
 
          if (type = "base64") {
             image := Trim(image)
@@ -2362,7 +2459,7 @@ class Graphics {
             DllCall("crypt32\CryptStringToBinary" (A_IsUnicode ? "W" : "A"), "ptr",&image, "uint",0, "uint",1, "ptr",&bin, "uint*",nSize, "ptr",0, "ptr",0)
             hData := DllCall("GlobalAlloc", "uint",0x2, "ptr",nSize)
             pData := DllCall("GlobalLock", "ptr",hData)
-            DllCall("RtlMoveMemory", "ptr",pData, "ptr",&bin, "ptr",nSize)
+            DllCall("RtlMoveMemory", "ptr",pData, "ptr",&bin, "uptr",nSize)
             DllCall("ole32\CreateStreamOnHGlobal", "ptr",hData, "int",false, "ptr*",pStream)
             DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr",pStream, "ptr*",pBitmap)
             pBitmap2 := Gdip_CloneBitmapArea(pBitmap, 0, 0, Gdip_GetImageWidth(pBitmap), Gdip_GetImageHeight(pBitmap))
@@ -2382,8 +2479,8 @@ class Graphics {
             DllCall("GetObject", "ptr", hBitmap, "int", VarSetCapacity(oi, A_PtrSize = 8 ? 104 : 84, 0), "ptr", &oi)
             hdib := DllCall("GlobalAlloc", "uint", 2, "ptr", 40+NumGet(oi, off1, "uint"), "ptr")
             pdib := DllCall("GlobalLock", "ptr", hdib, "ptr")
-            DllCall("RtlMoveMemory", "ptr", pdib, "ptr", &oi+off2, "ptr", 40)
-            DllCall("RtlMoveMemory", "ptr", pdib+40, "ptr", NumGet(oi, off2 - (A_PtrSize ? A_PtrSize : 4), "ptr"), "ptr", NumGet(oi, off1, "uint"))
+            DllCall("RtlMoveMemory", "ptr", pdib, "ptr", &oi+off2, "uptr", 40)
+            DllCall("RtlMoveMemory", "ptr", pdib+40, "ptr", NumGet(oi, off2 - (A_PtrSize ? A_PtrSize : 4), "ptr"), "uptr", NumGet(oi, off1, "uint"))
             DllCall("GlobalUnlock", "ptr", hdib)
             DllCall("DeleteObject", "ptr", hBitmap)
 
@@ -2400,8 +2497,8 @@ class Graphics {
 
          ; toCotype("screenshot", pBitmap, style)
          if (cotype = "screenshot") {
-            _picture := this.Render({"pBitmap":pBitmap}, terms.1)
-            return [_picture.x1(), _picture.y1(), _picture.width(), _picture.height()]
+            _photo := this.Render({"pBitmap":pBitmap}, terms.1)
+            return [_photo.x1(), _photo.y1(), _photo.width(), _photo.height()]
          }
 
          ; toCotype("file", pBitmap, filename, quality)
@@ -2481,7 +2578,7 @@ class Graphics {
             nSize := DllCall("GlobalSize", "uint",pData)
 
             VarSetCapacity(bin, nSize, 0)
-            DllCall("RtlMoveMemory", "ptr",&bin, "ptr",pData, "uint",nSize)
+            DllCall("RtlMoveMemory", "ptr",&bin, "ptr",pData, "uptr",nSize)
             DllCall("GlobalUnlock", "ptr",hData)
             ObjRelease(pStream)
             DllCall("GlobalFree", "ptr",hData)
@@ -2569,7 +2666,7 @@ class Graphics {
 
          ; RtlCompareMemory preforms an unsafe comparison stopping at the first different byte.
          size := width * height * 4  ; ARGB = 4 bytes
-         byte := DllCall("ntdll\RtlCompareMemory", "ptr", Scan01+0, "ptr", Scan02+0, "uint", size)
+         byte := DllCall("ntdll\RtlCompareMemory", "ptr", Scan01+0, "ptr", Scan02+0, "uptr", size)
 
          Gdip_UnlockBits(pBitmap1, BitmapData1)
          Gdip_UnlockBits(pBitmap2, BitmapData2)
@@ -3152,49 +3249,178 @@ class Graphics {
 
          return {0:t_bound, 1:x_bound, 2:y_bound, 3:w_bound, 4:h_bound}
       }
+   } ; End of Subtitle class.
 
-      Reposition() {
-         CoordMode, Mouse, Screen
-         MouseGetPos, x_mouse, y_mouse
-         this.LButton := GetKeyState("LButton", "P") ? 1 : 0
-         this.keypress := (this.LButton && DllCall("GetForegroundWindow") == this.hwnd) ? ((!this.keypress) ? 1 : -1) : ((this.keypress == -1) ? 2 : 0)
+   class Interactive {
 
-         if (this.keypress == 1) {
-            this.x_mouse := x_mouse, this.y_mouse := y_mouse
-            this.hbm2 := CreateDIBSection(A_ScreenWidth, A_ScreenHeight)
-            this.hdc2 := CreateCompatibleDC()
-            this.obm2 := SelectObject(this.hdc2, this.hbm2)
-            this.G2 := Gdip_GraphicsFromHDC(this.hdc2)
+      ; BufferMode
+      ; None = 0        - No buffer is created. Instead the image is repeatedly rendered to screen.
+      ; FixedSize = 1   - The size of the screen and buffer bitmaps are minimized to save memory.
+      ;                   Because the bitmap representing the screen does not cover the whole screen,
+      ;                   interactions are limited only to movement and other actions which do not
+      ;                   change the size of the image to be displayed.
+      ; SmallBuffer = 2 - The buffer bitmap contains only the pixels that contain data. The screen
+      ;                   bitmap is fullsized. All user interactions can be applied.
+      ; FullScreen = 3  - Both the buffer and the screen bitmaps are full and equal in size.
+      ;                   This is a special mode that allows the buffer bitmap to be drawn on
+      ;                   by EXTERNAL programs. Call .Push() after drawing into the buffer to update
+      ;                   the screen.
+      __New(efx, keybinds := "", BufferMode := 2, NoTimers := 0) {
+         this.efx := efx
+         this.keybinds := keybinds
+         this.key := {}
+         if !(NoTimers) {
+            observe := ObjBindMethod(this, "observe")
+            SetTimer, % observe, -10
          }
+         return this
+      }
 
-         if (this.keypress == -1) {
-            dx := x_mouse - this.x_mouse
-            dy := y_mouse - this.y_mouse
-            safe_x := (0 + dx <= 0) ? 0 : 0 + dx
-            safe_y := (0 + dy <= 0) ? 0 : 0 + dy
-            safe_w := (0 + this.ScreenWidth + dx >= this.ScreenWidth) ? this.ScreenWidth : 0 + this.ScreenWidth + dx
-            safe_h := (0 + this.ScreenHeight + dy >= this.ScreenHeight) ? this.ScreenHeight : 0 + this.ScreenHeight + dy
-            source_x := (dx < 0) ? -dx : 0
-            source_y := (dy < 0) ? -dy : 0
-            ;Tooltip % dx ", " dy "`n" safe_x ", " safe_y ", " safe_w ", " safe_h
-            Gdip_GraphicsClear(this.G2)
-            BitBlt(this.hdc2, safe_x, safe_y, safe_w, safe_h, this.hdc, source_x, source_y)
-            UpdateLayeredWindow(this.hwnd, this.hdc2, 0, 0, this.ScreenWidth, this.ScreenHeight)
-         }
+      __Delete() {
+         Gdip_DeleteGraphics(this.gfx)
+         SelectObject(this.hdc, this.obm)
+         DeleteObject(this.hbm)
+         DeleteDC(this.hdc)
+      }
 
-         if (this.keypress == 2) {
-            Gdip_DeleteGraphics(this.G)
+      __Call(self, terms*) {
+         if !IsFunc(this[self])
+            return (this.efx)[self](terms*)
+      }
+
+      observe() {
+         Critical
+
+         if (this.efx.final = 1) {
+            ; Delete.
+            Gdip_DeleteGraphics(this.gfx)
             SelectObject(this.hdc, this.obm)
             DeleteObject(this.hbm)
             DeleteDC(this.hdc)
-            this.hdc := this.hdc2
-            this.obm := this.obm2
-            this.hbm := this.hbm2
-            this.G := Gdip_GraphicsFromHDC(this.hdc2)
+
+            ; Create.
+            this.hdc := CreateCompatibleDC(this.efx.hdc)
+            this.hbm := CreateDIBSection(this.efx.w, -this.efx.h, this.hdc)
+            this.obm := SelectObject(this.hdc, this.hbm)
+            this.gfx := Gdip_GraphicsFromHDC(this.hdc)
+
+            ; Copy to buffer.
+            BitBlt(this.hdc, 0, 0, this.efx.w, this.efx.h, this.efx.hdc, this.efx.x, this.efx.y)
+
+            ; Prevent this routine from being called again.
+            this.efx.final++
          }
 
-         Reposition := ObjBindMethod(this, "Reposition")
-         SetTimer, % Reposition, -10
+         ; Get mouse.
+         _cmm := A_CoordModeMouse
+         CoordMode, Mouse, Screen
+         MouseGetPos, x_mouse, y_mouse
+         CoordMode, Mouse, %_cmm%
+
+         ; Get keys.
+         this.key.LButton := GetKeyState("LButton", "P")
+         this.key.RButton := GetKeyState("RButton", "P")
+         this.key.Space   := GetKeyState("Space", "P")
+         this.key.Control := GetKeyState("Control", "P")
+         this.key.Alt     := GetKeyState("Alt", "P")
+         this.key.Shift   := GetKeyState("Shift", "P")
+
+         if (this._move := (this.key.LButton
+            && DllCall("GetForegroundWindow") == this.efx.hwnd)
+            ? ((!this._move) ? 1 : 2) : ((this._move = 2) ? 3 : 0))
+               this.Move2(x_mouse, y_mouse)
+         ;this.Scale(x_mouse, y_mouse)
+
+         observe := ObjBindMethod(this, "observe")
+         SetTimer, % observe, -10
       }
-   } ; End of Subtitle class.
+
+      MoveMouse(x, y) {
+         if (this.ThisFunc != SubStr(A_ThisFunc, 1, -5)) {
+            this.ThisFunc := SubStr(A_ThisFunc, 1, -5)
+            ; 3
+            this.efx.x := this.x
+            this.efx.y := this.y
+
+            ; 1
+            this.x0 := x
+            this.y0 := y
+         }
+
+         return this.Move(x, y, 1)
+      }
+
+      Move(x, y) {
+         this.x := x
+         this.y := y
+         Gdip_GraphicsClear(this.efx.gfx)
+         BitBlt(this.efx.hdc, this.x, this.y, this.efx.w, this.efx.h, this.hdc, 0, 0)
+         UpdateLayeredWindow(this.efx.hwnd, this.efx.hdc, 0, 0, this.efx.ScreenWidth, this.efx.ScreenHeight)
+      }
+
+      Move2(x, y) {
+         if (this._move == 1) {
+            this.x0 := x
+            this.y0 := y
+         }
+
+         if (this._move == 2) {
+            dx := x - this.x0
+            dy := y - this.y0
+            this.x := this.efx.x + dx
+            this.y := this.efx.y + dy
+            Gdip_GraphicsClear(this.efx.gfx)
+            BitBlt(this.efx.hdc, this.x, this.y, this.efx.w, this.efx.h, this.hdc, 0, 0)
+            UpdateLayeredWindow(this.efx.hwnd, this.efx.hdc, 0, 0, this.efx.ScreenWidth, this.efx.ScreenHeight)
+         }
+
+         if (this._move == 3) {
+            this.efx.x := this.x
+            this.efx.y := this.y
+         }
+      }
+
+      Scale(x, y) {
+         this._scale := (this.key.Control && this.key.LButton
+            && DllCall("GetForegroundWindow") == this.efx.hwnd)
+            ? ((!this._scale) ? 1 : 2) : ((this._scale == 2) ? 3 : 0)
+
+         if (this._scale == 1) {
+            this.x0 := x
+            this.y0 := y
+         }
+
+         if (this._scale == 2) {
+            dx := x - this.x0
+            dy := y - this.y0
+            this.x := this.efx.x + dx
+            this.y := this.efx.y + dy
+            Gdip_GraphicsClear(this.efx.gfx)
+            StretchBlt(this.efx.hdc, dx, dy, dw, dh, this.hdc, 0, 0, this.efx.w, this.efx.h)
+            BitBlt(this.efx.hdc, this.x, this.y, this.efx.w, this.efx.h, this.hdc, 0, 0)
+            UpdateLayeredWindow(this.efx.hwnd, this.efx.hdc, 0, 0, this.efx.ScreenWidth, this.efx.ScreenHeight)
+         }
+
+         if (this._scale == 3) {
+            this.efx.x := this.x
+            this.efx.y := this.y
+         }
+      }
+
+      ; Mouse
+      ; Move
+      ; Resize
+      ; Scale
+      ; Stretch
+      ; Rotate
+
+      ; Keys
+      ; Rotate90
+      ; Rotate180
+      ; Move5
+      ; Move10
+      ; Mirror
+      ; Fade
+      ; Blur
+   } ; End of Interactive class.
 }
