@@ -1979,7 +1979,7 @@ class Vis2 {
                if FileExist("Vis2_API.txt") {
                   file := FileOpen("Vis2_API.txt", "r")
                   keys := file.Read()
-                  api_key := ((___ := RegExReplace(keys, "s)^.*?GoogleCloudVision(?:\s*)=(?:\s*)([A-Za-z0-9\-]+).*$", "$1")) != keys) ? ___ : ""
+                  api_key := ((___ := RegExReplace(keys, "s)^.*?GoogleCloudVision(?:\s*)=(?:\s*)([A-Za-z0-9_\-]+).*$", "$1")) != keys) ? ___ : ""
                   file.close()
 
                   if (api_key != "")
