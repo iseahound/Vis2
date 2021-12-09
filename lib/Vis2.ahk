@@ -2,7 +2,7 @@
 ; License:   Custom
 ; Author:    Edison Hua (iseahound)
 ; Date:      2021-12-09
-; Version:   v2.0
+; Version:   2.0.0
 
 #include <Gdip_All>
 #include <JSON>
