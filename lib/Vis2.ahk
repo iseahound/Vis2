@@ -257,7 +257,6 @@ class Vis2 {
             textPreview(bypass:=""){
             static textPreview := ObjBindMethod(Vis2.core.ux.process, "textPreview")
 
-               Critical
                if (!Vis2.obj.unlock.1 || bypass) {
                   if (coordinates := Vis2.obj.Area.ScreenshotRectangle()) {
                      (overlap := Vis2.core.ux.overlap()) ? Vis2.obj.subtitle.hide() : ""
