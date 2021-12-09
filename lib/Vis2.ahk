@@ -1,7 +1,8 @@
 ﻿; Script:    Vis2.ahk
-; Author:    iseahound
-; Date:      2017-08-19
-; Recent:    2018-04-04
+; License:   Custom
+; Author:    Edison Hua (iseahound)
+; Date:      2021-12-09
+; Version:   v2.0
 
 #include <Gdip_All>
 #include <JSON>
