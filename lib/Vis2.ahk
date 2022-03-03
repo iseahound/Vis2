@@ -5,6 +5,7 @@
 ; Version:   2.0.0
 
 #include <Gdip_All>
+#include <ImagePut>
 #include <JSON>
 
 
@@ -261,7 +262,7 @@ class Vis2 {
                if (!Vis2.obj.unlock.1 || bypass) {
                   if (coordinates := Vis2.obj.Area.ScreenshotRectangle()) {
                      (overlap := Vis2.core.ux.overlap()) ? Vis2.obj.subtitle.hide() : ""
-                     pBitmap := Gdip_BitmapFromScreen(coordinates) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
+                     pBitmap := ImagePutBitmap({screenshot: coordinates}) ; To avoid the grey tint, call Area.Hide() but this will cause flickering.
                      (overlap) ? Vis2.obj.subtitle.show() : ""
                      if !(coordinates == Vis2.obj.coordinates && Vis2.stdlib.Gdip_isBitmapEqual(pBitmap, Vis2.obj.pBitmap)) {
                         Gdip_DisposeImage(Vis2.obj.pBitmap)
@@ -271,9 +272,9 @@ class Vis2 {
                         ; Process screenshot.
                         try {
                            if (Vis2.obj.provider.file != "")
-                              Gdip_SaveBitmapToFile(pBitmap, Vis2.obj.provider.file, Vis2.obj.provider.jpegQuality)
+                              ImagePutFile({bitmap: pBitmap}, Vis2.obj.provider.file, Vis2.obj.provider.jpegQuality)
                            if (Vis2.obj.provider.base64 != "")
-                              Vis2.obj.provider.base64 := Vis2.stdlib.Gdip_EncodeBitmapTo64string(pBitmap, Vis2.obj.provider.ext, Vis2.obj.provider.jpegQuality)
+                              Vis2.obj.provider.base64 := ImagePutBase64({bitmap: pBitmap}, Vis2.obj.provider.ext, Vis2.obj.provider.jpegQuality)
                            Vis2.obj.provider.preprocess()
                            if (Vis2.obj.image.isVisible() == true)
                               Vis2.obj.image.render(Vis2.obj.provider.getPreprocessImage(), 0.5)
@@ -916,7 +917,7 @@ class Vis2 {
 
          ScreenshotRectangle(){
             x := this.x1(), y := this.y1(), w := this.width(), h := this.height()
-            return (w > 0 && h > 0) ? (x "|" y "|" w "|" h) : ""
+            return (w > 0 && h > 0) ? [x, y, w, h] : ""
          }
 
          x1(){
@@ -2001,7 +2002,7 @@ class Vis2 {
          ; Compression to 640 x 480 - LABEL_DETECTION
 
          ImageIdentify(image, search:="", options:=""){
-            base64 := Vis2.stdlib.toBase64(image, "png", this.jpegQuality, options)
+            base64 := ImagePutBase64({image: image, crop: options}, "png", this.jpegQuality)
             reply := this.convert(base64)
             return this.getText()
          }
@@ -2079,7 +2080,7 @@ class Vis2 {
          OCR(image, language:="", options:=""){
             this.language := language
             try {
-               screenshot := Vis2.stdlib.toFile(image, this.file, options)
+               screenshot := ImagePutFile({image: image, crop: options}, this.file)
                this.preprocess(screenshot, this.fileProcessedImage)
                this.convert_best(this.fileProcessedImage, this.fileConvertedText)
                text := this.getText(this.fileConvertedText)
