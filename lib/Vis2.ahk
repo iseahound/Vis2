@@ -4,9 +4,9 @@
 ; Date:      2022-03-03
 ; Version:   2.1.0
 
-#include <Gdip_All>
-#include <ImagePut>
-#include <JSON>
+#include %A_LineFile%\..\Gdip_All.ahk
+#include %A_LineFile%\..\ImagePut.ahk
+#include %A_LineFile%\..\JSON.ahk
 
 
 ; ImageIdentify() - Label and identify objects in images.
